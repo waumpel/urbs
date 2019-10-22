@@ -3,9 +3,9 @@ from .pyomoio import get_entity, list_entities
 
 
 def create_result_cache(prob):
-    entity_types = ['set', 'par', 'var']
-    if hasattr(prob, 'dual'):
-        entity_types.append('con')
+    entity_types = ['set', 'par', 'var', 'expr']
+    #if hasattr(prob, 'dual'):
+     #   entity_types.append('con')
 
     entities = []
     for entity_type in entity_types:
@@ -28,12 +28,14 @@ def save(prob, filename):
         Nothing
     """
     import warnings
+    import tables
     warnings.filterwarnings('ignore',
                             category=pd.io.pytables.PerformanceWarning)
+    warnings.filterwarnings('ignore',
+                            category=tables.NaturalNameWarning)
 
-    if not hasattr(prob, '_result'):
-        prob._result = create_result_cache(prob)
-
+    #if not hasattr(prob, '_result'):
+    prob._result = create_result_cache(prob)
     with pd.HDFStore(filename, mode='w') as store:
         for name in prob._data.keys():
             store['data/'+name] = prob._data[name]

@@ -1,7 +1,5 @@
-import pandas as pd
-from xlrd import XLRDError
 import pyomo.core as pyomo
-from .modelhelper import *
+from urbs.modelhelper import *
 
 
 def read_excel(filename):
@@ -46,8 +44,8 @@ def read_excel(filename):
             xls.parse('Storage').set_index(['Site', 'Storage', 'Commodity']))
         demand = xls.parse('Demand').set_index(['t'])
         supim = xls.parse('SupIm').set_index(['t'])
-        buy_sell_price = xls.parse('Buy-Sell-Price').set_index(['t'])
-        dsm = xls.parse('DSM').set_index(['Site', 'Commodity'])
+        #buy_sell_price = xls.parse('Buy-Sell-Price').set_index(['t'])
+        #dsm = xls.parse('DSM').set_index(['Site', 'Commodity'])
         if 'Global' in sheetnames:
             global_prop = xls.parse('Global').set_index(['Property'])
         else:
@@ -66,7 +64,7 @@ def read_excel(filename):
     # column index ('DE', 'Elec')
     demand.columns = split_columns(demand.columns, '.')
     supim.columns = split_columns(supim.columns, '.')
-    buy_sell_price.columns = split_columns(buy_sell_price.columns, '.')
+    #buy_sell_price.columns = split_columns(buy_sell_price.columns, '.')
 
     data = {
         'global_prop': global_prop,
@@ -78,103 +76,16 @@ def read_excel(filename):
         'storage': storage,
         'demand': demand,
         'supim': supim,
-        'buy_sell_price': buy_sell_price,
-        'dsm': dsm,
+        #'buy_sell_price': buy_sell_price,
+        #'dsm': dsm,
         'eff_factor': eff_factor
         }
 
     # sort nested indexes to make direct assignments work
     for key in data:
         if isinstance(data[key].index, pd.core.index.MultiIndex):
-            data[key].sort_index(inplace=True)
+            data[key].sort_index(level=0, inplace=True)
     return data
-
-
-# preparing the pyomo model
-def pyomo_model_prep(data, timesteps):
-    m = pyomo.ConcreteModel()
-
-    m.timesteps = timesteps
-    process = data['process']
-    transmission = data['transmission']
-    storage = data['storage']
-
-    # Converting Data frames to dict
-    m.global_prop_dict = (data['global_prop'].drop('description', axis=1)
-                          .to_dict())
-    m.site_dict = data["site"].to_dict()
-    m.commodity_dict = data["commodity"].to_dict()
-    m.demand_dict = data["demand"].to_dict()
-    m.supim_dict = data["supim"].to_dict()
-    m.dsm_dict = data["dsm"].to_dict()
-    m.buy_sell_price_dict = data["buy_sell_price"].to_dict()
-    m.eff_factor_dict = data["eff_factor"].to_dict()
-
-    # process input/output ratios
-    m.r_in_dict = (data['process_commodity'].xs('In', level='Direction')
-                   ['ratio'].to_dict())
-    m.r_out_dict = (data['process_commodity'].xs('Out', level='Direction')
-                    ['ratio'].to_dict())
-
-    # process areas
-    proc_area = data["process"]['area-per-cap']
-    proc_area = proc_area[proc_area >= 0]
-    m.proc_area_dict = proc_area.to_dict()
-
-    # input ratios for partial efficiencies
-    # only keep those entries whose values are
-    # a) positive and
-    # b) numeric (implicitely, as NaN or NV compare false against 0)
-    r_in_min_fraction = data['process_commodity'].xs('In', level='Direction')
-    r_in_min_fraction = r_in_min_fraction['ratio-min']
-    r_in_min_fraction = r_in_min_fraction[r_in_min_fraction > 0]
-    m.r_in_min_fraction_dict = r_in_min_fraction.to_dict()
-
-    # output ratios for partial efficiencies
-    # only keep those entries whose values are
-    # a) positive and
-    # b) numeric (implicitely, as NaN or NV compare false against 0)
-    r_out_min_fraction = data['process_commodity'].xs('Out', level='Direction')
-    r_out_min_fraction = r_out_min_fraction['ratio-min']
-    r_out_min_fraction = r_out_min_fraction[r_out_min_fraction > 0]
-    m.r_out_min_fraction_dict = r_out_min_fraction.to_dict()
-
-    # storages with fixed initial state
-    stor_init_bound = storage['init']
-    m.stor_init_bound_dict = stor_init_bound[stor_init_bound >= 0].to_dict()
-
-    # storages with fixed energy-to-power ratio
-    try:
-        sto_ep_ratio = storage['ep-ratio']
-        m.sto_ep_ratio_dict = sto_ep_ratio[sto_ep_ratio >= 0].to_dict()
-    except:
-        m.sto_ep_ratio_dict = pd.DataFrame()
-
-    # derive annuity factor from WACC and depreciation duration
-    process['annuity-factor'] = (
-        process.apply(lambda x: annuity_factor(x['depreciation'],
-                                               x['wacc']),
-                      axis=1))
-    try:
-        transmission['annuity-factor'] = (
-            transmission.apply(lambda x: annuity_factor(x['depreciation'],
-                                                        x['wacc']),
-                               axis=1))
-    except ValueError:
-        pass
-    try:
-        storage['annuity-factor'] = (
-            storage.apply(lambda x: annuity_factor(x['depreciation'],
-                                                   x['wacc']),
-                          axis=1))
-    except ValueError:
-        pass
-
-    # Converting Data frames to dictionaries
-    m.process_dict = process.to_dict()
-    m.transmission_dict = transmission.to_dict()
-    m.storage_dict = storage.to_dict()
-    return m
 
 
 def split_columns(columns, sep='.'):

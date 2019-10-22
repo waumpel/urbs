@@ -51,6 +51,7 @@ model equations or extend the model yourself.
    mathdoc
    buyselldoc
    dsmdoc
+   decomposition
 
 
 Features

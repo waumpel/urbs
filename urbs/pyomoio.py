@@ -14,8 +14,8 @@ def get_entity(instance, name):
         entity name. For constraints, it retrieves the dual values
     """
     # magic: short-circuit if problem contains a result cache
-    if hasattr(instance, '_result') and name in instance._result:
-        return instance._result[name].copy(deep=True)
+    # if hasattr(instance, '_result') and name in instance._result:
+    #     return instance._result[name].copy(deep=True)
 
     # retrieve entity, its type and its onset names
     entity = instance.__getattribute__(name)
@@ -47,6 +47,18 @@ def get_entity(instance, name):
         else:
             results = pd.DataFrame(
                 [(v[0], v[1].value) for v in entity.iteritems()])
+            labels = ['None']
+
+    elif isinstance(entity, pyomo.Expression):
+        if entity.dim() > 1:
+            results = pd.DataFrame(
+                [v[0] + (v[1](),) for v in entity.iteritems()])
+        elif entity.dim() == 1:
+            results = pd.DataFrame(
+                [(v[0], v[1]()) for v in entity.iteritems()])
+        else:
+            results = pd.DataFrame(
+                [(v[0], v[1]()) for v in entity.iteritems()])
             labels = ['None']
 
     elif isinstance(entity, pyomo.Constraint):
@@ -133,7 +145,7 @@ def list_entities(instance, entity_type):
 
     Args:
         instance: a Pyomo ConcreteModel object
-        entity_type: "set", "par", "var", "con" or "obj"
+        entity_type: "set", "par", "var", "con", "expr" or "obj"
 
     Returns:
         DataFrame of entities
@@ -160,6 +172,8 @@ def list_entities(instance, entity_type):
             return isinstance(entity, pyomo.Constraint)
         elif entity_type == 'obj':
             return isinstance(entity, pyomo.Objective)
+        elif entity_type == 'expr':
+            return isinstance(entity, pyomo.Expression)
         else:
             raise ValueError("Unknown entity_type '{}'".format(entity_type))
 
@@ -236,7 +250,7 @@ def _get_onset_names(entity):
             pass
 
     elif isinstance(entity, (pyomo.Param, pyomo.Var, pyomo.Constraint,
-                    pyomo.Objective)):
+                    pyomo.Objective, pyomo.Expression)):
         if entity.dim() > 0 and entity._index:
             labels = _get_onset_names(entity._index)
         else:

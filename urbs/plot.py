@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import numpy as np
 import os
 import pandas as pd
@@ -83,8 +84,6 @@ def plot(prob, com, sit, dt, timesteps, timesteps_plot,
     Returns:
         fig: figure handle
     """
-    import matplotlib.pyplot as plt
-    import matplotlib as mpl
 
     if timesteps is None:
         # default to all simulated timesteps
@@ -98,8 +97,8 @@ def plot(prob, com, sit, dt, timesteps, timesteps_plot,
         # wrap single site in 1-element list for consistent behaviour
         sit = [sit]
 
-    (created, consumed, stored, imported, exported,
-     dsm) = get_timeseries(prob, com, sit, timesteps)
+    (created, consumed, stored, imported,
+     exported) = get_timeseries(prob, com, sit, timesteps)
 
     costs, cpro, ctra, csto = get_constants(prob)
 
@@ -119,16 +118,6 @@ def plot(prob, com, sit, dt, timesteps, timesteps_plot,
 
     # move demand to its own plot
     demand = consumed.pop('Demand')
-    original = dsm.pop('Unshifted')
-    deltademand = dsm.pop('Delta')
-    try:
-        # detect whether DSM could be used in this plot
-        # if so, show DSM subplot (even if delta == 0 for the whole time)
-        df_dsm = get_input(prob, 'dsm')
-        plot_dsm = df_dsm.loc[(sit, com),
-                              ['cap-max-do', 'cap-max-up']].sum().sum() > 0
-    except (KeyError, TypeError):
-        plot_dsm = False
 
     # remove all columns from created which are all-zeros in both created and
     # consumed (except the last one, to prevent a completely empty frame)
@@ -151,10 +140,8 @@ def plot(prob, com, sit, dt, timesteps, timesteps_plot,
     # FIGURE
     fig = plt.figure(figsize=figure_size)
     all_axes = []
-    if plot_dsm:
-        gs = mpl.gridspec.GridSpec(3, 1, height_ratios=[3, 1, 1], hspace=0.05)
-    else:
-        gs = mpl.gridspec.GridSpec(2, 1, height_ratios=[2, 1], hspace=0.05)
+
+    gs = mpl.gridspec.GridSpec(2, 1, height_ratios=[2, 1], hspace=0.05)
 
     # STACKPLOT
     ax0 = plt.subplot(gs[0])
@@ -167,6 +154,7 @@ def plot(prob, com, sit, dt, timesteps, timesteps_plot,
                          -consumed.values.T/dt[0],
                          labels=tuple(consumed.columns),
                          linewidth=0.15)
+
     # color
     for k, commodity in enumerate(consumed.columns):
         commodity_color = to_color(commodity)
@@ -224,10 +212,6 @@ def plot(prob, com, sit, dt, timesteps, timesteps_plot,
 
     # PLOT DEMAND
 
-    # line plot for demand (unshifted) commodities (divided by dt for power)
-    ax0.plot(hoursteps, original.values/dt[0], linewidth=0.8,
-             color=to_color('Unshifted'))
-
     # line plot for demand (shifted) commodities (divided by dt for power)
     ax0.plot(hoursteps[1:], demand.values/dt[0], linewidth=1.0,
              color=to_color('Shifted'))
@@ -238,12 +222,9 @@ def plot(prob, com, sit, dt, timesteps, timesteps_plot,
 
     # stack plot for stored commodities
     sp1 = ax1.stackplot(hoursteps, stored.values, linewidth=0.15)
-    if plot_dsm:
-        # hide xtick labels only if DSM plot follows
-        plt.setp(ax1.get_xticklabels(), visible=False)
-    else:
-        # else add label for time axis
-        ax1.set_xlabel('Time in year ({})'.format(time_unit))
+
+    # else add label for time axis
+    ax1.set_xlabel('Time in year ({})'.format(time_unit))
 
     # color & labels
     sp1[0].set_facecolor(to_color('Storage'))
@@ -254,21 +235,6 @@ def plot(prob, com, sit, dt, timesteps, timesteps_plot,
         ax1.set_ylim((0, 0.5 + csto.loc[sit, :, com]['C Total'].sum()))
     except KeyError:
         pass
-
-    # PLOT DEMAND SIDE MANAGEMENT
-    if plot_dsm:
-        ax2 = plt.subplot(gs[2], sharex=ax0)
-        all_axes.append(ax2)
-
-        # bar plot for DSM up-/downshift power (bar width depending on dt)
-        ax2.bar(hoursteps,
-                deltademand.values/dt[0], width=0.8 * dt[0],
-                color=to_color('Delta'),
-                edgecolor='none')
-
-        # labels & y-limits
-        ax2.set_xlabel('Time in year ({})'.format(time_unit))
-        ax2.set_ylabel('{} ({})'.format(power_name, power_unit))
 
     # make xtick distance duration-dependent
     if len(timesteps_plot) > 26 * 168 / dt[0]:    # time horizon > half a year

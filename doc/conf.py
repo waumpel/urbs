@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+todo_include_todos=True
 
 import sphinx_rtd_theme
 html_theme = "sphinx_rtd_theme"
@@ -7,6 +8,7 @@ html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.mathjax',
+    'sphinx.ext.autodoc'
 ]
 
 #templates_path = ['_templates']
@@ -15,8 +17,8 @@ master_doc = 'index'
 
 project = u'urbs'
 copyright = u'2014-2017, tum-ens'
-version = '0.7.3'
-release = '0.7.3'
+version = '0.7'
+release = '0.7'
 
 exclude_patterns = ['_build']
 #pygments_style = 'sphinx'

@@ -1,5 +1,7 @@
 ﻿.. module:: urbs
 
+.. _mathdoc:
+
 Mathematical Documentation
 **************************
 

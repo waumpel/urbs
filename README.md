@@ -1,10 +1,18 @@
-# urbs
+# DecEnSys - urbs
 
 urbs is a [linear programming](https://en.wikipedia.org/wiki/Linear_programming) optimisation model for capacity expansion planning and unit commitment for distributed energy systems. Its name, latin for city, stems from its origin as a model for optimisation for urban energy systems. Since then, it has been adapted to multiple scales from neighbourhoods to continents.
 
 [![Documentation Status](https://readthedocs.org/projects/urbs/badge/?version=latest)](http://urbs.readthedocs.io/en/latest/?badge=latest)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.594200.svg)](https://doi.org/10.5281/zenodo.594200)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.242029.svg)](https://doi.org/10.5281/zenodo.242029)
 [![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/tum-ens/urbs?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+
+## DecEnSys project
+
+This branch features the further development of urbs during the project [DecEnSys](https://www.ens.ei.tum.de/en/research/projects/current-projects/decensys/). It includes three main running modes: regional and time decomposition and stochastic dual dynamic programming (SDDP).
+
+## Contributers
+
+The code basis is, of course, urbs. Next to the urbs contributers the work in the project was conducted by Magdalena Stüber, Paul Stursberg, Leonhard Odersky, Okan Akca and Christoph Hahn.
 
 ## Features
 
@@ -14,6 +22,7 @@ urbs is a [linear programming](https://en.wikipedia.org/wiki/Linear_programming)
   * Thanks to [Pandas](https://pandas.pydata.org), complex data analysis is easy.
   * The model itself is quite small thanks to relying on package [Pyomo](http://www.pyomo.org/).
   * The small codebase includes reporting and plotting functionality.
+  * Stochastic evaluations of energy systems
 
 ## Screenshots
 
@@ -23,81 +32,39 @@ urbs is a [linear programming](https://en.wikipedia.org/wiki/Linear_programming)
 
 ## Installation
 
-### Windows
+### Windows, Linux, Mac OS
 
-There are 2 ways to get all required packages under Windows. I recommend using the Python distribution Anaconda. If you don't want to use it or already have an existing Python (version 3.5 **recommended**, 2.7 is supported as well) installation, you can also download the required packages by yourself..
+The easiest way to get all required packages under all distributions it to use Anaconda or Miniconda. If you don't want to use it or already have an existing Python (version 3.7 **recommended**) installation, you can also download the required packages by yourself.
 
 #### Anaconda (recommended)
 
-  1. **[Anaconda (Python 3.5)](http://continuum.io/downloads)**. Choose the 64-bit installer if possible.  
-     During the installation procedure, keep both checkboxes "modify PATH" and "register Python" selected! If only higher Python versions are available, you can switch to Python 3.5 by typing `conda install python=3.5`
-  2. **Solver**: [GLPK](http://winglpk.sourceforge.net/).
-      1. Simply unzip the downloaded version to any folder, e.g. `C:\GLPK`. 
-      2. Then add the subdirectory `w64`, which contains `glpsol.exe`, to the system path ([how](http://geekswithblogs.net/renso/archive/2009/10/21/how-to-set-the-windows-path-in-windows-7.aspx)), so that the `glpsol` command is available on the command prompt.
-      3. Alternative: Install it via conda by `conda install -c conda-forge glpk`. It will add it to the path variable, too.
-  3. **Pyomo**
-     1. Launch a new command prompt (Win+R, type "cmd", Enter)
-     2. Type `conda install -c conda-forge pyomo`, hit Enter.
+  1. **[Anaconda (Python 3.7)](http://continuum.io/downloads)**. Choose the 64-bit installer if possible.  
+     During the installation procedure, keep both checkboxes "modify PATH" and "register Python" selected!
+  2. **Solver, additional packages**: Use the provided environment file and install it by: `conda env create -f urbs-decensys.yml`
 
-Continue at [Get Started](#get-started).
-
-#### Manually (the hard way)
-
-For all packages, best take the latest release or release candidate version. Both 32 bit and 64 bit versions work, though 64 bit is recommended.
-
-  1. **[Python 3.5](https://python.org/download)**. Python 2.7 is also supported.
-  2. **[pip3](https://pip.pypa.io/en/latest/installing.html)**.The Python package manager. It allows to install many Python packages with a simple command. 
-      1. After installation, add `C:\Python35\Scripts` to environment variable "Path" ([how](http://geekswithblogs.net/renso/archive/2009/10/21/how-to-set-the-windows-path-in-windows-7.aspx)), so that the `pip` command becomes available on the command prompt.
-  3. **IPython**: execute `pip install ipython3` in a command prompt.
-  4. **SciPy stack:** These require binary installers, made available and maintained by [C. Gohlke](http://www.lfd.uci.edu/~gohlke/pythonlibs/). *How to select the correct file:* Download the newest stable version of each package, whose filename suffix matches both "bitness" (32 bit or 64 bit) and Python version (i.e. 3.5).  
-      1. [NumPy](http://www.lfd.uci.edu/~gohlke/pythonlibs/#numpy)
-      2. [SciPy](http://www.lfd.uci.edu/~gohlke/pythonlibs/#scipy)
-      3. [matplotlib](http://www.lfd.uci.edu/~gohlke/pythonlibs/#matplotlib), requires [dateutil](http://www.lfd.uci.edu/~gohlke/pythonlibs/#python-dateutil), [pytz](http://www.lfd.uci.edu/~gohlke/pythonlibs/#pytz), [pyparsing](http://www.lfd.uci.edu/~gohlke/pythonlibs/#pyparsing) and [six](http://www.lfd.uci.edu/~gohlke/pythonlibs/#six). 
-      4. As a test, you can try start `ipython` and have a MATLAB-style command line with plotting capabilities. If you receive message about "ipython could not be found", check if the `C:\Python35\Scripts` is added to the "Path" system variable as described in step 2.i. above.
-  5. **[pandas](https://pypi.python.org/pypi/pandas#downloads)**: its [Series](http://pandas.pydata.org/pandas-docs/stable/dsintro.html#series) and [DataFrame](http://pandas.pydata.org/pandas-docs/stable/dsintro.html#dataframe) are used for representing all model input and output. Its capabilities are exploited to write short analysis scripts in `runme.py` and `comp.py`, as well as in the functions `urbs.plot` and `urbs.report`.
-  6. **Pyomo**: execute `pip install pyomo` in a command prompt.
-  7. **Solver**: [GLPK](http://winglpk.sourceforge.net/).  (thanks to a [bug in pyomo](https://software.sandia.gov/trac/pyomo/ticket/4641), only version 4.57 or older is supported at the moment [May 2016])
-      1. Simply unzip the latest version somewhere, e.g. `C:\GLPK`. 
-      2. Then add the subdirectory `w64`, which contains `glpsol.exe`, to the system path (like in step 2.i.), so that the `glpsol` command is available on the command prompt.
-  8. **Excel** reading/writing: `pip install xlrd xlwt openpyxl`
-
-Continue at [Get Started](#get-started).
-  
-### Linux
-
-Use your Linux distribution's package manager to get all the packages listed in the Windows installation section. Below is the installation procedure for Ubuntu & Debian. Other distributions might have slightly different package names or differing procedures to get the individual packages to run:
-
-  1. **Python and base packages**: `sudo apt-get install python3 python3-pip python3-numpy python3-scipy python3-matplotlib python3-ipython python3-notebook python3-sympy glpk-utils`
-  2. **Up-to-date Python packages**: `sudo pip3 install pandas pyomo xlwt xlrd openpyxl`
-
-(Thanks to a [bug in pyomo](https://software.sandia.gov/trac/pyomo/ticket/4641), solver GLPK only version 4.57 or older is supported at the moment [May 2016]. Please check the version that your distribution installs with `glpk-utils` and downgrade or use another supported solver.)
-
-Continue at [Get Started](#get-started).
-
-  
+ 
 ## Get started
 
 Once installation is complete, finally [install git (for version control)](http://git-scm.com/). **Remark:** at step "Adjusting your PATH environment", select "Run Git from the Windows Command Prompt".
 
-Then, in a directory of your choice, clone this repository and execute the runme script by executing the following on the command prompt (Windows) or Terminal (Linux). (Under Linux, you most likely need to call `python3` instead of `python`.): 
+Then, in a directory of your choice, clone this repository and execute the runme script by executing the following on the command prompt (Windows) or Terminal (Linux): 
 
     git clone https://github.com/tum-ens/urbs.git
     cd urbs
+    conda activate decensys
     python runme.py
 
-Some minutes later, the subfolder `result` should contain plots and summary spreadsheets for multiple optimised energy supply scenarios, whose definitions are contained in the run script (watch out for `def scenario` lines). To get a graphical and tabular summary over all scenarios, execute
+Some minutes later, the subfolder `result` should contain plots and summary spreadsheets for multiple optimised energy supply scenarios, whose definitions are contained in the run script (watch out for `def scenario` lines).
 
-    python comp.py
-
-and look at the new files `result/mimo-example-.../comp.xlsx` and `result/mimo-example-.../comp.png` for a quick comparison. This script parses the summary spreadsheets for all scenarios.
+For the decensys branch, more steps need to be taken like setting respective parameters in `runme.py`.
 
 ## Next steps
 
   1. Head over to the tutorial at http://urbs.readthedocs.io, which goes through runme.py step by step. 
   2. Read the source code of `runme.py` and `comp.py`. 
-  3. Quickly scan through `urbs.py`, read docstrings.
+  3. Quickly scan through `models`, read docstrings.
   4. Try adding/modifying scenarios in `runme.py` and see their effect on results.
-  5. Fire up IPython (`ipython3`) and run the scripts from there using the run command: `run runme` and `run comp`. Then use `whos` and inspect the workspace afterwards (`whos`). See what you can do (analyses, plotting) with the DataFrames. Take the `urbs.get_constants`, `urbs.get_timeseries` and `urbs.plot` functions as inspriation and the [Pandas docs](http://pandas.pydata.org/pandas-docs/stable/) as reference.
+  5. Fire up IPython (`ipython3`) and run the scripts from there using the run command: `run runme`. Then use `whos` and inspect the workspace afterwards (`whos`). See what you can do (analyses, plotting) with the DataFrames. Take the `urbs.get_constants`, `urbs.get_timeseries` and `urbs.plot` functions as inspriation and the [Pandas docs](http://pandas.pydata.org/pandas-docs/stable/) as reference.
   
 ## Further reading
 
@@ -110,16 +77,12 @@ and look at the new files `result/mimo-example-.../comp.xlsx` and `result/mimo-e
   
 ## Example uses
 
-  - Branch [1node](https://github.com/ojdo/urbs/tree/1node) in the forked repository [ojdo/urbs](https://github.com/ojdo/urbs) shows a small example of a real-world usage of the model. It includes a [`scenario_generator`](https://github.com/ojdo/urbs/blob/dfa9cf0ad7b03289bf7c64d79ea93c7886a00a96/run1node.py#L10-L37) function in its run script, which is useful for extensive parameter sweeps.
-  - Branch [1house](https://github.com/ojdo/urbs/tree/1house) in the forked repository [ojdo/urbs](https://github.com/ojdo/urbs) shows another (newer) example of a small-scale application of the model. It demonstrates the use for two demand commodities (electricity and heat) for a single consumer (a single site named 'house'). It also shows how to create a very customized comparison script:
-  
-<a href="https://raw.githubusercontent.com/ojdo/urbs/1house/img/comparison.png"><img src="https://raw.githubusercontent.com/ojdo/urbs/1house/img/comparison.png" alt="Comparison plot in example study 1house."></a>
-  
-  - Branch [haag15](https://github.com/ojdo/urbs/tree/haag15) in the forked repository [ojdo/urbs](https://github.com/ojdo/urbs) shows a larger example of a real-world use. Its input file contains a town divided into 12 regions, 12 process types, and 2 demand commodities (electricity and heat) . Patience and RAM (64 GB or more) is needed to run these scenarios with 8760 timesteps. The branch also contains three IPython notebooks that are used for result analysis and coupling to model [rivus](https://github.com/tum-ens/rivus).
+  - A short term case study for Germany has been conducted with the SDDP approach for the [EMP-E conference 2019](http://www.energymodellingplatform.eu/home-emp-e-2019.html) and is available on [zenodo](https://doi.org/10.5281/zenodo.3463157).
+
 
 ## Copyright
 
-Copyright (C) 2014-2016  TUM ENS
+Copyright (C) 2014-2019  TUM ENS
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

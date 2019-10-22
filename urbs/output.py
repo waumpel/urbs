@@ -2,6 +2,30 @@ import pandas as pd
 from .input import get_input
 from .pyomoio import get_entity, get_entities
 from .util import is_string
+from openpyxl import load_workbook
+import os
+from datetime import datetime
+import numpy as np
+import matplotlib.pyplot as plt
+import psutil
+import time
+
+
+class TerminalAndFileWriter(object):
+    """
+    This class allows to write to the Terminal and a file at the same time. It is used for the option save_terminal_output run_scenario_decomposition in runme.py.
+    """
+    def __init__(self, *files):
+        self.files = files
+
+    def write(self, obj):
+        for f in self.files:
+            f.write(obj)
+            f.flush()
+
+    def flush(self) :
+        for f in self.files:
+            f.flush()
 
 
 def get_constants(instance):
@@ -93,8 +117,9 @@ def get_timeseries(instance, com, sites, timesteps=None):
         # select relevant timesteps (=rows)
         # select commodity (xs), then the sites from remaining simple columns
         # and sum all together to form a Series
-        demand = (pd.DataFrame.from_dict(get_input(instance, 'demand_dict'))
-                  .loc[timesteps].xs(com, axis=1, level=1)[sites].sum(axis=1))
+        demand = (get_input(instance, 'demand').loc[timesteps]
+                                               .xs(com, axis=1, level=1)[sites]
+                                               .sum(axis=1))
     except KeyError:
         demand = pd.Series(0, index=timesteps)
     demand.name = 'Demand'
@@ -140,8 +165,7 @@ def get_timeseries(instance, com, sites, timesteps=None):
         imported = imported.unstack(level='sit')
 
         internal_import = imported[sites].sum(axis=1)  # ...from sites
-        other_sites_im = list(other_sites & imported.columns)
-        imported = imported[other_sites_im]  # ...from other_sites
+        imported = imported[other_sites]  # ...from other_sites
         imported = drop_all_zero_columns(imported)
 
         exported = get_entity(instance, 'e_tra_in')
@@ -151,8 +175,7 @@ def get_timeseries(instance, com, sites, timesteps=None):
         exported = exported.unstack(level='sit_')
 
         internal_export = exported[sites].sum(axis=1)  # ...to sites (internal)
-        other_sites_ex = list(other_sites & exported.columns)
-        exported = exported[other_sites_ex]  # ...to other_sites
+        exported = exported[other_sites]  # ...to other_sites
         exported = drop_all_zero_columns(exported)
     else:
         imported = pd.DataFrame(index=timesteps)
@@ -177,50 +200,13 @@ def get_timeseries(instance, com, sites, timesteps=None):
         stored = pd.DataFrame(0, index=timesteps,
                               columns=['Level', 'Stored', 'Retrieved'])
 
-    # DEMAND SIDE MANAGEMENT (load shifting)
-    dsmup = get_entity(instance, 'dsm_up')
-    dsmdo = get_entity(instance, 'dsm_down')
-
-    if dsmup.empty:
-        # if no DSM happened, the demand is not modified (delta = 0)
-        delta = pd.Series(0, index=timesteps)
-
-    else:
-        # DSM happened (dsmup implies that dsmdo must be non-zero, too)
-        # so the demand will be modified by the difference of DSM up and
-        # DSM down uses
-        # for sit in m.dsm_site_tuples:
-        try:
-            # select commodity
-            dsmup = dsmup.xs(com, level='com')
-            dsmdo = dsmdo.xs(com, level='com')
-
-            # select sites
-            dsmup = dsmup.unstack()[sites].sum(axis=1)
-            dsmdo = dsmdo.unstack()[sites].sum(axis=1)
-
-            # convert dsmdo to Series by summing over the first time level
-            dsmdo = dsmdo.unstack().sum(axis=0)
-            dsmdo.index.names = ['t']
-
-            # derive secondary timeseries
-            delta = dsmup - dsmdo
-        except KeyError:
-            delta = pd.Series(0, index=timesteps)
-
-    shifted = demand + delta
-
-    shifted.name = 'Shifted'
     demand.name = 'Unshifted'
-    delta.name = 'Delta'
-
-    dsm = pd.concat((shifted, demand, delta), axis=1)
 
     # JOINS
     created = created.join(stock)  # show stock as created
-    consumed = consumed.join(shifted.rename('Demand'))
+    consumed = consumed.join(demand.rename('Demand'))
 
-    return created, consumed, stored, imported, exported, dsm
+    return created, consumed, stored, imported, exported
 
 
 def drop_all_zero_columns(df):
@@ -233,3 +219,250 @@ def drop_all_zero_columns(df):
         the DataFrame without columns that only contain zeros
     """
     return df.loc[:, (df != 0).any(axis=0)]
+
+
+def append_df_to_excel(filename, df, sheet_name='Sheet1', startrow=None,
+                       truncate_sheet=False,
+                       **to_excel_kwargs):
+    """
+    Append a DataFrame [df] to existing Excel file [filename]
+    into [sheet_name] Sheet.
+    If [filename] doesn't exist, then this function will create it.
+
+    Parameters:
+      filename : File path or existing ExcelWriter
+                 (Example: '/path/to/file.xlsx')
+      df : dataframe to save to workbook
+      sheet_name : Name of sheet which will contain DataFrame.
+                   (default: 'Sheet1')
+      startrow : upper left cell row to dump data frame.
+                 Per default (startrow=None) calculate the last row
+                 in the existing DF and write to the next row...
+      truncate_sheet : truncate (remove and recreate) [sheet_name]
+                       before writing DataFrame to Excel file
+      to_excel_kwargs : arguments which will be passed to `DataFrame.to_excel()`
+                        [can be dictionary]
+
+    Returns: None
+    """
+
+    # ignore [engine] parameter if it was passed
+    if 'engine' in to_excel_kwargs:
+        to_excel_kwargs.pop('engine')
+
+    writer = pd.ExcelWriter(filename, engine='openpyxl')
+
+    try:
+        # try to open an existing workbook
+        writer.book = load_workbook(filename)
+
+        # get the last row in the existing Excel sheet
+        # if it was not specified explicitly
+        if startrow is None and sheet_name in writer.book.sheetnames:
+            startrow = writer.book[sheet_name].max_row
+
+        # truncate sheet
+        if truncate_sheet and sheet_name in writer.book.sheetnames:
+            # index of [sheet_name] sheet
+            idx = writer.book.sheetnames.index(sheet_name)
+            # remove [sheet_name]
+            writer.book.remove(writer.book.worksheets[idx])
+            # create an empty sheet [sheet_name] using old index
+            writer.book.create_sheet(sheet_name, idx)
+
+        # copy existing sheets
+        writer.sheets = {ws.title: ws for ws in writer.book.worksheets}
+    except FileNotFoundError:
+        # file does not exist yet, we will create it
+        pass
+
+    if startrow is None:
+        startrow = 0
+
+        # write out the new sheet
+        df.to_excel(writer, sheet_name, startrow=startrow , index=False, **to_excel_kwargs)
+
+    else:
+        df.to_excel(writer, sheet_name, startrow=startrow, header=None, index=False)
+
+    # save the workbook
+    writer.save()
+
+
+def prepare_result_directory(result_name):
+    """ create a time stamped directory within the result folder """
+    # timestamp for result directory
+    now = datetime.now().strftime('%Y%m%dT%H%M')
+
+    # create result directory if not existent
+    result_dir = os.path.join('result', '{}-{}'.format(result_name, now))
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+
+    return result_dir
+
+
+def plot_convergence(iterations, plot_lower_bounds, plot_upper_bounds,  result_dir, sce, run_normal=False, normal=None):
+    """Show the convergence plot of the bounds for the different run_scenario methods (run_benders, run_regional, run_sddp)
+
+    Args:
+        iterations: list of iterations
+        plot_lower_bounds: list of the lower bounds corresponding to each iteration
+        plot_upper_bounds: list of the upper bounds corresponding to each iteration
+        normal: list of normals corresponding to each iteration
+        result_dir: directory, where the plot is saved
+        sce: scenario name
+
+    Returns: Nothing
+    """
+    iterator = np.array(iterations)
+    lb = np.array(plot_lower_bounds)
+    if run_normal:
+        opt = np.array(normal)
+    ub = np.array(plot_upper_bounds)
+    fig = plt.figure()
+
+    plt.plot(iterator, lb)#
+    if run_normal:
+        plt.plot(iterator, opt)
+    plt.plot(iterator, ub)
+    # set logarithmic axes, title and grid
+    plt.yscale('log')
+    plt.xlabel('Iterations')
+    plt.ylabel('Objective')
+    plt.title('Converging bounds')
+    plt.grid(True)
+    # plt.show()
+
+    fig.savefig(os.path.join(result_dir, 'bounds-{}.png'.format(sce)), dpi=300)
+
+
+def create_benders_output_table(print_omega=False):
+    """Output information for every iteration in the benders loop of run_benders and run_regional.
+    This function outputs the original problem objective and the names of the columns.
+
+    Args:
+        print_omega: if true omega is displayed in the table
+    """
+    print()
+    print('   i',end='')
+    if print_omega: print("{:>10}".format('omega'),end='')
+    print(
+          "{:>14}".format('Master Eta'),
+          "{:>14}".format('Sub Lambda'),
+          "{:>14}".format('Lower Bound'),
+          "{:>14}".format('Upper Bound'),
+          "{:>14}".format('Dual gap'),
+          "{:>14}".format('Master obj')
+          )
+
+
+def create_benders_output_table_sddp():
+    """Output information for every iteration in the benders loop of run_sddp.
+    This function writes the names of the columns.
+    """
+    print()
+    print('   i',
+          "{:>14}".format('Master Eta'),
+          "{:>14}".format('LB'),
+          "{:>14}".format('UB (latest)'),
+          "{:>14}".format('UB (last 10)'),
+          "{:>14}".format('stddev'),
+          "{:>14}".format('Dual gap'),
+          "{:>16}".format('Master obj')
+          )
+
+
+def update_benders_output_table(i, master, master_eta, sub, lower_bound, upper_bound, gap, print_omega=False):
+    """Complete output for one iteration of the benders loop of run_benders, run_regional.
+
+    Args:
+        i: iteration number
+        master: master problem instance
+        master_eta:
+        sub: list of sub problem instances
+        lower_bound: lower bound
+        upper_bound: upper bound
+        gap: dual gap
+        print_omega: if true omega is displayed in the table
+    """
+    print('{:4}'.format(i), '   ',end='')
+    if print_omega: print('{:4}'.format(sum(sub[str(inst)].omega() for inst in sub)),'    ',end='')
+    print(
+          '{:10.3e}'.format(master_eta), '   ',
+          '{:10.3e}'.format(sum(sub[inst].Lambda() for inst in sub)), '   ',
+          '{:10.3e}'.format(lower_bound), '   ',
+          '{:10.3e}'.format(upper_bound), '   ',
+          '{:10.3e}'.format(gap), '   ',
+          '{:12.5e}'.format(master.obj()))
+
+
+def update_benders_output_table_sddp(i, master, lower_bound, upper_bound, avg, stddev, gap, master_objective):
+    """Complete output for one iteration of the benders loop of run_sddp.
+
+    Args:
+        i: iteration number
+        lower_bound: lower bound
+        upper_bound: upper bound
+        avg: average of the last ten upper bounds
+        stddev: standard deviation within the last ten upper bounds
+        gap: dual gap
+        master_objective: objective of the master problem
+    """
+    print('{:4}'.format(i), '   ',
+          '{:10.3e}'.format(master.eta()), '   ',
+          '{:10.3e}'.format(lower_bound), '   ',
+          '{:10.3e}'.format(upper_bound), '   ',
+          '{:10.3e}'.format(avg), '   ',
+          '{:10.3e}'.format(stddev), '   ',
+          '{:10.3e}'.format(gap), '   ',
+          '{:12.5e}'.format(master_objective))
+
+
+def create_tracking_file(track_file, start_time):
+    """
+    Creates a file to track hardware usage
+
+    Args:
+        track_file: file, in which to save the tracking
+        start_time: time at which the scenario decomposition was started
+
+    Returns: The process for tracking, it is needed later to update the tracking file
+    """
+    process = psutil.Process(os.getpid())
+    process.cpu_percent()
+    create_time = time.time() - start_time
+    # save hardware usage
+    solve_time_orig = time.time() - start_time
+    with open(track_file, 'w') as help_file:
+        print('Create time: ', create_time, '\r\n', file=help_file)
+        print('   i       Memory       CPU Time       CPU Percentage       Time  \r\n', file=help_file)
+        print('original',
+              '{:10.3e}'.format(process.memory_info()[0]), '   ',
+              '{:10.3e}'.format(process.cpu_times()[0]), '   ',
+              process.cpu_percent(), '            ',
+              solve_time_orig,
+              '\r\n', file=help_file)
+    return process
+
+
+def update_tracking_file(track_file,i,start_time, process):
+    """
+    Update the tracking file
+
+    Args:
+        track_file: file, in which to save the tracking
+        i: iteration number
+        start_time: time at which the scenario decomposition was started
+        process: process created by create_tracking_file for tracking
+    """
+    with open(track_file, 'a') as help_file:
+        print('{:4}'.format(i), '   ',
+              '{:10.3e}'.format(process.memory_info()[0]), '   ',
+              '{:10.3e}'.format(process.cpu_times()[0]), '   ',
+              '{:10.3e}'.format(process.cpu_percent()), '         ',
+              time.time() - start_time,
+              '\r\n',
+              file=help_file)
+
+

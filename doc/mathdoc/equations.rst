@@ -14,5 +14,4 @@ Constraints
    equ-process
    equ-transmission
    equ-storage
-   equ-costs
    
