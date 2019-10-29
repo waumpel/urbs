@@ -290,20 +290,6 @@ def benders_loop_sddp(master, sub, lower_bound, upper_bound, gap, avg, stddev,up
         violation_factor = 0.0001
 
         for sub_inst in [sub[(supportsteps[inst], realize[inst])] for inst in range(0, len(supportsteps) - 1)]:
-            # for ct in sub_inst.com_tuples:
-            #     if sub_inst.commodity.loc[ct, 'max'] < np.inf:
-            #         if sum(sub_inst.e_co_stock[(tm,)+ct]() for tm in sub_inst.tm) - sub_inst.e_co_stock_state_res[ct]() > 0.01:
-            #             raise ValueError("Subproblem violates stock commodity constraints!")
-
-            # check for storage violations - unfortunately not working neatly enough for expansion model as lambda
-            # is often very high and therefore solver relaxed storage content is set to relaxed maximum
-            # for sit, sto, com in sub_inst.sto_tuples:
-            #     for t in sub_inst.t:
-            #         if t == sub_inst.ts[1]:
-            #             if (sub_inst.e_sto_con[t, sit, sto, com]() -
-            #                     sub_inst.e_sto_con_res[t, sit, sto, com]() > 1):
-            #                 print('High bound due to storage violation')
-                            # raise ValueError(f"Subproblem violates storage content constraints! {sub_inst.e_sto_con[t, sit, sto, com]() - sub_inst.e_sto_con_res[t, sit, sto, com]()}")
 
             for (sit, com, com_type) in sub_inst.com_max_tuples:
                 try:
@@ -316,10 +302,7 @@ def benders_loop_sddp(master, sub, lower_bound, upper_bound, gap, avg, stddev,up
                                                           sub_inst.t[-1], sit, com, com_type]() \
                                                       - sub_inst.e_co_stock_state[
                                                           sub_inst.t[1], sit, com, com_type]()
-                # if (sub_inst.e_co_stock_state[sub_inst.ts[1], sit, com, com_type]()
-                #         - sub_inst.e_co_stock_state_res[sub_inst.ts[1], sit, com, com_type]() < -10):
-                #     raise ValueError(f"Subproblem violates max-tuple constraints! ({sub_inst.e_co_stock_state[sub_inst.ts[1], sit, com, com_type]() - sub_inst.e_co_stock_state_res[sub_inst.ts[1], sit, com, com_type]()})")
-
+               
         weight = master.weight()
         max_output_ratio_elec_co2 = (master.r_out.xs('Elec', level=1) / master.r_out.xs('CO2', level=1).loc[master.r_out.xs('CO2', level=1) != 0]).replace(np.inf,np.nan).max()
         costs_co2_violation = 0
