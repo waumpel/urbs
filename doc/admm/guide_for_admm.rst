@@ -26,7 +26,7 @@ Any number of clusters is possible, from two to the total number of sites (each 
 The input of ADMM parameters
 ----------------------------
 
-**The initialized values of global ** can be set in the following :ref:`line <init-vals-section>` on the ``runfunctions_admm.py`` script:
+The initialized values of ADMM parameters can be set in the following :ref:`line <init-vals-section>` on the ``runfunctions_admm.py`` script:
 
 ::
 
