@@ -2,7 +2,7 @@
 
 .. _theory-intertemp:
 
-Intertemporal Optimization Model
+Intertemporal optimization model
 ================================
 Intertemporal models are a more general type of model than the minimal case.
 For such models a second time domain is introduced to capture the behavior of
@@ -37,7 +37,7 @@ time domain is entering the index. It now reads:
    \epsilon^{\text{out}}_{ycpt}}_{\text{process variables}}).
 
 Here, :math:`\zeta` represents the total discounted system costs over the
-entire modeling horizon, :math:`\rho_{yct}` the amount of commodities :math:`c`
+entire modeling horizon, :math:`\rho_yct` the amount of commodities :math:`c`
 taken from a virtual, infinite stock in year :math:`y` at time :math:`t`,
 :math:`\kappa_{yp}` and :math:`\widehat{\kappa}_{yp}` the total
 and the newly installed process capacities in year :math:`y` of processes
@@ -103,7 +103,7 @@ are given by:
 if :math:`\zeta_{\text{var}}^m` is the sum of all variable costs accumulated by
 the use of units in the year :math:`m` alone by the model.
 
-Intertemporal Calculation of Invest Costs
+Intertemporal calculation of invest costs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 In the intertemporal model, invest costs are calculated using the annuity
 method. This directly entails that there are no rest values of any units built
@@ -145,7 +145,7 @@ following form:
 
   .. math::
     C^{\text{total}}_{\text{m}}=\frac 1n \cdot (1+j)^{-m}
-    \sum_{l=0}^{k-1}(1+j)^{-l} \cdot C=\underbrace{\frac 1n \cdot (1+j)^{1-m}
+    \sum_{l=0}^{k-1}(1+j)^{-l} \cdot C=\underbrace{\frac 1n \cdot (1+j)^{-m}
     \cdot \frac{(1+j)^k-1}{(1+j)^k\cdot j}}_{=:I_{\text{m}}}\cdot C
 
 In any case the total invest costs are then given by:
@@ -154,9 +154,7 @@ In any case the total invest costs are then given by:
    \zeta_{\text{inv}}=\sum_{y\in Y\\p\in P}C^{\text{total}}_{\text{m}}=
    \sum_{y\in  Y\\p\in P}I_{\text{y}}k^{\text{inv}}_{yp} \widehat{\kappa}_{yp}
 
-.. _operational-state-tuple: 
-
-Unit Expansion Constraints
+Unit expansion constraints
 --------------------------
 Apart from the costs there are also changes in the unit expansion constraints
 for an intertemporal model. These changes mostly concern how the amount of
@@ -177,9 +175,7 @@ where :math:`L_p` is the lifetime of processes :math:`p`, :math:`P_0` the
 subset of processes that are already installed in the first modeled year
 :math:`y_0` and :math:`T_{p}` the rest lifetime of already installed processes.
 If :math:`y_j` is the last modeled year, :math:`y_{j+1}` stands for the end of
-the model horizon. The set :math:`O_{\text{inst}}` can be found in the model implementation as :ref:`initially-installed-units`. 
-This is the set of units, that are already installed in the beginning of the model. 
-The set :math:`O` describes the set of those units, that are installed during the model and its implementation can be found at :ref:`installation-in-earlier`.
+the model horizon.   
 
 With these two sets the installed process capacity in a given year is then
 given by:
@@ -202,7 +198,7 @@ capacity constraint
 is valid, the set constraints can have effects across years and especially the
 modeller has to be careful not to set infeasible constraints.
 
-Commodity Dispatch Constraints
+Commodity dispatch constraints
 ------------------------------
 While in an intertemporal model all commodity constraints within one modeled
 year remain valid one addition is possible concerning CO2 emissions. Here, a

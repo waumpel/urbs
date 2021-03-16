@@ -4,7 +4,7 @@ Transmission Constraints
 **Transmission Capacity Rule**: The constraint transmission capacity rule
 defines the variable total transmission capacity :math:`\kappa_{yaf}`. The
 variable total transmission capacity is defined by the constraint as the sum of
-the parameter transmission capacity installed :math:`K_{yaf}` and the variable
+the variable transmission capacity installed :math:`K_{yaf}` and the variable
 new transmission capacity :math:`\hat{\kappa}_{yaf}`. The mathematical
 explanation of this rule is given in :ref:`theory-multinode`.
 
@@ -19,7 +19,26 @@ defined and calculated by the following code fragment:
 
 .. literalinclude:: /../urbs/features/transmission.py
    :pyobject: def_transmission_capacity_rule
+   
+**Transmission New Capacity Rule**: The constraint transmission new capacity
+rule defines the variable new trasmission capacity :math:`\hat{\kappa}_{yaf}`.
+This variable is defined by the constraint as the product of the parameter
+transmission new capacity block :math:`{K}_{yaf}^\text{block}` and the variable
+new transmission capacity units :math:`\beta_{yaf}`. The mathematical explanation
+of this rule is given in :ref:`theory-multinode`.
 
+In script ``transmission.py`` the constraint transmission output rule is
+defined and calculated by the following code fragment:
+::
+
+   m.def_cap_tra_new = pyomo.Constraint(
+        m.tra_block_tuples,
+        rule=def_cap_tra_new_rule,
+        doc='cap_tra_new = tra-block * cap_tra_new')
+
+.. literalinclude:: /../urbs/features/transmission.py
+   :pyobject: def_cap_tra_new_rule
+   
 **Transmission Output Rule**: The constraint transmission output rule defines
 the variable transmission output commodity flow :math:`\pi_{yaft}^\text{out}`.
 The variable transmission output commodity flow is defined by the constraint as
@@ -40,14 +59,14 @@ defined and calculated by the following code fragment:
 .. literalinclude:: /../urbs/features/transmission.py
    :pyobject: def_transmission_output_rule
 
-**Transmission Input by Capacity Rule**: The constraint transmission input by
+**Transmission Input By Capacity Rule**: The constraint transmission input by
 capacity rule limits the variable transmission input commodity flow
 :math:`\pi_{yaft}^\text{in}`. This constraint prevents the transmission power
 from exceeding the possible power input capacity of the line. The constraint
 states that the variable transmission input commodity flow
 :math:`\pi_{yaft}^\text{in}` must be less than or equal to the variable total
-transmission capacity :math:`\kappa_{yaf}`, scaled by the size of the timesteps 
-:math:`\Delta t`. The mathematical explanation of this rule is given in
+transmission capacity :math:`\kappa_{yaf}`, scaled by the size of the time
+steps :math: `\Delta t`. The mathematical explanation of this rule is given in
 :ref:`theory-multinode`.
 
 In script ``transmission.py`` the constraint transmission input by capacity

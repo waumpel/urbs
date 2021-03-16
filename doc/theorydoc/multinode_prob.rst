@@ -2,7 +2,7 @@
 
 .. _theory-multinode:
 
-Multinode Optimization Model
+Multinode optimization model
 =============================
 The introduction of multiple spatial nodes into the model is the second big
 extension of the minimal model that is possible. Similar to the intertemporal
@@ -32,7 +32,7 @@ vertex :math:`v` and time :math:`t`, :math:`\epsilon^{\text{in}}_{vcpt}` and
 :math:`\epsilon^{\text{out}}_{vcpt}` the total inputs and outputs of
 commodities :math:`c` to and from process :math:`p` at vertex :math:`v` and
 time :math:`t`, :math:`\kappa_{af}` and :math:`\widehat{\kappa}_{af}` the
-total and newly installed capacities of a transmission line :math:`f` linking two
+installed and new capacities of a transmission line :math:`f` linking two
 vertices with the arc :math:`a` and :math:`\pi^{\text{in}}_{aft}` and
 :math:`\pi^{\text{out}}_{aft}` the in- and outflows into arc :math:`a` via
 transmission line :math:`f` at time :math:`t`.
@@ -40,7 +40,7 @@ transmission line :math:`f` at time :math:`t`.
 There are no qualitative changes to the cost function only the sum of all units
 now extends over processes and transmission lines.
 
-Transmission Capacity Constraints
+Transmission capacity constraints
 ---------------------------------
 Transmission lines are modeled as unidirectional arcs in urbs. This means that
 they have a input site and an output site. Furthermore, an arc already
@@ -63,9 +63,14 @@ capacity is then calculated similar to process capacities in the minimal model:
 
 where :math:`K_{af}` represents the already installed and
 :math:`\widehat{\kappa}_{af}` the new capacity of transmission :math:`f`
-installed in arc :math:`a`.
+installed in arc :math:`a`. The new capacity can also be expressed as the product
+of the parameter transmission capacity block :math:`{K}_{yaf}^\text{block}` 
+and the variable new transmission capacity units :math:`\beta_{yaf}`:
 
-Transmission Capacity Limit Rule
+.. math::
+   \widehat{\kappa}_{af}={K}_{yaf}^\text{block}\cdot \beta_{yaf}
+
+Transmission capacity limit rule
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Completely analogous to processes also transmission line capacities are limited
 by a maximal and minimal allowed capacity :math:`\overline{K}_{af}` and
@@ -75,13 +80,13 @@ by a maximal and minimal allowed capacity :math:`\overline{K}_{af}` and
    &\forall a\in V\times V\times C,~f\in F:\\
    &\underline{K}_{af}\leq \kappa_{af}\leq \overline{K}_{af}
 
-Commodity Dispatch Constraints
+Commodity dispatch constraints
 ------------------------------
 Apart from these time independent rules, the time dependent rules governing the
 unit utilization are amended with respect to the minimal model by the
 introduction of transmission lines.
 
-Amendments to the Vertex Rule
+Amendments to the Vertex rule
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The vertex rule is changed, since additional commodity flows through the
 transmission lines occur in each vertex. The commodity balance function is thus
@@ -102,20 +107,18 @@ balance is thereby allowing for commodities to leave the system at vertex
 commodity balance the vertex rule and the other rules restricting commodity
 flows remain unchanged with respect to the minimal model.
 
-.. _Global CO2 Limit:
-
-Global CO2 Limit
+Global CO2 limit
 ~~~~~~~~~~~~~~~~
 In addition to the general vertex specific constraint for the emissions of
-environmental commodities as discussed in the :ref:`minimal model<Environmental Commodity Limitations>`, 
-there is a hard coded possibility to limit the CO2 emissions across all modeled sites:
+environmental commodities as discussed in the minimal model, there is a hard
+coded possibility to limit the CO2 emissions across all modeled sites:
 
 .. math::
    -w\sum_{v\in V\\t\in T_{m}}\text{CB}(v,\text{CO}_2,t)\leq
    \overline{L}_{\text{CO}_2,y}
      
 
-Transmission Dispatch Constraints
+Transmission dispatch constraints
 ---------------------------------
 There are two main constraints for the commodity flows to and from transmission
 lines. The first restricts the total amount of commodity :math:`c` flowing in
@@ -123,7 +126,7 @@ arc :math:`a` on transmission line :math:`f` to the total capacity of the line:
 
 .. math::
    &\forall a\in V\times V\times C,~f\in F,~t\in T_m:\\
-   & \pi^{\text{in}}_{aft}\leq \Delta t \cdot \kappa_{af}.
+   & \pi^{\text{in}}_{aft}\leq \kappa_{af}.
 
 Here, the input into the arc :math:`\pi^{\text{in}}_{aft}` is taken as a
 reference for the total capacity. The output of the arc in the target site is
@@ -133,7 +136,7 @@ then linked to the input with the transmission efficiency :math:`e_{af}`
    &\forall a\in V\times V\times C,~f\in F,~t\in T_m:\\
    & \pi^{\text{out}}_{aft}= e_{af}\cdot \pi^{\text{in}}_{aft}.
 
-'DC Power Flow' Feature
+DC Power Flow feature
 --------------------------------
 
 Transmission lines can be modelled with DC Power Flow as an optional feature to represent the AC network grid.
@@ -182,7 +185,7 @@ Power flow on a transmission line modelled with DCPF:
 
 Here :math:`\theta_{v_{\text{in}}t}` and :math:`\theta_{v_{\text{out}}t}` are the voltage angles of the source site
 :math:`{v_{\text{in}}}` and destinaton site :math:`v_{\text{out}}`. These are converted to radian from degrees by
-dividing by 57,2958. :math:`{X_{af}}` is the reactance of the transmission line in Ohms and
+dividing by 57,2958. :math:`{X_{af}}` is the reactance of the transmission line in per unit system and
 :math:`(-\frac{-1}{X_{af}})` is the admittance of the transmission line.
 
 Constraints

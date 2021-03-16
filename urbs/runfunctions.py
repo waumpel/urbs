@@ -12,13 +12,11 @@ from .saveload import *
 
 def prepare_result_directory(result_name):
     """ create a time stamped directory within the result folder.
-
     Args:
         result_name: user specified result name
-
     Returns:
-        a subfolder in the result folder 
-    
+        a subfolder in the result folder
+
     """
     # timestamp for result directory
     now = datetime.now().strftime('%Y%m%dT%H%M')
@@ -58,7 +56,6 @@ def run_scenario(input_files, Solver, timesteps, scenario, result_dir, dt,
                  plot_periods=None, report_tuples=None,
                  report_sites_name=None):
     """ run an urbs model for given input, time steps and scenario
-
     Args:
         - input_files: filenames of input Excel spreadsheets
         - Solver: the user specified solver
@@ -75,7 +72,6 @@ def run_scenario(input_files, Solver, timesteps, scenario, result_dir, dt,
           (c.f. urbs.report)
         - report_sites_name: (optional) dict of names for sites in
           report_tuples
-
     Returns:
         the urbs model instance
     """
@@ -93,8 +89,7 @@ def run_scenario(input_files, Solver, timesteps, scenario, result_dir, dt,
 
     # create model
     prob = create_model(data, dt, timesteps, objective)
-    # prob_filename = os.path.join(result_dir, 'model.lp')
-    # prob.write(prob_filename, io_options={'symbolic_solver_labels':True})
+    prob.write('model.lp', io_options={'symbolic_solver_labels':True})
 
     # refresh time stamp string and create filename for logfile
     log_filename = os.path.join(result_dir, '{}.log').format(sce)
@@ -106,7 +101,7 @@ def run_scenario(input_files, Solver, timesteps, scenario, result_dir, dt,
     assert str(result.solver.termination_condition) == 'optimal'
 
     # save problem solution (and input data) to HDF5 file
-    save(prob, os.path.join(result_dir, '{}.h5'.format(sce)))
+    # save(prob, os.path.join(result_dir, '{}.h5'.format(sce)))
 
     # write report to spreadsheet
     report(

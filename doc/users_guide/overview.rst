@@ -4,9 +4,7 @@ urbs is a generator for linear energy system optimization models.
 
 urbs consists of several **model entities**. These are commodities, processes,
 transmission and storage. Demand and intermittent commodity supply through are 
-modelled through time series datasets. 
-
-.. _commodity-def-at-overview:
+modelled through time series datasets.
 
 Commodity
 ^^^^^^^^^
@@ -15,32 +13,23 @@ Commodities are goods that can be generated, stored, transmitted and consumed.
 By convention, they are represented by their energy content (in MWh), but can
 be changed (to J, kW, t, kg) by simply using different (consistent) units for
 all input data. Each commodity must be exactly one of the following six types:
-  .. _stock-commodity-def:
 
-  * **Stock**: Buyable at any time for a given price. Supply can be limited
+  * Stock: Buyable at any time for a given price. Supply can be limited
     per timestep or for a whole year. Examples are coal, gas, uranium
     or biomass.
-  .. _supply-intermmittent-def:
-  
-  * **SupIm**: Supply intermittent stands for fluctuating resources like
+  * SupIm: Supply intermittent stands for fluctuating resources like
     solar radiation and wind energy, which are available according to 
     a timeseries of values, which could be derived from weather data.
-  .. _demand-commodity-def:
-
-  * **Demand**: These commodities have a timeseries for the requirement
+  * Demand: These commodities have a timeseries for the requirement
     associated and must be provided by output from other process or 
     from storage. Usually, there is only one demand commodity called 
     electricity (abbreviated to Elec), but multiple (e.g. electricity, space 
     heating, process heat, space cooling) demands can be specified.
-  .. _env-commodity-def:
-
-  * **Env**: The special commodity CO2 is of this type and represents the
+  * Env: The special commodity CO2 is of this type and represents the
     amount (in tons) of greenhouse gas emissions from processes. Its
     total amount can be limited, to investigate the effect of policies
     on the model.
-  .. _buy-sell-commodity-def:
-  
-  * **Buy/Sell**: Commodities of these two types can be traded with an external
+  * Buy/Sell: Commodities of these two types can be traded with an external
     market. Similar to Stock commodities they can be limited per hour or per
     year. As opposed to Stock commodities the price at which they can be traded
     is not fixed but follows a user defined time series.    
@@ -54,8 +43,6 @@ Commodities are defined over the tuple ``(year, site, commodity, type)``, for
 example ``(2020, 'Norway', 'Wind', 'SupIm')`` for wind in Norway with a time
 series or  ``(2020, 'Iceland', 'Electricity', 'Demand')`` for an electricity
 demand time series in  Iceland.
-
-.. _process-def-userguide:
 
 Process
 ^^^^^^^
@@ -75,7 +62,6 @@ specifies the inputs and outputs for that process. For example,
 ``Turbine`` has a single input ``Geothermal`` and the single output
 ``Electricity``.
 
-.. _transmission-def-userguide:
 
 Transmission
 ^^^^^^^^^^^^
@@ -85,8 +71,6 @@ Transmission is defined over the tuple
 ``(year, site in, site out, transmission, commodity)``. For example,
 ``(2030, 'Iceland', 'Norway', 'Undersea cable', 'Electricity')`` would
 represent an undersea cable for electricity between Iceland and Norway.
-
-.. _storage-def-userguide:
 
 Storage
 ^^^^^^^
