@@ -35,14 +35,14 @@ There are 2 ways to get all required packages under Windows. We recommend using 
   1. **[Anaconda (Python 3)](http://continuum.io/downloads)/[Miniconda](https://docs.conda.io/en/latest/miniconda.html)**. Choose the 64-bit installer if possible.
      During the installation procedure, keep both checkboxes "modify PATH" and "register Python" selected! If only higher Python versions are available, you can switch to a specific Python Version by typing `conda install python=<version>`
   2. **Packages and Solver**: [GLPK](http://winglpk.sourceforge.net/).
-     1. Download the [environment file](https://github.com/tum-ens/urbs/blob/master/urbs-env.yml).
+     1. Download the [environment file](https://github.com/tum-ens/urbs/blob/extremos/urbs-extremos.yml).
      2. Launch a new command prompt (Windows: Win+R, type "cmd", Enter)
      3. Install it via conda by `conda env create -f urbs-extremos.yml`.
      4. Each time you open a new terminal for running urbs, you can activate the environment by `conda activate urbs-admm`.
 
 ### Manually (the hard way)
 
-For all packages, best take the latest release or release candidate version. Both 32 bit and 64 bit versions work, though 64 bit is recommended. The list of packages can be found in the [environment file](https://github.com/tum-ens/urbs/blob/master/urbs-env.yml).
+For all packages, best take the latest release or release candidate version. Both 32 bit and 64 bit versions work, though 64 bit is recommended. The list of packages can be found in the [environment file](https://github.com/tum-ens/urbs/blob/extremos/urbs-extremos.yml).
   
 ## Get started
 
