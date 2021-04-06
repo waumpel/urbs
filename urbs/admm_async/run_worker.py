@@ -1,8 +1,7 @@
 from time import time
-from ..saveload import *
-from pyomo.environ import SolverFactory
+
 import numpy as np
-import os
+from pyomo.environ import SolverFactory
 
 
 def run_worker(ID, s, output):

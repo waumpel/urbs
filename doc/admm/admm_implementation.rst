@@ -10,13 +10,14 @@ The workflow of the asynchronous ADMM module is established in the following way
 
 `runfunctions_admm.py: <admm_implementation.html#runfunctions-section>`_ ``runfunctions_admm.py`` is the script that is called by the ``runme_admm.py`` script. Here, the data structures for the subproblems is created, the submodels are built, and asynchronous ADMM processes are launched.
 
-`run_Worker.py: <admm_implementation.html#runworker-section>`_ ``ADMM_async/run_Worker.py`` includes the function :func:`run_worker`, which is the parallel ADMM routine that are followed asynchronously by the parallel workers. The major argument of this function is a :class:`urbsADMMmodel` class, whose methods are defined in the ``ADMM_async/urbs_admm_model.py`` `script <admm_implementation.html#the-urbsadmmmodel-class-admm-async-urbs-admm-model-py>`_.
+`run_Worker.py: <admm_implementation.html#runworker-section>`_ ``admm_async/run_Worker.py`` includes the function :func:`run_worker`, which is the parallel ADMM routine that are followed asynchronously by the parallel workers. The major argument of this function is a :class:`urbsADMMmodel` class, whose methods are defined in the ``admm_async/urbs_admm_model.py`` `script <admm_implementation.html#the-urbsadmmmodel-class-admm-async-urbs-admm-model-py>`_.
 
 Moreover, minor additions/modifications were done on the following, already existing scripts:
 
 - urbs/input.py
 - `urbs/model.py <admm_implementation.html#changes-made-in-the-create-model-function-model-py>`_
 - urbs/features/transmission.py
+
 which will also be mentioned here.
 
 The workflow of the ADMM implementation is illustrated as follows:
@@ -34,14 +35,17 @@ Let us start with the imported packages:
 
 ::
 
+    from multiprocessing import freeze_support
     import os
     import shutil
-    import urbs
-    from urbs.runfunctions_admm import *
-    from multiprocessing import freeze_support
+
+    from urbs.admm_async import run_regional
+    from urbs.colorcodes import COLORS
+    from urbs.runfunctions import prepare_result_directory
+    from urbs.scenarios import scenario_base
 
 
-Besides the usual urbs imports ``os``, ``shutil`` and ``urbs``, the ``urbs.runfunctions`` module is imported as it contains the ``urbs.run_regional`` function that commences the ADMM routine. Moreover, to allow for parallel operation on Windows systems, the ``freeze_support`` function has to be imported from the ``multiprocessing`` package.
+``run_regional`` commences the ADMM routine. ``freeze_support`` allows for parallel operation on Windows systems.
 
 Moving on to the input settings:
 
@@ -52,10 +56,12 @@ located in the same folder as script ``runme_admm.py``::
     input_files = 'germany.xlsx'  # for single year file name, for intertemporal folder name
     input_dir = 'Input'
     input_path = os.path.join(input_dir, input_files)
+
 Then the result name and the result directory is set::
 
     result_name = 'Run'
-    result_dir = urbs.prepare_result_directory(result_name)  # name + time stamp
+    result_dir = prepare_result_directory(result_name)  # name + time stamp
+
 Input file is added in the result directory::
 
     # copy input file to result directory
@@ -65,6 +71,7 @@ Input file is added in the result directory::
         shutil.copyfile(input_path, os.path.join(result_dir, input_files))
     # copy run file to result directory
     shutil.copy(__file__, result_dir)
+
 The objective function to be minimized by the model is then determined (options: 'cost' or 'CO2')::
 
     # objective function
@@ -99,10 +106,12 @@ An essential input for the ADMM module is the clustering scheme of the model reg
 
     clusters = [[('Schleswig-Holstein')],[('Hamburg')],[('Mecklenburg-Vorpommern')],[('Offshore')],[('Lower Saxony')],[('Bremen')],[('Saxony-Anhalt')],[('Brandenburg')],[('Berlin')],[('North Rhine-Westphalia')],
                 [('Baden-Württemberg')],[('Hesse')],[('Bavaria')],[('Rhineland-Palatinate')],[('Saarland')],[('Saxony')],[('Thuringia')]]
+
 The variable ``clusters`` is a list of tuples lists, where each element consists of tuple lists with the regions to be included in each subproblem. For instance, whereas the clustering given above yields each federal state of the Germany model having their own subproblems, a scheme as following::
 
     clusters = [[('Schleswig-Holstein'),('Hamburg'),('Mecklenburg-Vorpommern'),('Offshore'),('Lower Saxony'),('Bremen'),('Saxony-Anhalt'),('Brandenburg'),('Berlin'),('North Rhine-Westphalia')],
                 [('Baden-Württemberg'),('Hesse'),('Bavaria'),('Rhineland-Palatinate'),('Saarland'),('Saxony'),('Thuringia')]]
+
 would yield two subproblems, where the northern and southern federal states of Germany are grouped with each other.
 
 Then the color schemes for output plots is defined::
@@ -113,14 +122,14 @@ Then the color schemes for output plots is defined::
         'Mid': (200, 230, 200),
         'North': (200, 200, 230)}
     for country, color in my_colors.items():
-        urbs.COLORS[country] = color
+        COLORS[country] = color
 
 Scenarios to be run can be then selected::
 
     # select scenarios to be run
     test_scenarios = [
-        urbs.scenario_base
-        ]
+        scenario_base
+    ]
 
 Finally, the ``urbs.run_regional`` function is called, commencing the ADMM routine::
 
@@ -128,10 +137,11 @@ Finally, the ``urbs.run_regional`` function is called, commencing the ADMM routi
         freeze_support()
         for scenario in test_scenarios:
             timesteps = range(offset, offset + length + 1)
-            prob = urbs.run_regional(input_path, timesteps,
-                                     scenario,result_dir,dt,objective,
-                                     clusters=clusters)
-To read about the ``urbs.run_regional`` function, please proceed to the next section, where the ``runfunctions_admm.py`` script, where this function resides, is described.
+            prob = run_regional(input_path, timesteps,
+                                scenario,result_dir,dt,objective,
+                                clusters=clusters)
+
+To read about the ``run_regional`` function, please proceed to the next section, where the ``runfunctions_admm.py`` script, where this function resides, is described.
 
 .. _runfunctions-section:
 
@@ -140,23 +150,26 @@ runfunctions_admm.py
 
 Imports::
 
-    from pyomo.environ import SolverFactory
-    from .model import create_model
-    from .plot import *
-    from .input import *
-    from .validation import *
-    import urbs
-    import pandas as pd
-
-    import multiprocessing as mp
-    import queue
-    from .ADMM_async.run_Worker import run_worker
-    from .ADMM_async.urbs_admm_model import urbsADMMmodel
-    import time
-    import numpy as np
+    from datetime import date, datetime
     from math import ceil
+    import multiprocessing as mp
+    import os
+    import queue
+    import time
 
-Besides the usual imports of ``runfunctions.py`` (first group), additional imports are necessary:
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import pandas as pd
+    from pyomo.environ import SolverFactory
+
+    from urbs.model import create_model
+    from urbs.input import read_input, add_carbon_supplier
+    from urbs.validation import validate_dc_objective, validate_input
+    from .run_worker import run_worker
+    from .urbs_admm_model import urbsADMMmodel
+
+
+Besides the usual imports of ``runfunctions.py``, additional imports are necessary:
 
 - ``multiprocessing`` is a package that supports spawning processes using an API similar to the threading module. This is used for creating the objects ``mp.Manager().Queue()`` and ``mp.Process()``.
 
@@ -552,7 +565,7 @@ Finally, the subproblem results are recovered and compared against the original 
 .. _runworker-section:
 
 
-The ``run_worker`` function (ADMM_async/run_worker.py)
+The ``run_worker`` function (admm_async/run_worker.py)
 ------------------------------------------------------
 In this section, the steps followed by the function ``run_worker`` is explained. This function is run in parallel by each subproblem, and it consists of some initialization steps, ADMM iterations and post-convergence steps.
 
@@ -658,7 +671,7 @@ Additionally, a dictionary consisting of the final objective value, the values o
     output.put((ID - 1, output_package))
 
 
-The urbsADMMmodel Class (ADMM_async/urbs_admm_model.py)
+The urbsADMMmodel Class (admm_async/urbs_admm_model.py)
 -------------------------------------------------------
 In this section, the initialization attributes and methods of the  ``urbsADMMmodel`` class will be explained. This class is the main argument of the parallel calls of the ``run_worker`` function, encapsulates the local urbs subproblem and implements the ADMM steps including solving the subproblem, sending and recieving data to/from neighbors, updating global values of the coupling variables, the consensus Lagrange multipliers and the quadratic penalty parameters.
 

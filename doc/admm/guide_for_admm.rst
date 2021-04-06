@@ -44,7 +44,7 @@ as well as :ref:`here <init-vals-section2>` again for the quadratic penalty para
 ADMM settings (``admmoption``)
 ------------------------------
 
-Lastly, the ADMM settings, which are input as attributes of the class ``admmoption`` of ``urbsADMMmodel`` can be fine tuned depending on the problem type. These settings can be found in the :ref:`corresponding section <admmoption>` of ``ADMM_async/urbs_admm_model.py``:
+Lastly, the ADMM settings, which are input as attributes of the class ``admmoption`` of ``urbsADMMmodel`` can be fine tuned depending on the problem type. These settings can be found in the :ref:`corresponding section <admmoption>` of ``admm_async/urbs_admm_model.py``:
 
 ::
 

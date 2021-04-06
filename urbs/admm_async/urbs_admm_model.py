@@ -1,14 +1,15 @@
 ############################################################################
-# This file builds the opf_admm_model class that represents a subproblem 
+# This file builds the opf_admm_model class that represents a subproblem
 # ADMM algorithm parameters should be defined in admmoption
 # Package Pypower 5.1.3 is used in this application
-#############################################################################
+############################################################################
+
+from copy import deepcopy
 
 import numpy as np
+from numpy import maximum
 import pandas as pd
 import pyomo.environ as pyomo
-from copy import deepcopy
-from numpy import maximum
 
 
 class urbsADMMmodel(object):
