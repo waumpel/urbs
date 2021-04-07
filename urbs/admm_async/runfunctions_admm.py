@@ -17,22 +17,6 @@ from .run_worker import run_worker
 from .urbs_admm_model import urbsADMMmodel
 
 
-def calculate_neighbor_cluster_per_line(shared_lines, cluster_idx, clusters):
-    neighbor_cluster = 99 * np.ones((len(shared_lines[cluster_idx]), 2))
-    row_number = 0
-    for (year, site_in, site_out, tra, com) in shared_lines[cluster_idx].index:
-        for cluster in clusters:
-            if site_in in cluster:
-                neighbor_cluster[row_number, 0] = clusters.index(cluster)
-            if site_out in cluster:
-                neighbor_cluster[row_number, 1] = clusters.index(cluster)
-        row_number = row_number + 1
-    cluster_from = neighbor_cluster[:, 0]
-    cluster_to = neighbor_cluster[:, 1]
-    neighbor_cluster = np.sum(neighbor_cluster, 1) - cluster_idx
-    return cluster_from, cluster_to, neighbor_cluster
-
-
 def create_queues(clusters, shared_lines):
     edges = np.empty((1, 2))
     for cluster_idx in range(0, len(clusters)):
@@ -120,7 +104,7 @@ def run_regional(input_file, timesteps, scenario, result_dir,
         result_dir: directory name for result spreadsheet and plots
         dt: width of a time step in hours(default: 1)
         objective: the entity which is optimized ('cost' of 'co2')
-        clusters: user-defined region clusters for regional decomposition (list of tuple lists)
+        clusters: user-defined region clusters for regional decomposition (list of lists)
 
     Returns:
         the urbs model instances
@@ -145,35 +129,58 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     # initiate a coupling-variables Class
     coup_vars = CouplingVars()
 
-    # identify the boundarying and internal lines
-    shared_lines = {}
-    internal_lines = {}
+    # map site -> cluster_idx
+    site_cluster_map = {}
+    for cluster, cluster_idx in zip(clusters, range(len(clusters))):
+        for site in cluster:
+            site_cluster_map[site] = cluster_idx
 
-    shared_lines_logic = np.zeros((len(clusters),
-                                        data_all['transmission'].shape[0]),
-                                       dtype=bool)
-    internal_lines_logic = np.zeros((len(clusters),
-                                     data_all['transmission'].shape[0]),
-                                    dtype=bool)
+    # identify the shared and internal lines
 
+    # used as indexes for creating `shared_lines` and `internal_lines`
+    shared_lines_logic = np.zeros((len(clusters), data_all['transmission'].shape[0]), dtype=bool)
+    internal_lines_logic = np.zeros((len(clusters), data_all['transmission'].shape[0]), dtype=bool)
+
+    # Source/target cluster of each shared line for each cluster.
+    # These are appended as additional columns to `shared_lines` along with `neighbor_cluster` (defined below).
+    cluster_from = [[] for _ in range(len(clusters))]
+    cluster_to = [[] for _ in range(len(clusters))]
+
+    for row, (_, site_in, site_out, tra, com) in zip(range(0, data_all['transmission'].shape[0]), data_all['transmission'].index):
+        from_cluster_idx = site_cluster_map[site_in]
+        to_cluster_idx = site_cluster_map[site_out]
+
+        if from_cluster_idx != to_cluster_idx:
+            # shared line
+            shared_lines_logic[from_cluster_idx, row] = True
+            shared_lines_logic[to_cluster_idx, row] = True
+            cluster_from[from_cluster_idx].append(from_cluster_idx)
+            cluster_to[from_cluster_idx].append(to_cluster_idx)
+            cluster_from[to_cluster_idx].append(from_cluster_idx)
+            cluster_to[to_cluster_idx].append(to_cluster_idx)
+        else:
+            # internal line
+            internal_lines_logic[from_cluster_idx, row] = True
+            internal_lines_logic[to_cluster_idx, row] = True
+
+    # map cluster_idx -> slice of data_all['transmission']
+    shared_lines = [
+        data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]]
+        for cluster_idx in range(0, len(clusters))
+    ]
+    # map cluster_idx -> slice of data_all['transmission']
+    internal_lines = [
+        data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]]
+        for cluster_idx in range(0, len(clusters))
+    ]
+    # neighbouring cluster of each shared line for each cluster
+    neighbor_cluster = [
+        np.array(cluster_from[cluster_idx]) + np.array(cluster_to[cluster_idx]) - cluster_idx
+        for cluster_idx in range(0, len(clusters))
+    ]
+
+    # initialize coupling variables
     for cluster_idx in range(0, len(clusters)):
-        for j in range(0, data_all['transmission'].shape[0]):
-            shared_lines_logic[cluster_idx, j] = (
-                    (data_all['transmission'].index.get_level_values('Site In')[j]
-                     in clusters[cluster_idx])
-                    ^ (data_all['transmission'].index.get_level_values('Site Out')[j]
-                       in clusters[cluster_idx]))
-            internal_lines_logic[cluster_idx, j] = (
-                    (data_all['transmission'].index.get_level_values('Site In')[j]
-                     in clusters[cluster_idx])
-                    and (data_all['transmission'].index.get_level_values('Site Out')[j]
-                         in clusters[cluster_idx]))
-
-        shared_lines[cluster_idx] = \
-            data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]]
-        internal_lines[cluster_idx] = \
-            data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]]
-
         for i in range(0, shared_lines[cluster_idx].shape[0]):
             sit_from = shared_lines[cluster_idx].iloc[i].name[1]
             sit_to = shared_lines[cluster_idx].iloc[i].name[2]
@@ -237,13 +244,16 @@ def run_regional(input_file, timesteps, scenario, result_dir,
         problem.ID = cluster_idx
         problem.result_dir = result_dir
         problem.sce = sce
-        shared_lines[cluster_idx]['cluster_from'], shared_lines[cluster_idx]['cluster_to'], \
-            shared_lines[cluster_idx]['neighbor_cluster'] = calculate_neighbor_cluster_per_line(shared_lines,
-                                                                                                     cluster_idx,
-                                                                                                     clusters)
+        # enlarge shared_lines (copies of slices of data_all['transmission'])
+        shared_lines[cluster_idx]['cluster_from'] = cluster_from[cluster_idx]
+        shared_lines[cluster_idx]['cluster_to'] = cluster_to[cluster_idx]
+        shared_lines[cluster_idx]['neighbor_cluster'] = neighbor_cluster[cluster_idx]
         problem.shared_lines = shared_lines[cluster_idx]
         problem.na = len(clusters)
         problems.append(problem)
+
+    print(data_all['transmission'])
+    quit()
 
     # create Queues for each communication channel
     edges, queues = create_queues(clusters, shared_lines)
