@@ -20,7 +20,7 @@ class urbsADMMmodel(object):
 
     def __init__(self):
         # initialize all the fields
-        self.boundarying_lines = None
+        self.shared_lines = None
         self.flows_all = None
         self.flows_with_neighbor = None
         self.flow_global = None
@@ -171,7 +171,7 @@ class urbsADMMmodel(object):
         e_tra_in_per_neighbor = {}
 
         self.sub_persistent.load_vars(self.sub_pyomo.e_tra_in[:, :, :, :, :, :])
-        boundary_lines_pairs = self.boundarying_lines.reset_index().set_index(['Site In', 'Site Out']).index
+        boundary_lines_pairs = self.shared_lines.reset_index().set_index(['Site In', 'Site Out']).index
         e_tra_in_dict = {(tm, stf, sit_in, sit_out): v.value for (tm, stf, sit_in, sit_out, tra, com), v in
                          self.sub_pyomo.e_tra_in.items() if ((sit_in, sit_out) in boundary_lines_pairs)}
 
@@ -180,7 +180,7 @@ class urbsADMMmodel(object):
             ['t', 'stf', 'sit', 'sit_'])
 
         for (tm, stf, sit_in, sit_out) in e_tra_in_dict.index:
-            e_tra_in_dict.loc[(tm, stf, sit_in, sit_out), 'neighbor_cluster'] = self.boundarying_lines.reset_index(). \
+            e_tra_in_dict.loc[(tm, stf, sit_in, sit_out), 'neighbor_cluster'] = self.shared_lines.reset_index(). \
                 set_index(['support_timeframe', 'Site In', 'Site Out']).loc[(stf, sit_in, sit_out), 'neighbor_cluster']
 
         for neighbor in self.neighbors:

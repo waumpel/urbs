@@ -17,7 +17,7 @@ def run_worker(ID, s, output):
     s.sub_persistent.set_instance(s.sub_pyomo, symbolic_solver_labels=False)
     s.sub_persistent.set_gurobi_param('Method', 2)
     s.sub_persistent.set_gurobi_param('Threads', 1)
-    s.neighbor_clusters = s.boundarying_lines.neighbor_cluster.unique()
+    s.neighbor_clusters = s.shared_lines.neighbor_cluster.unique()
 
     print("Worker %d initialized successfully!" % (ID,))
     nu = 0  # iteration count

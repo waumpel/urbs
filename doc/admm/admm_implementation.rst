@@ -183,10 +183,10 @@ Besides the usual imports of ``runfunctions.py``, additional imports are necessa
 
 Some auxiliary function definitions follow::
 
-    def calculate_neighbor_cluster_per_line(boundarying_lines, cluster_idx, clusters):
-        neighbor_cluster = 99 * np.ones((len(boundarying_lines[cluster_idx]), 2))
+    def calculate_neighbor_cluster_per_line(shared_lines, cluster_idx, clusters):
+        neighbor_cluster = 99 * np.ones((len(shared_lines[cluster_idx]), 2))
         row_number = 0
-        for (year, site_in, site_out, tra, com) in boundarying_lines[cluster_idx].index:
+        for (year, site_in, site_out, tra, com) in shared_lines[cluster_idx].index:
             for cluster in clusters:
                 if site_in in cluster:
                     neighbor_cluster[row_number, 0] = clusters.index(cluster)
@@ -208,11 +208,11 @@ Function ``calculate_neighbor_cluster_per_line`` is applied to each cluster, and
 
 ::
 
-    def create_queues(clusters, boundarying_lines):
+    def create_queues(clusters, shared_lines):
         edges = np.empty((1, 2))
         for cluster_idx in range(0, len(clusters)):
-            edges = np.concatenate((edges, np.stack([boundarying_lines[cluster_idx].cluster_from.to_numpy(),
-                                                     boundarying_lines[cluster_idx].cluster_to.to_numpy()], axis=1)))
+            edges = np.concatenate((edges, np.stack([shared_lines[cluster_idx].cluster_from.to_numpy(),
+                                                     shared_lines[cluster_idx].cluster_to.to_numpy()], axis=1)))
         edges = np.delete(edges, 0, axis=0)
         edges = np.unique(edges, axis=0)
         edges = np.array(list({tuple(sorted(item)) for item in edges}))
@@ -338,23 +338,23 @@ A `CouplingVars` :ref:`class <coup-vars>` is initialized::
     # initiate a coupling-variables Class
     coup_vars = CouplingVars()
 
-In the following code section, the ``Transmission`` DataFrame is sliced for each cluster (with index ``cluster_idx``), such that ``boundarying_lines[cluster_idx]`` comprises only the transmission lines which are interfacing with a neighboring cluster and, conversely, ``internal_lines[cluster_idx]`` consists of the transmission lines that connect the sites within the cluster. Afterwards, the ADMM parameters ``coup_vars.lambdas``, ``coup_vars.rhos`` and ``coup_vars.flow_global`` are initialized with the following indices:
+In the following code section, the ``Transmission`` DataFrame is sliced for each cluster (with index ``cluster_idx``), such that ``shared_lines[cluster_idx]`` comprises only the transmission lines which are interfacing with a neighboring cluster and, conversely, ``internal_lines[cluster_idx]`` consists of the transmission lines that connect the sites within the cluster. Afterwards, the ADMM parameters ``coup_vars.lambdas``, ``coup_vars.rhos`` and ``coup_vars.flow_global`` are initialized with the following indices:
 
 - ``cluster_idx``: each cluster index,
 - ``j``: each modelled time-step,
 - ``year``: the support timeframe (a single year in this case),
-- ``sit_from``: first end of the transmission line (obtained from ``boundarying_lines[cluster_idx]``)
-- ``sit_to``: second end of the transmission line (obtained from ``boundarying_lines[cluster_idx]``)
+- ``sit_from``: first end of the transmission line (obtained from ``shared_lines[cluster_idx]``)
+- ``sit_to``: second end of the transmission line (obtained from ``shared_lines[cluster_idx]``)
 
 .. _init-vals-section:
 
 ::
 
     # identify the boundarying and internal lines
-    boundarying_lines = {}
+    shared_lines = {}
     internal_lines = {}
 
-    boundarying_lines_logic = np.zeros((len(clusters),
+    shared_lines_logic = np.zeros((len(clusters),
                                         data_all['transmission'].shape[0]),
                                        dtype=bool)
     internal_lines_logic = np.zeros((len(clusters),
@@ -363,7 +363,7 @@ In the following code section, the ``Transmission`` DataFrame is sliced for each
 
     for cluster_idx in range(0, len(clusters)):
         for j in range(0, data_all['transmission'].shape[0]):
-            boundarying_lines_logic[cluster_idx, j] = (
+            shared_lines_logic[cluster_idx, j] = (
                     (data_all['transmission'].index.get_level_values('Site In')[j]
                      in clusters[cluster_idx])
                     ^ (data_all['transmission'].index.get_level_values('Site Out')[j]
@@ -374,14 +374,14 @@ In the following code section, the ``Transmission`` DataFrame is sliced for each
                     and (data_all['transmission'].index.get_level_values('Site Out')[j]
                          in clusters[cluster_idx]))
 
-        boundarying_lines[cluster_idx] = \
-            data_all['transmission'].loc[boundarying_lines_logic[cluster_idx, :]]
+        shared_lines[cluster_idx] = \
+            data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]]
         internal_lines[cluster_idx] = \
             data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]]
 
-        for i in range(0, boundarying_lines[cluster_idx].shape[0]):
-            sit_from = boundarying_lines[cluster_idx].iloc[i].name[1]
-            sit_to = boundarying_lines[cluster_idx].iloc[i].name[2]
+        for i in range(0, shared_lines[cluster_idx].shape[0]):
+            sit_from = shared_lines[cluster_idx].iloc[i].name[1]
+            sit_to = shared_lines[cluster_idx].iloc[i].name[2]
 
             for j in timesteps[1:]:
                 coup_vars.lambdas[cluster_idx, j, year, sit_from, sit_to] = 0
@@ -421,7 +421,7 @@ In the next code section, ``problems``, a list of ``urbsADMMmodel`` Classes and 
 - initial value for the quadratic penalty parameter is stored in ``problem.rho``,
 - the unique index of the cluster is stored in ``problem.ID``,
 - the result directory and the scenario name are stored in the ``problem.result_dir`` and ``problem.sce`` respectively,
-- the ``cluster_from``, ``cluster_to`` and ``neighbor_cluster`` columns are appended to ``boundarying_lines[cluster_idx]`` DataFrame using the ``calculate_neighbor_cluster_per_line`` function. The appended DataFrame is then stored in ``problem.boundarying_lines``
+- the ``cluster_from``, ``cluster_to`` and ``neighbor_cluster`` columns are appended to ``shared_lines[cluster_idx]`` DataFrame using the ``calculate_neighbor_cluster_per_line`` function. The appended DataFrame is then stored in ``problem.shared_lines``
 - the information for the total number of clusters is stored in ``problem.na``
 - the prepared instance ``problem`` is added to the list of ``problems``
 
@@ -438,7 +438,7 @@ In the next code section, ``problems``, a list of ``urbsADMMmodel`` Classes and 
         sub[cluster_idx] = urbs.create_model(data_all, timesteps, type='sub',
                                              sites=clusters[cluster_idx],
                                              coup_vars=coup_vars,
-                                             data_transmission_boun=boundarying_lines[cluster_idx],
+                                             data_transmission_boun=shared_lines[cluster_idx],
                                              data_transmission_int=internal_lines[cluster_idx],
                                              cluster=cluster_idx)
         problem.sub_pyomo = sub[cluster_idx]
@@ -459,11 +459,11 @@ In the next code section, ``problems``, a list of ``urbsADMMmodel`` Classes and 
         problem.ID = cluster_idx
         problem.result_dir = result_dir
         problem.sce = sce
-        boundarying_lines[cluster_idx]['cluster_from'], boundarying_lines[cluster_idx]['cluster_to'], \
-            boundarying_lines[cluster_idx]['neighbor_cluster'] = calculate_neighbor_cluster_per_line(boundarying_lines,
+        shared_lines[cluster_idx]['cluster_from'], shared_lines[cluster_idx]['cluster_to'], \
+            shared_lines[cluster_idx]['neighbor_cluster'] = calculate_neighbor_cluster_per_line(shared_lines,
                                                                                                      cluster_idx,
                                                                                                      clusters)
-        problem.boundarying_lines = boundarying_lines[cluster_idx]
+        problem.shared_lines = shared_lines[cluster_idx]
         problem.na = len(clusters)
         problems.append(problem)
 
@@ -475,11 +475,11 @@ In the next step, ``queues`` are created for each communication channel using th
 
 ::
 
-    edges, queues = create_queues(clusters, boundarying_lines)
+    edges, queues = create_queues(clusters, shared_lines)
 
     # define further necessary fields for the subproblems
     for cluster_idx in range(0, len(clusters)):
-        problems[cluster_idx].neighbors = sorted(set(boundarying_lines[cluster_idx].neighbor_cluster.to_list()))
+        problems[cluster_idx].neighbors = sorted(set(shared_lines[cluster_idx].neighbor_cluster.to_list()))
         problems[cluster_idx].nneighbors = len(problems[cluster_idx].neighbors)
 
         problems[cluster_idx].queues = dict((key, value) for (key, value) in queues.items() if key == cluster_idx)
@@ -587,7 +587,7 @@ Afterwards, the solver parameters can be directly set on the persistent solver i
 
 The ``.unique()`` method is applied to ``.neighbor_cluster`` attribute to retrieve the unique neighbors::
 
-    s.neighbor_clusters = s.boundarying_lines.neighbor_cluster.unique()
+    s.neighbor_clusters = s.shared_lines.neighbor_cluster.unique()
 
 The local iteration counter ``nu`` is initialized, and the maximum number of iterations ``maxit`` is retrieved from the ``admmopt`` attribute of the subproblem::
 
@@ -682,7 +682,7 @@ Starting with the attributes list of an ``urbsADMMmodel`` instance::
     class urbsADMMmodel(object):
         def __init__(self):
             # initialize all the fields
-            self.boundarying_lines = None
+            self.shared_lines = None
             self.flows_all = None
             self.flows_with_neighbor = None
             self.flow_global = None
@@ -706,7 +706,7 @@ Starting with the attributes list of an ``urbsADMMmodel`` instance::
 
 These attributes are described as follows:
 
-- ``self.boundarying_lines``:  A pd.MultiIntex, that is a subset of Transmission lines that connect this cluster with other clusters,
+- ``self.shared_lines``:  A pd.MultiIntex, that is a subset of Transmission lines that connect this cluster with other clusters,
 - ``self.flows_all``: a ``pd.MultiIndex`` containing the optimized values of all the coupling variables (``Elec`` and ``Carbon`` flows) after a subproblem solution
 - ``self.flows_with_neighbor``: a dictionary of ``pd.MultiIndex``es , whose elements are subsets of ``flows_all`` that are shared with a certain neighbor
 - ``self.flow_global``:  a ``pd.MultiIndex`` containing the global values of all the coupling variables (``Elec`` and ``Carbon`` flows)
@@ -968,7 +968,7 @@ The last method defined for ``urbsADMMmodel`` is ``retrieve_boundary_flows``::
         e_tra_in_per_neighbor = {}
 
         self.sub_persistent.load_vars(self.sub_pyomo.e_tra_in[:, :, :, :, :, :])
-        boundary_lines_pairs = self.boundarying_lines.reset_index().set_index(['Site In', 'Site Out']).index
+        boundary_lines_pairs = self.shared_lines.reset_index().set_index(['Site In', 'Site Out']).index
         e_tra_in_dict = {(tm, stf, sit_in, sit_out): v.value for (tm, stf, sit_in, sit_out, tra, com), v in
                          self.sub_pyomo.e_tra_in.items() if ((sit_in, sit_out) in boundary_lines_pairs)}
 
@@ -977,7 +977,7 @@ The last method defined for ``urbsADMMmodel`` is ``retrieve_boundary_flows``::
             ['t', 'stf', 'sit', 'sit_'])
 
         for (tm, stf, sit_in, sit_out) in e_tra_in_dict.index:
-            e_tra_in_dict.loc[(tm, stf, sit_in, sit_out), 'neighbor_cluster'] = self.boundarying_lines.reset_index(). \
+            e_tra_in_dict.loc[(tm, stf, sit_in, sit_out), 'neighbor_cluster'] = self.shared_lines.reset_index(). \
                 set_index(['support_timeframe', 'Site In', 'Site Out']).loc[(stf, sit_in, sit_out), 'neighbor_cluster']
 
         for neighbor in self.neighbors:

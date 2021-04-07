@@ -17,10 +17,10 @@ from .run_worker import run_worker
 from .urbs_admm_model import urbsADMMmodel
 
 
-def calculate_neighbor_cluster_per_line(boundarying_lines, cluster_idx, clusters):
-    neighbor_cluster = 99 * np.ones((len(boundarying_lines[cluster_idx]), 2))
+def calculate_neighbor_cluster_per_line(shared_lines, cluster_idx, clusters):
+    neighbor_cluster = 99 * np.ones((len(shared_lines[cluster_idx]), 2))
     row_number = 0
-    for (year, site_in, site_out, tra, com) in boundarying_lines[cluster_idx].index:
+    for (year, site_in, site_out, tra, com) in shared_lines[cluster_idx].index:
         for cluster in clusters:
             if site_in in cluster:
                 neighbor_cluster[row_number, 0] = clusters.index(cluster)
@@ -33,11 +33,11 @@ def calculate_neighbor_cluster_per_line(boundarying_lines, cluster_idx, clusters
     return cluster_from, cluster_to, neighbor_cluster
 
 
-def create_queues(clusters, boundarying_lines):
+def create_queues(clusters, shared_lines):
     edges = np.empty((1, 2))
     for cluster_idx in range(0, len(clusters)):
-        edges = np.concatenate((edges, np.stack([boundarying_lines[cluster_idx].cluster_from.to_numpy(),
-                                                 boundarying_lines[cluster_idx].cluster_to.to_numpy()], axis=1)))
+        edges = np.concatenate((edges, np.stack([shared_lines[cluster_idx].cluster_from.to_numpy(),
+                                                 shared_lines[cluster_idx].cluster_to.to_numpy()], axis=1)))
     edges = np.delete(edges, 0, axis=0)
     edges = np.unique(edges, axis=0)
     edges = np.array(list({tuple(sorted(item)) for item in edges}))
@@ -146,10 +146,10 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     coup_vars = CouplingVars()
 
     # identify the boundarying and internal lines
-    boundarying_lines = {}
+    shared_lines = {}
     internal_lines = {}
 
-    boundarying_lines_logic = np.zeros((len(clusters),
+    shared_lines_logic = np.zeros((len(clusters),
                                         data_all['transmission'].shape[0]),
                                        dtype=bool)
     internal_lines_logic = np.zeros((len(clusters),
@@ -158,7 +158,7 @@ def run_regional(input_file, timesteps, scenario, result_dir,
 
     for cluster_idx in range(0, len(clusters)):
         for j in range(0, data_all['transmission'].shape[0]):
-            boundarying_lines_logic[cluster_idx, j] = (
+            shared_lines_logic[cluster_idx, j] = (
                     (data_all['transmission'].index.get_level_values('Site In')[j]
                      in clusters[cluster_idx])
                     ^ (data_all['transmission'].index.get_level_values('Site Out')[j]
@@ -169,14 +169,14 @@ def run_regional(input_file, timesteps, scenario, result_dir,
                     and (data_all['transmission'].index.get_level_values('Site Out')[j]
                          in clusters[cluster_idx]))
 
-        boundarying_lines[cluster_idx] = \
-            data_all['transmission'].loc[boundarying_lines_logic[cluster_idx, :]]
+        shared_lines[cluster_idx] = \
+            data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]]
         internal_lines[cluster_idx] = \
             data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]]
 
-        for i in range(0, boundarying_lines[cluster_idx].shape[0]):
-            sit_from = boundarying_lines[cluster_idx].iloc[i].name[1]
-            sit_to = boundarying_lines[cluster_idx].iloc[i].name[2]
+        for i in range(0, shared_lines[cluster_idx].shape[0]):
+            sit_from = shared_lines[cluster_idx].iloc[i].name[1]
+            sit_to = shared_lines[cluster_idx].iloc[i].name[2]
 
             for j in timesteps[1:]:
                 coup_vars.lambdas[cluster_idx, j, year, sit_from, sit_to] = 0
@@ -216,7 +216,7 @@ def run_regional(input_file, timesteps, scenario, result_dir,
         sub[cluster_idx] = create_model(data_all, timesteps, type='sub',
                                              sites=clusters[cluster_idx],
                                              coup_vars=coup_vars,
-                                             data_transmission_boun=boundarying_lines[cluster_idx],
+                                             data_transmission_boun=shared_lines[cluster_idx],
                                              data_transmission_int=internal_lines[cluster_idx],
                                              cluster=cluster_idx)
         problem.sub_pyomo = sub[cluster_idx]
@@ -237,20 +237,20 @@ def run_regional(input_file, timesteps, scenario, result_dir,
         problem.ID = cluster_idx
         problem.result_dir = result_dir
         problem.sce = sce
-        boundarying_lines[cluster_idx]['cluster_from'], boundarying_lines[cluster_idx]['cluster_to'], \
-            boundarying_lines[cluster_idx]['neighbor_cluster'] = calculate_neighbor_cluster_per_line(boundarying_lines,
+        shared_lines[cluster_idx]['cluster_from'], shared_lines[cluster_idx]['cluster_to'], \
+            shared_lines[cluster_idx]['neighbor_cluster'] = calculate_neighbor_cluster_per_line(shared_lines,
                                                                                                      cluster_idx,
                                                                                                      clusters)
-        problem.boundarying_lines = boundarying_lines[cluster_idx]
+        problem.shared_lines = shared_lines[cluster_idx]
         problem.na = len(clusters)
         problems.append(problem)
 
     # create Queues for each communication channel
-    edges, queues = create_queues(clusters, boundarying_lines)
+    edges, queues = create_queues(clusters, shared_lines)
 
     # define further necessary fields for the subproblems
     for cluster_idx in range(0, len(clusters)):
-        problems[cluster_idx].neighbors = sorted(set(boundarying_lines[cluster_idx].neighbor_cluster.to_list()))
+        problems[cluster_idx].neighbors = sorted(set(shared_lines[cluster_idx].neighbor_cluster.to_list()))
         problems[cluster_idx].nneighbors = len(problems[cluster_idx].neighbors)
 
         problems[cluster_idx].queues = dict((key, value) for (key, value) in queues.items() if key == cluster_idx)
