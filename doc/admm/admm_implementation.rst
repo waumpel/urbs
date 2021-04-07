@@ -182,6 +182,21 @@ Besides the usual imports of ``runfunctions.py``, additional imports are necessa
 - ``numpy`` and ``math.ceil`` are required for array operations and a ceiling function respectively.
 
 
+.. _coup-vars:
+
+Class ``CouplingVars`` is defined to store some coupling parameters::
+
+    class CouplingVars:
+
+        def __init__(self):
+            self.flow_global = {}
+            self.rhos = {}
+            self.lambdas = {}
+            self.cap_global = {}
+            self.residdual = {}
+            self.residprim = {}
+
+
 .. _create-queues:
 
 ::
@@ -211,18 +226,6 @@ Function ``create_queues`` returns two objects:
 
 - ``edges`` is an array with two columns, which expresses the connectivity between the clusters (if clusters are connected in the following way: ``0--1--2``, ``edges`` would look as follows: ``[[0, 1], [1, 0], [1, 2], [2, 1]]``),
 - ``queues`` is a dictionary of dictionaries populated with ``mp.Manager().Queue()`` objects. There are as many ``mp.Manager().Queue()`` objects as the rows of ``edges``, and these queues are used for the unidirectional data transfer between these clusters during the parallel operation.
-
-.. _coup-vars:
-
-Class ``CouplingVars`` is defined to store some coupling parameters::
-
-    class CouplingVars:
-        flow_global = {}
-        rhos = {}
-        lambdas = {}
-        cap_global = {}
-        residdual = {}
-        residprim = {}
 
 
 Functions ``prepare_result_directory`` and ``setup_solver`` are unchanged except enforcing the barrier method for the gurobi solver (``method=2``). Please note that only gurobi is supported as a solver in this implementation!::
