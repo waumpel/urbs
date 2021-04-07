@@ -17,6 +17,17 @@ from .run_worker import run_worker
 from .urbs_admm_model import urbsADMMmodel
 
 
+class CouplingVars:
+
+    def __init__(self):
+        self.flow_global = {}
+        self.rhos = {}
+        self.lambdas = {}
+        self.cap_global = {}
+        self.residdual = {}
+        self.residprim = {}
+
+
 def create_queues(clusters, shared_lines):
     edges = np.empty((1, 2))
     for cluster_idx in range(0, len(clusters)):
@@ -37,15 +48,6 @@ def create_queues(clusters, shared_lines):
             queues[edge[1]] = {}
         queues[edge[1]][edge[0]] = tend
     return edges, queues
-
-
-class CouplingVars:
-    flow_global = {}
-    rhos = {}
-    lambdas = {}
-    cap_global = {}
-    residdual = {}
-    residprim = {}
 
 
 def prepare_result_directory(result_name):
