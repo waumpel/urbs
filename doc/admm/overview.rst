@@ -15,7 +15,7 @@ After the overview you should continue with the tutorial to understand how to ap
 If you want to understand the mathematical background of ADMM, you should next look at the
 :ref:`admm_theory`.
 
-The implementation of the asynchronous ADMM method, can be seen in the section :ref:`admm_implementation`. This section covers the workflow of the ADMM method, starting from the user-run runme_urbs script, the preparation script runfunctions_admm.py, the parallel jobs run_Worker.py and finally the Class urbsADMMmodel.
+The implementation of the asynchronous ADMM method, can be seen in the section :ref:`admm_implementation`. This section covers the workflow of the ADMM method, starting from the user-run runme_urbs script, the preparation script runfunctions_admm.py, the parallel jobs run_Worker.py and finally the Class UrbsAdmmModel.
 
 
 Finally the :ref:`guide_for_admm` gives ideas on how to improve, use, or extend the code, and on how to unify it with the urbs master branch.

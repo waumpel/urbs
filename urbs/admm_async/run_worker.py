@@ -9,7 +9,7 @@ def run_worker(ID, s, output):
 
     Args:
         ID: the ordinality of the subproblem
-        s: the urbsADMMmodel instance corresponding to the subproblem
+        s: the UrbsAdmmModel instance corresponding to the subproblem
         output: the Queue() object where the results are delivered to
 
     """
@@ -37,7 +37,7 @@ def run_worker(ID, s, output):
         s.fix_lambda()
 
         if nu > 0:
-            s.set_quad_cost(rhos_old)
+            s.set_quad_cost(rho_old)
 
         start_time = time()
         s.result = s.solve_problem()
@@ -48,7 +48,7 @@ def run_worker(ID, s, output):
 
         cost_history[nu] = s.sub_persistent._solver_model.objval
 
-        rhos_old = s.rho
+        rho_old = s.rho
         if s.recvmsg:  # not the initialization
             s.update_y()  # update lambda
             s.update_rho(nu)

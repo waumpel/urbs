@@ -1,6 +1,6 @@
 ############################################################################
 # This file builds the opf_admm_model class that represents a subproblem
-# ADMM algorithm parameters should be defined in admmoption
+# ADMM algorithm parameters should be defined in AdmmOption
 # Package Pypower 5.1.3 is used in this application
 ############################################################################
 
@@ -12,7 +12,7 @@ import pandas as pd
 import pyomo.environ as pyomo
 
 
-class urbsADMMmodel(object):
+class UrbsAdmmModel(object):
     """This class encapsulates the local urbs subproblem and implements admm steps
     including x-update(solving subproblem), send data to neighbors, receive data
     from neighbors, z-update (global flows) and y-update (lambdas)
@@ -34,7 +34,7 @@ class urbsADMMmodel(object):
         self.nbor = {}
         self.pipes = None
         self.queues = None
-        self.admmopt = admmoption()
+        self.admmopt = AdmmOption()
         self.recvmsg = {}
         self.primalgap = [9999]
         self.dualgap = [9999]
@@ -65,20 +65,20 @@ class urbsADMMmodel(object):
                 self.sub_pyomo.lamda[key].fix(self.lamda.loc[key, 0])
                 self.sub_persistent.update_var(self.sub_pyomo.lamda[key])
 
-    def set_quad_cost(self, rhos_old):
+    def set_quad_cost(self, rho_old):
         quadratic_penalty_change = 0
         # Hard coded transmission name: 'hvac', commodity 'Elec' for performance.
         # Caution, as these need to be adjusted if the transmission of other commodities exists!
         for key in self.flow_global.index:
             if (key[2] == 'Carbon_site') or (key[3] == 'Carbon_site'):
                 quadratic_penalty_change += 0.5 * (
-                        self.rho - rhos_old) * \
+                        self.rho - rho_old) * \
                                             (self.sub_pyomo.e_tra_in[
                                                  key, 'CO2_line', 'Carbon'] -
                                              self.sub_pyomo.flow_global[key]) ** 2
             else:
                 quadratic_penalty_change += 0.5 * (
-                        self.rho - rhos_old) * \
+                        self.rho - rho_old) * \
                                             (self.sub_pyomo.e_tra_in[key, 'hvac', 'Elec'] -
                                              self.sub_pyomo.flow_global[key]) ** 2
 
@@ -96,7 +96,7 @@ class urbsADMMmodel(object):
         dest = self.queues[self.ID].keys()
         for k in dest:
             # prepare the message to be sent to neighbor k
-            msg = message()
+            msg = AdmmMessage()
             msg.config(self.ID, k, self.flows_with_neighbor[k], self.rho,
                        self.lamda[self.lamda.index.isin(self.flows_with_neighbor[k].index)],
                        self.gapAll)
@@ -192,7 +192,7 @@ class urbsADMMmodel(object):
 
 
 # ##--------ADMM parameters specification -------------------------------------
-class admmoption(object):
+class AdmmOption(object):
     """ This class defines all the parameters to use in admm """
 
     def __init__(self):
@@ -210,7 +210,7 @@ class admmoption(object):
         self.conv_rel = 0.1 # the relative convergece tolerance, to be multiplied with len(s.flow_global)
 
 
-class message(object):
+class AdmmMessage(object):
     """ This class defines the message region i sends to/receives from j """
 
     def __init__(self):

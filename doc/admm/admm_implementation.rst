@@ -10,7 +10,7 @@ The workflow of the asynchronous ADMM module is established in the following way
 
 `runfunctions_admm.py: <admm_implementation.html#runfunctions-section>`_ ``runfunctions_admm.py`` is the script that is called by the ``runme_admm.py`` script. Here, the data structures for the subproblems is created, the submodels are built, and asynchronous ADMM processes are launched.
 
-`run_Worker.py: <admm_implementation.html#runworker-section>`_ ``admm_async/run_Worker.py`` includes the function :func:`run_worker`, which is the parallel ADMM routine that are followed asynchronously by the parallel workers. The major argument of this function is a :class:`urbsADMMmodel` class, whose methods are defined in the ``admm_async/urbs_admm_model.py`` `script <admm_implementation.html#the-urbsadmmmodel-class-admm-async-urbs-admm-model-py>`_.
+`run_Worker.py: <admm_implementation.html#runworker-section>`_ ``admm_async/run_Worker.py`` includes the function :func:`run_worker`, which is the parallel ADMM routine that are followed asynchronously by the parallel workers. The major argument of this function is a :class:`UrbsAdmmModel` class, whose methods are defined in the ``admm_async/urbs_admm_model.py`` `script <admm_implementation.html#the-UrbsAdmmModel-class-admm-async-urbs-admm-model-py>`_.
 
 Moreover, minor additions/modifications were done on the following, already existing scripts:
 
@@ -166,7 +166,7 @@ Imports::
     from urbs.input import read_input, add_carbon_supplier
     from urbs.validation import validate_dc_objective, validate_input
     from .run_worker import run_worker
-    from .urbs_admm_model import urbsADMMmodel
+    from .urbs_admm_model import UrbsAdmmModel
 
 
 Besides the usual imports of ``runfunctions.py``, additional imports are necessary:
@@ -175,7 +175,7 @@ Besides the usual imports of ``runfunctions.py``, additional imports are necessa
 
 - ``queue`` is used as an exception handling (``queue.Empty``), see later.
 
-- The function ``run_worker`` contains all the ADMM steps that are followed by the submodel classes ``urbsADMMmodel``.
+- The function ``run_worker`` contains all the ADMM steps that are followed by the submodel classes ``UrbsAdmmModel``.
 
 - ``time`` is used as a runtime-profiling (for test purposes).
 
@@ -410,9 +410,9 @@ In the following optional step, the original problem is built and solved. This i
     flows_from_original_problem = pd.DataFrame.from_dict(flows_from_original_problem, orient='index',
                                                          columns=['Original'])
 
-In the next code section, ``problems``, a list of ``urbsADMMmodel`` Classes and ``sub``, a dictionary for keeping the Pyomo object of subproblems are initialized. Next, the following steps take place for each region cluster ``cluster_idx``:
+In the next code section, ``problems``, a list of ``UrbsAdmmModel`` Classes and ``sub``, a dictionary for keeping the Pyomo object of subproblems are initialized. Next, the following steps take place for each region cluster ``cluster_idx``:
 
-- ``problem`` which is an instance of the ``urbsADMMmodel`` class, is initialized (please see the urbsADMMmodel, init Section),
+- ``problem`` which is an instance of the ``UrbsAdmmModel`` class, is initialized (please see the UrbsAdmmModel, init Section),
 - a Pyomo object for the subproblem is created using the ``urbs.create_model`` function with the ``type='sub'`` option, See the modified create_model in the model.py changes). This Pyomo instance is stored in the attribute ``sub_pyomo`` of ``problem``,
 - initial values for the global coupling variable values are stored in ``problem.flow_global``, which is a subset of ``coup_vars.flow_global`` where the ``cluster_idx`` corresponds to the cluster in question,
 - initial values for the consensus dual variables are stored in ``problem.lamda``, which is a subset of ``coup_vars.lambdas`` where the ``cluster_idx`` corresponds to the cluster in question,
@@ -432,7 +432,7 @@ In the next code section, ``problems``, a list of ``urbsADMMmodel`` Classes and 
 
     # initiate urbs_admm_model Classes for each subproblem
     for cluster_idx in range(0, len(clusters)):
-        problem = urbsADMMmodel()
+        problem = UrbsAdmmModel()
         sub[cluster_idx] = urbs.create_model(data_all, timesteps, type='sub',
                                              sites=clusters[cluster_idx],
                                              coup_vars=coup_vars,
@@ -495,7 +495,7 @@ Then, another Queue is created, which is used by each subproblem after they conv
 Afterwards, a list (``proc``) is initialized, and populated by ``mp.Process`` which take the function ``run_worker``, to be run for each cluster. The arguments here are:
 
 - ``cluster_idx + 1``: ordinality of the cluster,
-- ``problems[cluster_idx]``: the ``urbsADMMmodel`` instance corresponding to the cluster,
+- ``problems[cluster_idx]``: the ``UrbsAdmmModel`` instance corresponding to the cluster,
 - ``output``: the Queue to be used for sending the subproblem solution
 
 The processes are then launched using the ``.start()`` method.::
@@ -570,7 +570,7 @@ In this section, the steps followed by the function ``run_worker`` is explained.
 The function takes three input arguments:
 
 - ``ID``: ordinality of the cluster (1 for the first subproblem, 2 for the second etc.),
-- ``s``: the ``urbsADMMmodel`` instance corresponding to the cluster,
+- ``s``: the ``UrbsAdmmModel`` instance corresponding to the cluster,
 - ``output``: the Queue to be used for sending the subproblem solution
 
 Since ADMM is an iterative method, the subproblems are expected to be solved multiple times (in the order of 10's, possibly 100's), with slightly different parameters in each iteration. The pyomo model which defines the optimization problem, first needs to be converted into a lower-level problem formulation (ultimately a set of matrices and vectors), which may take a very long time. Therefore, it is more practical that this conversion step happens only once, and the adjustments between iterations are made on the low-level problem formulation. Pyomo supports the usage of persistent solver interfaces (https://pyomo.readthedocs.io/en/stable/advanced_topics/persistent_solvers.html) for Gurobi, which exactly serves this purpose. These instances are created from the pyomo object with the following code section, and stored in the ``sub_persistent`` attribute::
@@ -618,7 +618,7 @@ Then, to prepare the model for the next run, the updated global values, consensu
         s.fix_lambda()
 
         if nu > 0:
-            s.set_quad_cost(rhos_old)
+            s.set_quad_cost(rho_old)
 
 Now the subproblem can be solved, using the ``.solve_problem`` :ref:`method <solve-problem>`::
 
@@ -637,7 +637,7 @@ Additionally, the objective value of the optimum is saved in ``cost_history``::
 
 After obtaining the solutions, the consensus Lagrange multiplier and quadratic penalty parameter is updated with the :ref:`method <update-y>` ``.update_y`` and the :ref:`method <update-rho>` ``.update_rho`` respectively::
 
-        rhos_old = s.rho
+        rho_old = s.rho
         if s.recvmsg:  # not the initialization
             s.update_y()  # update lambda
             s.update_rho(nu)
@@ -669,15 +669,15 @@ Additionally, a dictionary consisting of the final objective value, the values o
     output.put((ID - 1, output_package))
 
 
-The urbsADMMmodel Class (admm_async/urbs_admm_model.py)
+The UrbsAdmmModel Class (admm_async/urbs_admm_model.py)
 -------------------------------------------------------
-In this section, the initialization attributes and methods of the  ``urbsADMMmodel`` class will be explained. This class is the main argument of the parallel calls of the ``run_worker`` function, encapsulates the local urbs subproblem and implements the ADMM steps including solving the subproblem, sending and recieving data to/from neighbors, updating global values of the coupling variables, the consensus Lagrange multipliers and the quadratic penalty parameters.
+In this section, the initialization attributes and methods of the  ``UrbsAdmmModel`` class will be explained. This class is the main argument of the parallel calls of the ``run_worker`` function, encapsulates the local urbs subproblem and implements the ADMM steps including solving the subproblem, sending and recieving data to/from neighbors, updating global values of the coupling variables, the consensus Lagrange multipliers and the quadratic penalty parameters.
 
 While the order in which these ADMM steps are followed is listed in the previous section, here the steps themselves will be described.
 
-Starting with the attributes list of an ``urbsADMMmodel`` instance::
+Starting with the attributes list of an ``UrbsAdmmModel`` instance::
 
-    class urbsADMMmodel(object):
+    class UrbsAdmmModel(object):
         def __init__(self):
             # initialize all the fields
             self.shared_lines = None
@@ -694,7 +694,7 @@ Starting with the attributes list of an ``urbsADMMmodel`` instance::
             self.nbor = {}
             self.pipes = None
             self.queues = None
-            self.admmopt = admmoption()
+            self.admmopt = AdmmOption()
             self.recvmsg = {}
             self.primalgap = [9999]
             self.dualgap = [9999]
@@ -715,8 +715,8 @@ These attributes are described as follows:
 - ``self.nwait``: the number of neighboring subproblems, that the subproblem has to wait for in order to move on to the next iteration. This is calculated using the product ``admmopt.nwaitPercent`` of ``nneighbors``, rounded up.
 - ``self.ID``: the subproblem ID. An integer starting from 0 (for the first subproblem).
 - ``self.queues``: a dictionary of dictionary of ``mp.Manager().Queue()`` objects, which has the cluster in question either as the receiving or the sending end
-- ``self.admmopt``: an instance of the ``admmoption`` class. These include the ADMM parameters, which can be modified by the user. They will be listed below.
-- ``self.recvmsg``: an instance of the ``message`` class. This class is sent and received between the workers, and its attributes will be listed below.
+- ``self.admmopt``: an instance of the ``AdmmOption`` class. These include the ADMM parameters, which can be modified by the user. They will be listed below.
+- ``self.recvmsg``: an instance of the ``AdmmMessage`` class. This class is sent and received between the workers, and its attributes will be listed below.
 - ``self.primalgap``: an array which extends which each iteration, and keeps track of the primal residual of the solution
 - ``self.dualgap``: an array which extends which each iteration, and keeps track of the dual residual of the solution
 - ``self.gapAll``: a list which includes: primal residual of the subproblem, along with the primal residuals of neighboring clusters
@@ -725,9 +725,9 @@ These attributes are described as follows:
 
 .. _admmoption:
 
-Before explaining the methods of ``urbsADMMmodel`` class, let us have a look at the two auxiliary classes ``admmoption`` and ``message``::
+Before explaining the methods of ``UrbsAdmmModel`` class, let us have a look at the two auxiliary classes ``AdmmOption`` and ``AdmmMessage``::
 
-    class admmoption(object):
+    class AdmmOption(object):
         """ This class defines all the parameters to use in admm """
 
         def __init__(self):
@@ -743,7 +743,7 @@ Before explaining the methods of ``urbsADMMmodel`` class, let us have a look at 
             self.rho_update_nu = 50 # rho is updated only for the first 50 iterations
             self.conv_rel = 0.1 # the relative convergece tolerance, to be multiplied with (len(s.flow_global)+1)
 
-The ``admmoption`` class includes numerous parameters that specify the ADMM method, which can be set by the user:
+The ``AdmmOption`` class includes numerous parameters that specify the ADMM method, which can be set by the user:
 
 - ``self.rho_max``:  A positive real number, that sets an upper bound for the quadratic penalty parameter (see ``.update_rho`` for its usage)
 - ``self.tau_max``: A positive real number, that sets an upper bound for the per-iteration modifier of the quadratic penalty parameter (see ``.update_rho`` for its usage)
@@ -759,9 +759,9 @@ The ``admmoption`` class includes numerous parameters that specify the ADMM meth
 
 .. _message:
 
-Moving onto the ``message`` class::
+Moving onto the ``AdmmMessage`` class::
 
-    class message(object):
+    class AdmmMessage(object):
         """ This class defines the message region i sends to/receives from j """
 
         def __init__(self):
@@ -788,7 +788,7 @@ Instances of this class are the packets that are communicated between the worker
 - ``tID``: the index of the receiving subproblem
 - ``fields``: a dictionary which consists of the exchanged message (the local optimizing values of coupling variables ``flow``, the local quadratic parameter value ``rho``, the local consensus Lagrange multiplier ``lambda`` and the local primal residual ``gapall``)
 
-Now let us return to the class ``urbsADMMmodel`` and go through its methods.
+Now let us return to the class ``UrbsAdmmModel`` and go through its methods.
 
 .. _solve-problem:
 
@@ -821,20 +821,20 @@ Three following methods (``.fix_flow_global``, ``.fix_lambda`` and ``.set_quad_c
                 self.sub_pyomo.lamda[key].fix(self.lamda.loc[key, 0])
                 self.sub_persistent.update_var(self.sub_pyomo.lamda[key])
 
-    def set_quad_cost(self, rhos_old):
+    def set_quad_cost(self, rho_old):
         quadratic_penalty_change = 0
         # Hard coded transmission name: 'hvac', commodity 'Elec' for performance.
         # Caution, as these need to be adjusted if the transmission of other commodities exists!
         for key in self.flow_global.index:
             if (key[2] == 'Carbon_site') or (key[3] == 'Carbon_site'):
                 quadratic_penalty_change += 0.5 * (
-                        self.rho - rhos_old) * \
+                        self.rho - rho_old) * \
                                             (self.sub_pyomo.e_tra_in[
                                                  key, 'CO2_line', 'Carbon'] -
                                              self.sub_pyomo.flow_global[key]) ** 2
             else:
                 quadratic_penalty_change += 0.5 * (
-                        self.rho - rhos_old) * \
+                        self.rho - rho_old) * \
                                             (self.sub_pyomo.e_tra_in[key, 'hvac', 'Elec'] -
                                              self.sub_pyomo.flow_global[key]) ** 2
 
@@ -855,13 +855,13 @@ With the methods ``send`` and ``recv``, the message transfer bwetween subproblem
         dest = self.queues[self.ID].keys()
         for k in dest:
             # prepare the message to be sent to neighbor k
-            msg = message()
+            msg = AdmmMessage()
             msg.config(self.ID, k, self.flows_with_neighbor[k], self.rho,
                        self.lamda[self.lamda.index.isin(self.flows_with_neighbor[k].index)],
                        self.gapAll)
             self.queues[self.ID][k].put(msg)
 
-The ``send`` method prepares a ``message`` for each neighbor ``k``, where only the subset of the coupling variable and Lagrange multiplier values which are relevant to this neighbor are sent (``self.flows_with_neighbor[k]`` and ``self.lamda[self.lamda.index.isin(self.flows_with_neighbor[k].index)]``). Additionally, the quadratic penalty parameter ``self.rho`` and the local residual gap ``self.gapAll`` is also communicated.
+The ``send`` method prepares a ``AdmmMessage`` for each neighbor ``k``, where only the subset of the coupling variable and Lagrange multiplier values which are relevant to this neighbor are sent (``self.flows_with_neighbor[k]`` and ``self.lamda[self.lamda.index.isin(self.flows_with_neighbor[k].index)]``). Additionally, the quadratic penalty parameter ``self.rho`` and the local residual gap ``self.gapAll`` is also communicated.
 These values are inserted into the message with the ``.config`` method, and the message is sent (put into the ``Queue``) using the ``.put`` method.
 
 .. _recv:
@@ -886,7 +886,7 @@ Next, the ``.recv`` method::
             arrived = sum(recv_flag)
             pollround += 1
 
-The ``recv`` method attempts to receive the ``message`` from at least ``self.nwait`` neighbors. Within the loop ``for i in range(len(dest))``, the message-reception queue from each neighbor is queried (with the ``.get`` method) until the queue is empty (hence ``while not self.queues[k][self.ID].empty()``). When the ``arrived`` counter is at least ``self.nwait``, the ``.recv`` procedure finishes.
+The ``recv`` method attempts to receive the ``AdmmMessage`` from at least ``self.nwait`` neighbors. Within the loop ``for i in range(len(dest))``, the message-reception queue from each neighbor is queried (with the ``.get`` method) until the queue is empty (hence ``while not self.queues[k][self.ID].empty()``). When the ``arrived`` counter is at least ``self.nwait``, the ``.recv`` procedure finishes.
 
 Then we come to the three methods that update the global values of the coupling variable (``.update_z``), consensus Lagrange multiplier (``.update_y``) and the quadratic penalty parameter (``.update_rho``). Note that these methods are used to obtain new values for these variables, and their application to the problem takes place afterwards with the methods  ``.fix_flow_global``, ``.fix_lambda`` and ``.set_quad_cost`` as explained earlier.
 
@@ -960,7 +960,7 @@ Here, a convergence table is updated (or created, in case the first iteration) w
 
 .. _retrieve-boundary-flows:
 
-The last method defined for ``urbsADMMmodel`` is ``retrieve_boundary_flows``::
+The last method defined for ``UrbsAdmmModel`` is ``retrieve_boundary_flows``::
 
     def retrieve_boundary_flows(self):
         e_tra_in_per_neighbor = {}

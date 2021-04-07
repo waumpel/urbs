@@ -41,15 +41,15 @@ as well as :ref:`here <init-vals-section2>` again for the quadratic penalty para
 
        problem.rho = 5
 
-ADMM settings (``admmoption``)
+ADMM settings (``AdmmOption``)
 ------------------------------
 
-Lastly, the ADMM settings, which are input as attributes of the class ``admmoption`` of ``urbsADMMmodel`` can be fine tuned depending on the problem type. These settings can be found in the :ref:`corresponding section <admmoption>` of ``admm_async/urbs_admm_model.py``:
+Lastly, the ADMM settings, which are input as attributes of the class ``AdmmOption`` of ``UrbsAdmmModel`` can be fine tuned depending on the problem type. These settings can be found in the :ref:`corresponding section <AdmmOption>` of ``admm_async/urbs_admm_model.py``:
 
 ::
 
     # ##--------ADMM parameters specification -------------------------------------
-    class admmoption(object):
+    class AdmmOption(object):
         """ This class defines all the parameters to use in admm """
 
         def __init__(self):

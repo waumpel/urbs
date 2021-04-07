@@ -14,7 +14,7 @@ from urbs.model import create_model
 from urbs.input import read_input, add_carbon_supplier
 from urbs.validation import validate_dc_objective, validate_input
 from .run_worker import run_worker
-from .urbs_admm_model import urbsADMMmodel
+from .urbs_admm_model import UrbsAdmmModel
 
 
 class CouplingVars:
@@ -221,7 +221,7 @@ def run_regional(input_file, timesteps, scenario, result_dir,
 
     # initiate urbs_admm_model Classes for each subproblem
     for cluster_idx in range(0, len(clusters)):
-        problem = urbsADMMmodel()
+        problem = UrbsAdmmModel()
         sub[cluster_idx] = create_model(data_all, timesteps, type='sub',
                                              sites=clusters[cluster_idx],
                                              coup_vars=coup_vars,
