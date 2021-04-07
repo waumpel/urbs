@@ -31,13 +31,13 @@ objective = 'cost'  # set either 'cost' or 'CO2' as objective
 timesteps = range(offset, offset + length + 1)
 dt = 1  # length of each time step (unit: hours)
 
-# clusters = [[('Schleswig-Holstein'),('Hamburg'),('Mecklenburg-Vorpommern'),('Offshore'),('Lower Saxony'),('Bremen'),('Saxony-Anhalt'),('Brandenburg'),('Berlin'),('North Rhine-Westphalia')],
-#                [('Baden-Württemberg'),('Hesse'),('Bavaria'),('Rhineland-Palatinate'),('Saarland'),('Saxony'),('Thuringia')]]
+# clusters = [['Schleswig-Holstein','Hamburg','Mecklenburg-Vorpommern','Offshore','Lower Saxony','Bremen','Saxony-Anhalt','Brandenburg','Berlin','North Rhine-Westphalia'],
+#                ['Baden-Württemberg','Hesse','Bavaria','Rhineland-Palatinate','Saarland','Saxony','Thuringia']]
 clusters = [
-    [('Schleswig-Holstein'), ('Hamburg'), ('Mecklenburg-Vorpommern'), ('Offshore')],
-    [('Lower Saxony'), ('Bremen'), ('Saxony-Anhalt'), ('Brandenburg')],
-    [('Berlin'), ('North Rhine-Westphalia'), ('Baden-Württemberg'), ('Hesse')],
-    [('Bavaria'), ('Rhineland-Palatinate'), ('Saarland'), ('Saxony'), ('Thuringia')]
+    ['Schleswig-Holstein', 'Hamburg', 'Mecklenburg-Vorpommern', 'Offshore'],
+    ['Lower Saxony', 'Bremen', 'Saxony-Anhalt', 'Brandenburg'],
+    ['Berlin', 'North Rhine-Westphalia', 'Baden-Württemberg', 'Hesse'],
+    ['Bavaria', 'Rhineland-Palatinate', 'Saarland', 'Saxony', 'Thuringia']
 ]
 
 # clusters = [[('Mid'),('Mid_int')],[('South'),('North')]]
