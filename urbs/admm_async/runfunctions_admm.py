@@ -252,6 +252,8 @@ def run_regional(input_file, timesteps, scenario, result_dir,
         problem.na = len(clusters)
         problems.append(problem)
 
+    print(data_all['transmission'])
+    quit()
 
     # create Queues for each communication channel
     edges, queues = create_queues(clusters, shared_lines)
