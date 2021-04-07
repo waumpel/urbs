@@ -803,14 +803,9 @@ Three following methods (``.fix_flow_global``, ``.fix_lambda`` and ``.set_quad_c
 
     def fix_flow_global(self):
         for key in self.flow_global.index:
-            if not isinstance(self.flow_global.loc[key], pd.core.series.Series):
-                self.sub_pyomo.flow_global[key].fix(self.flow_global.loc[key])
-                self.sub_persistent.update_var(
-                    self.sub_pyomo.flow_global[key])
-            else:
-                self.sub_pyomo.flow_global[key].fix(self.flow_global.loc[key, 0])
-                self.sub_persistent.update_var(
-                    self.sub_pyomo.flow_global[key])
+            self.sub_pyomo.flow_global[key].fix(self.flow_global.loc[key, 0])
+            self.sub_persistent.update_var(
+                self.sub_pyomo.flow_global[key])
 
     def fix_lambda(self):
         for key in self.lamda.index:
