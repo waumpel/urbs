@@ -859,19 +859,31 @@ Next, the ``.recv`` method::
     def recv(self, pollrounds=5):
         twait = self.admmopt.pollWaitingtime
         recv_flag = [0] * self.nneighbors
-        arrived = 0  # number of arrived neighbors
-        pollround = 0
 
-        # keep receiving from nbor 1 to nbor K in round until nwait neighbors arrived
-        while arrived < self.nwait and pollround < pollrounds:
+        for _ in range(pollrounds):
+            # read accumulated messages from all neighbors
             for i, (k, que) in zip(range(self.nneighbors), self.receiving_queues.items()):
-                # k = dest[i]
-                while not que.empty():  # read from queue until get the last message
-                    self.recvmsg[k] = que.get(timeout=twait)
+                while not que.empty():
+                    self.recvmsg[k] = que.get(block=False) # don't wait
                     recv_flag[i] = 1
-                    # print("Message received at %d from %d" % (self.ID, k))
-            arrived = sum(recv_flag)
-            pollround += 1
+
+            # break if enough neighbors have been received
+            if sum(recv_flag) >= self.nwait:
+                break
+
+            # otherwise, wait for a message from the last neighbor
+            k, que = list(self.receiving_queues.items())[-1]
+            try:
+                self.recvmsg[k] = que.get(timeout=twait)
+                recv_flag[-1] = 1
+
+            except queue.Empty:
+                pass
+
+            # break if enough neighbors have been received
+            if sum(recv_flag) >= self.nwait:
+                break
+
 
 The ``recv`` method attempts to receive the ``AdmmMessage`` from at least ``self.nwait`` neighbors. Within the loop ``for i, (k, que) in zip(range(self.nneighbors), self.receiving_queues.items())``, the message-reception queue from each neighbor is queried (with the ``.get`` method) until the queue is empty (hence ``while not que.empty()``). When the ``arrived`` counter is at least ``self.nwait``, the ``.recv`` procedure finishes.
 

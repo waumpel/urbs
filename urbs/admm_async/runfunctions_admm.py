@@ -314,6 +314,10 @@ def run_regional(input_file, timesteps, scenario, result_dir,
             break
         obj_total += results[cluster_idx][1]['cost']
 
+        # debug
+        received_neighbors = results[cluster_idx][1]['received_neighbors']
+        print('cluster', cluster_idx, 'received neighbors:', received_neighbors, 'avg:', sum(received_neighbors)/len(received_neighbors))
+
     gap = (obj_total - obj_cent) / obj_cent * 100
     print('The convergence time for original problem is %f' % (orig_duration,))
     print('The convergence time for ADMM is %f' % (totaltime,))

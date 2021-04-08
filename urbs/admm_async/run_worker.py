@@ -70,6 +70,11 @@ def run_worker(ID, s, output):
 
     print("Local iteration of worker %d is %d" % (ID, nu))
     # save(s.sub_pyomo, os.path.join(s.result_dir, '_{}_'.format(ID),'{}.h5'.format(s.sce)))
-    output_package = {'cost': cost_history[nu - 1], 'coupling_flows': s.flow_global,
-                      'primal_residual': s.primalgap, 'dual_residual': s.dualgap}
+    output_package = {
+        'cost': cost_history[nu - 1],
+        'coupling_flows': s.flow_global,
+        'primal_residual': s.primalgap,
+        'dual_residual': s.dualgap,
+        'received_neighbors': s.received_neighbors,
+    }
     output.put((ID - 1, output_package))
