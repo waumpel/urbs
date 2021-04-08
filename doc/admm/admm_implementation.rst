@@ -816,25 +816,23 @@ Three following methods (``.fix_flow_global``, ``.fix_lambda`` and ``.set_quad_c
         # Caution, as these need to be adjusted if the transmission of other commodities exists!
         for key in self.flow_global.index:
             if (key[2] == 'Carbon_site') or (key[3] == 'Carbon_site'):
-                quadratic_penalty_change += 0.5 * (
-                        self.rho - rho_old) * \
-                                            (self.sub_pyomo.e_tra_in[
-                                                 key, 'CO2_line', 'Carbon'] -
-                                             self.sub_pyomo.flow_global[key]) ** 2
+                quadratic_penalty_change += 0.5 * (self.rho - rho_old) * \
+                    (self.sub_pyomo.e_tra_in[key, 'CO2_line', 'Carbon'] -
+                     self.sub_pyomo.flow_global[key]) ** 2
             else:
-                quadratic_penalty_change += 0.5 * (
-                        self.rho - rho_old) * \
-                                            (self.sub_pyomo.e_tra_in[key, 'hvac', 'Elec'] -
-                                             self.sub_pyomo.flow_global[key]) ** 2
+                quadratic_penalty_change += 0.5 * (self.rho - rho_old) * \
+                    (self.sub_pyomo.e_tra_in[key, 'hvac', 'Elec'] -
+                     self.sub_pyomo.flow_global[key]) ** 2
 
-        old_expression = self.sub_persistent._pyomo_model.objective_function.expr
-        self.sub_persistent._pyomo_model.del_component('objective_function')
-        self.sub_persistent._pyomo_model.add_component('objective_function',
-                                                       pyomo.Objective(expr = old_expression + quadratic_penalty_change,
-                                                                       sense=pyomo.minimize))
-        self.sub_persistent.set_objective(
-            self.sub_persistent._pyomo_model.objective_function)
-        self.sub_persistent._solver_model.update()
+        old_expression = self.sub_pyomo.objective_function.expr
+        self.sub_pyomo.del_component('objective_function')
+        self.sub_pyomo.add_component(
+            'objective_function',
+            pyomo.Objective(
+                expr = old_expression + quadratic_penalty_change, sense=pyomo.minimize
+            )
+        )
+        self.sub_persistent.set_objective(self.sub_pyomo.objective_function)
 
 .. _send:
 
