@@ -196,38 +196,6 @@ Class ``CouplingVars`` is defined to store some coupling parameters::
             self.residdual = {}
             self.residprim = {}
 
-
-.. _create-queues:
-
-::
-
-    def create_queues(clusters, shared_lines):
-        edges = np.empty((1, 2))
-        for cluster_idx in range(0, len(clusters)):
-            edges = np.concatenate((edges, np.stack([shared_lines[cluster_idx].cluster_from.to_numpy(),
-                                                     shared_lines[cluster_idx].cluster_to.to_numpy()], axis=1)))
-        edges = np.delete(edges, 0, axis=0)
-        edges = np.unique(edges, axis=0)
-        edges = np.array(list({tuple(sorted(item)) for item in edges}))
-
-        queues = {}
-        for edge in edges.tolist():
-            fend = mp.Manager().Queue()
-            tend = mp.Manager().Queue()
-            if edge[0] not in queues:
-                queues[edge[0]] = {}
-            queues[edge[0]][edge[1]] = fend
-            if edge[1] not in queues:
-                queues[edge[1]] = {}
-            queues[edge[1]][edge[0]] = tend
-        return edges, queues
-
-Function ``create_queues`` returns two objects:
-
-- ``edges`` is an array with two columns, which expresses the connectivity between the clusters (if clusters are connected in the following way: ``0--1--2``, ``edges`` would look as follows: ``[[0, 1], [1, 0], [1, 2], [2, 1]]``),
-- ``queues`` is a dictionary of dictionaries populated with ``mp.Manager().Queue()`` objects. There are as many ``mp.Manager().Queue()`` objects as the rows of ``edges``, and these queues are used for the unidirectional data transfer between these clusters during the parallel operation.
-
-
 Functions ``prepare_result_directory`` and ``setup_solver`` are unchanged except enforcing the barrier method for the gurobi solver (``method=2``). Please note that only gurobi is supported as a solver in this implementation!::
 
     def prepare_result_directory(result_name):
@@ -333,14 +301,25 @@ In the following code section, the ``Transmission`` DataFrame is sliced for each
 
     # identify the shared and internal lines
 
-    # used as indexes for creating `shared_lines` and `internal_lines`
-    shared_lines_logic = np.zeros((len(clusters), data_all['transmission'].shape[0]), dtype=bool)
-    internal_lines_logic = np.zeros((len(clusters), data_all['transmission'].shape[0]), dtype=bool)
+    nclusters = len(clusters)
+
+    # map site -> cluster_idx
+    site_cluster_map = {}
+    for cluster, cluster_idx in zip(clusters, range(nclusters)):
+        for site in cluster:
+            site_cluster_map[site] = cluster_idx
+
+    # used as indices for creating `shared_lines` and `internal_lines`
+    shared_lines_logic = np.zeros((nclusters, data_all['transmission'].shape[0]), dtype=bool)
+    internal_lines_logic = np.zeros((nclusters, data_all['transmission'].shape[0]), dtype=bool)
 
     # Source/target cluster of each shared line for each cluster.
     # These are appended as additional columns to `shared_lines` along with `neighbor_cluster` (defined below).
-    cluster_from = [[] for _ in range(len(clusters))]
-    cluster_to = [[] for _ in range(len(clusters))]
+    cluster_from = [[] for _ in range(nclusters)]
+    cluster_to = [[] for _ in range(nclusters)]
+
+    # Set of neighbors for each cluster
+    neighbors = [set() for _ in range(nclusters)]
 
     for row, (_, site_in, site_out, tra, com) in zip(range(0, data_all['transmission'].shape[0]), data_all['transmission'].index):
         from_cluster_idx = site_cluster_map[site_in]
@@ -348,6 +327,8 @@ In the following code section, the ``Transmission`` DataFrame is sliced for each
 
         if from_cluster_idx != to_cluster_idx:
             # shared line
+            neighbors[from_cluster_idx].add(to_cluster_idx)
+            neighbors[to_cluster_idx].add(from_cluster_idx)
             shared_lines_logic[from_cluster_idx, row] = True
             shared_lines_logic[to_cluster_idx, row] = True
             cluster_from[from_cluster_idx].append(from_cluster_idx)
@@ -362,21 +343,21 @@ In the following code section, the ``Transmission`` DataFrame is sliced for each
     # map cluster_idx -> slice of data_all['transmission']
     shared_lines = [
         data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]]
-        for cluster_idx in range(0, len(clusters))
+        for cluster_idx in range(0, nclusters)
     ]
     # map cluster_idx -> slice of data_all['transmission']
     internal_lines = [
         data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]]
-        for cluster_idx in range(0, len(clusters))
+        for cluster_idx in range(0, nclusters)
     ]
     # neighbouring cluster of each shared line for each cluster
     neighbor_cluster = [
         np.array(cluster_from[cluster_idx]) + np.array(cluster_to[cluster_idx]) - cluster_idx
-        for cluster_idx in range(0, len(clusters))
+        for cluster_idx in range(0, nclusters)
     ]
 
     # initialize coupling variables
-    for cluster_idx in range(0, len(clusters)):
+    for cluster_idx in range(0, nclusters):
         for i in range(0, shared_lines[cluster_idx].shape[0]):
             sit_from = shared_lines[cluster_idx].iloc[i].name[1]
             sit_to = shared_lines[cluster_idx].iloc[i].name[2]
@@ -431,7 +412,7 @@ In the next code section, ``problems``, a list of ``UrbsAdmmModel`` Classes and 
     sub = {}
 
     # initiate urbs_admm_model Classes for each subproblem
-    for cluster_idx in range(0, len(clusters)):
+    for cluster_idx in range(0, nclusters):
         problem = UrbsAdmmModel()
         sub[cluster_idx] = urbs.create_model(data_all, timesteps, type='sub',
                                              sites=clusters[cluster_idx],
@@ -462,10 +443,10 @@ In the next code section, ``problems``, a list of ``UrbsAdmmModel`` Classes and 
         shared_lines[cluster_idx]['cluster_to'] = cluster_to[cluster_idx]
         shared_lines[cluster_idx]['neighbor_cluster'] = neighbor_cluster[cluster_idx]                clusters)
         problem.shared_lines = shared_lines[cluster_idx]
-        problem.na = len(clusters)
+        problem.na = nclusters
         problems.append(problem)
 
-In the next step, ``queues`` are created for each communication channel using the ``create_queues`` :ref:`function <create-queues>`. These are then stored in the respective ``problem``, along with the following attributes:
+In the next step, ``queues`` are created for each communication channel. These are then stored in the respective ``problem``, along with the following attributes:
 
 - ``neighbors``: the indices of clusters that neighbor the cluster in question,
 - ``nneighbors``: the number of neighboring clusters,
@@ -473,19 +454,30 @@ In the next step, ``queues`` are created for each communication channel using th
 
 ::
 
-    edges, queues = create_queues(clusters, shared_lines)
+    # create Queues for each communication channel
+    queues = {
+        source: {
+            target: mp.Manager().Queue()
+            for target in neighbors[source]
+        }
+        for source in range(nclusters)
+    }
 
     # define further necessary fields for the subproblems
-    for cluster_idx in range(0, len(clusters)):
-        problems[cluster_idx].neighbors = sorted(set(shared_lines[cluster_idx].neighbor_cluster.to_list()))
-        problems[cluster_idx].nneighbors = len(problems[cluster_idx].neighbors)
+    for cluster_idx in range(0, nclusters):
+        problem = problems[cluster_idx]
+        problem.neighbors = neighbors[cluster_idx]
 
-        problems[cluster_idx].queues = dict((key, value) for (key, value) in queues.items() if key == cluster_idx)
-        problems[cluster_idx].queues.update(dict(
-            (key0, {key: value}) for (key0, n) in queues.items() for (key, value) in n.items() if
-            key == cluster_idx).items())
-        problems[cluster_idx].nwait = ceil(
-            problems[cluster_idx].nneighbors * problems[cluster_idx].admmopt.nwaitPercent)
+        problem.nneighbors = len(problem.neighbors)
+
+        problem.sending_queues = queues[cluster_idx]
+        problem.receiving_queues = {
+            target: queues[target][cluster_idx]
+            for target in neighbors[cluster_idx]
+        }
+
+        problem.nwait = ceil(
+            problem.nneighbors * problem.admmopt.nwaitPercent)
 
 Then, another Queue is created, which is used by each subproblem after they converge to send their solutions::
 
@@ -502,7 +494,7 @@ The processes are then launched using the ``.start()`` method.::
 
     # define the asynchronous jobs for ADMM routines
     procs = []
-    for cluster_idx in range(0, len(clusters)):
+    for cluster_idx in range(0, nclusters):
         procs += [mp.Process(target=run_worker, args=(cluster_idx + 1, problems[cluster_idx], output))]
 
     start_time = time.time()
@@ -546,7 +538,7 @@ Finally, the subproblem results are recovered and compared against the original 
     obj_total = 0
     obj_cent = results_prob['Problem'][0]['Lower bound']
 
-    for cluster_idx in range(0, len(clusters)):
+    for cluster_idx in range(0, nclusters):
         if cluster_idx != results[cluster_idx][0]:
             print('Error: Result of worker %d not returned!' % (cluster_idx + 1,))
             break
@@ -693,7 +685,8 @@ Starting with the attributes list of an ``UrbsAdmmModel`` instance::
             self.ID = None
             self.nbor = {}
             self.pipes = None
-            self.queues = None
+            self.sending_queues = None
+            self.receiving_queues = None
             self.admmopt = AdmmOption()
             self.recvmsg = {}
             self.primalgap = [9999]
@@ -714,7 +707,8 @@ These attributes are described as follows:
 - ``self.nneighbors``: the number of neighboring clusters
 - ``self.nwait``: the number of neighboring subproblems, that the subproblem has to wait for in order to move on to the next iteration. This is calculated using the product ``admmopt.nwaitPercent`` of ``nneighbors``, rounded up.
 - ``self.ID``: the subproblem ID. An integer starting from 0 (for the first subproblem).
-- ``self.queues``: a dictionary of dictionary of ``mp.Manager().Queue()`` objects, which has the cluster in question either as the receiving or the sending end
+- ``self.sending_queues``: a dictionary mapping the index of each neighboring cluster to a ``mp.Manager().Queue()`` used for sending messages to that cluster.
+- ``self.receiving_queues``: a dictionary mapping the index of each neighboring cluster to a ``mp.Manager().Queue()`` used for receiving messages from that cluster.
 - ``self.admmopt``: an instance of the ``AdmmOption`` class. These include the ADMM parameters, which can be modified by the user. They will be listed below.
 - ``self.recvmsg``: an instance of the ``AdmmMessage`` class. This class is sent and received between the workers, and its attributes will be listed below.
 - ``self.primalgap``: an array which extends which each iteration, and keeps track of the primal residual of the solution
@@ -847,14 +841,13 @@ Three following methods (``.fix_flow_global``, ``.fix_lambda`` and ``.set_quad_c
 With the methods ``send`` and ``recv``, the message transfer bwetween subproblems take place. Let us start with ``send``::
 
     def send(self):
-        dest = self.queues[self.ID].keys()
-        for k in dest:
+        for k, que in self.sending_queues.items():
             # prepare the message to be sent to neighbor k
             msg = AdmmMessage()
             msg.config(self.ID, k, self.flows_with_neighbor[k], self.rho,
                        self.lamda[self.lamda.index.isin(self.flows_with_neighbor[k].index)],
                        self.gapAll)
-            self.queues[self.ID][k].put(msg)
+            que.put(msg)
 
 The ``send`` method prepares a ``AdmmMessage`` for each neighbor ``k``, where only the subset of the coupling variable and Lagrange multiplier values which are relevant to this neighbor are sent (``self.flows_with_neighbor[k]`` and ``self.lamda[self.lamda.index.isin(self.flows_with_neighbor[k].index)]``). Additionally, the quadratic penalty parameter ``self.rho`` and the local residual gap ``self.gapAll`` is also communicated.
 These values are inserted into the message with the ``.config`` method, and the message is sent (put into the ``Queue``) using the ``.put`` method.
@@ -865,23 +858,22 @@ Next, the ``.recv`` method::
 
     def recv(self, pollrounds=5):
         twait = self.admmopt.pollWaitingtime
-        dest = list(self.queues[self.ID].keys())
         recv_flag = [0] * self.nneighbors
         arrived = 0  # number of arrived neighbors
         pollround = 0
 
         # keep receiving from nbor 1 to nbor K in round until nwait neighbors arrived
         while arrived < self.nwait and pollround < pollrounds:
-            for i in range(len(dest)):
-                k = dest[i]
-                while not self.queues[k][self.ID].empty():  # read from queue until get the last message
-                    self.recvmsg[k] = self.queues[k][self.ID].get(timeout=twait)
+            for i, (k, que) in zip(range(self.nneighbors), self.receiving_queues.items()):
+                # k = dest[i]
+                while not que.empty():  # read from queue until get the last message
+                    self.recvmsg[k] = que.get(timeout=twait)
                     recv_flag[i] = 1
                     # print("Message received at %d from %d" % (self.ID, k))
             arrived = sum(recv_flag)
             pollround += 1
 
-The ``recv`` method attempts to receive the ``AdmmMessage`` from at least ``self.nwait`` neighbors. Within the loop ``for i in range(len(dest))``, the message-reception queue from each neighbor is queried (with the ``.get`` method) until the queue is empty (hence ``while not self.queues[k][self.ID].empty()``). When the ``arrived`` counter is at least ``self.nwait``, the ``.recv`` procedure finishes.
+The ``recv`` method attempts to receive the ``AdmmMessage`` from at least ``self.nwait`` neighbors. Within the loop ``for i, (k, que) in zip(range(self.nneighbors), self.receiving_queues.items())``, the message-reception queue from each neighbor is queried (with the ``.get`` method) until the queue is empty (hence ``while not que.empty()``). When the ``arrived`` counter is at least ``self.nwait``, the ``.recv`` procedure finishes.
 
 Then we come to the three methods that update the global values of the coupling variable (``.update_z``), consensus Lagrange multiplier (``.update_y``) and the quadratic penalty parameter (``.update_rho``). Note that these methods are used to obtain new values for these variables, and their application to the problem takes place afterwards with the methods  ``.fix_flow_global``, ``.fix_lambda`` and ``.set_quad_cost`` as explained earlier.
 
@@ -890,9 +882,8 @@ Then we come to the three methods that update the global values of the coupling 
 Starting with ``update_z``::
 
     def update_z(self):
-        srcs = self.queues[self.ID].keys()
         flow_global_old = deepcopy(self.flow_global)
-        for k in srcs:
+        for k in self.neighbors:
             if k in self.recvmsg and self.recvmsg[k].tID == self.ID:  # target is this Cluster
                 nborvar = self.recvmsg[k].fields  # nborvar['flow'], nborvar['convergeTable']
                 self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = \

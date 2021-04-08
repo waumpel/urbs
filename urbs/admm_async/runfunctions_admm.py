@@ -28,28 +28,6 @@ class CouplingVars:
         self.residprim = {}
 
 
-def create_queues(clusters, shared_lines):
-    edges = np.empty((1, 2))
-    for cluster_idx in range(0, len(clusters)):
-        edges = np.concatenate((edges, np.stack([shared_lines[cluster_idx].cluster_from.to_numpy(),
-                                                 shared_lines[cluster_idx].cluster_to.to_numpy()], axis=1)))
-    edges = np.delete(edges, 0, axis=0)
-    edges = np.unique(edges, axis=0)
-    edges = np.array(list({tuple(sorted(item)) for item in edges}))
-
-    queues = {}
-    for edge in edges.tolist():
-        fend = mp.Manager().Queue()
-        tend = mp.Manager().Queue()
-        if edge[0] not in queues:
-            queues[edge[0]] = {}
-        queues[edge[0]][edge[1]] = fend
-        if edge[1] not in queues:
-            queues[edge[1]] = {}
-        queues[edge[1]][edge[0]] = tend
-    return edges, queues
-
-
 def prepare_result_directory(result_name):
     """ create a time stamped directory within the result folder.
 
@@ -131,22 +109,27 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     # initiate a coupling-variables Class
     coup_vars = CouplingVars()
 
+    # identify the shared and internal lines
+
+    nclusters = len(clusters)
+
     # map site -> cluster_idx
     site_cluster_map = {}
-    for cluster, cluster_idx in zip(clusters, range(len(clusters))):
+    for cluster, cluster_idx in zip(clusters, range(nclusters)):
         for site in cluster:
             site_cluster_map[site] = cluster_idx
 
-    # identify the shared and internal lines
-
-    # used as indexes for creating `shared_lines` and `internal_lines`
-    shared_lines_logic = np.zeros((len(clusters), data_all['transmission'].shape[0]), dtype=bool)
-    internal_lines_logic = np.zeros((len(clusters), data_all['transmission'].shape[0]), dtype=bool)
+    # used as indices for creating `shared_lines` and `internal_lines`
+    shared_lines_logic = np.zeros((nclusters, data_all['transmission'].shape[0]), dtype=bool)
+    internal_lines_logic = np.zeros((nclusters, data_all['transmission'].shape[0]), dtype=bool)
 
     # Source/target cluster of each shared line for each cluster.
     # These are appended as additional columns to `shared_lines` along with `neighbor_cluster` (defined below).
-    cluster_from = [[] for _ in range(len(clusters))]
-    cluster_to = [[] for _ in range(len(clusters))]
+    cluster_from = [[] for _ in range(nclusters)]
+    cluster_to = [[] for _ in range(nclusters)]
+
+    # Set of neighbors for each cluster
+    neighbors = [set() for _ in range(nclusters)]
 
     for row, (_, site_in, site_out, tra, com) in zip(range(0, data_all['transmission'].shape[0]), data_all['transmission'].index):
         from_cluster_idx = site_cluster_map[site_in]
@@ -154,6 +137,8 @@ def run_regional(input_file, timesteps, scenario, result_dir,
 
         if from_cluster_idx != to_cluster_idx:
             # shared line
+            neighbors[from_cluster_idx].add(to_cluster_idx)
+            neighbors[to_cluster_idx].add(from_cluster_idx)
             shared_lines_logic[from_cluster_idx, row] = True
             shared_lines_logic[to_cluster_idx, row] = True
             cluster_from[from_cluster_idx].append(from_cluster_idx)
@@ -168,21 +153,21 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     # map cluster_idx -> slice of data_all['transmission']
     shared_lines = [
         data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]]
-        for cluster_idx in range(0, len(clusters))
+        for cluster_idx in range(0, nclusters)
     ]
     # map cluster_idx -> slice of data_all['transmission']
     internal_lines = [
         data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]]
-        for cluster_idx in range(0, len(clusters))
+        for cluster_idx in range(0, nclusters)
     ]
     # neighbouring cluster of each shared line for each cluster
     neighbor_cluster = [
         np.array(cluster_from[cluster_idx]) + np.array(cluster_to[cluster_idx]) - cluster_idx
-        for cluster_idx in range(0, len(clusters))
+        for cluster_idx in range(0, nclusters)
     ]
 
     # initialize coupling variables
-    for cluster_idx in range(0, len(clusters)):
+    for cluster_idx in range(0, nclusters):
         for i in range(0, shared_lines[cluster_idx].shape[0]):
             sit_from = shared_lines[cluster_idx].iloc[i].name[1]
             sit_to = shared_lines[cluster_idx].iloc[i].name[2]
@@ -220,7 +205,7 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     sub = {}
 
     # initiate urbs_admm_model Classes for each subproblem
-    for cluster_idx in range(0, len(clusters)):
+    for cluster_idx in range(0, nclusters):
         problem = UrbsAdmmModel()
         sub[cluster_idx] = create_model(data_all, timesteps, type='sub',
                                              sites=clusters[cluster_idx],
@@ -251,30 +236,40 @@ def run_regional(input_file, timesteps, scenario, result_dir,
         shared_lines[cluster_idx]['cluster_to'] = cluster_to[cluster_idx]
         shared_lines[cluster_idx]['neighbor_cluster'] = neighbor_cluster[cluster_idx]
         problem.shared_lines = shared_lines[cluster_idx]
-        problem.na = len(clusters)
+        problem.na = nclusters
         problems.append(problem)
 
     # create Queues for each communication channel
-    edges, queues = create_queues(clusters, shared_lines)
+    queues = {
+        source: {
+            target: mp.Manager().Queue() # TODO: is creation of multiple managers intended?
+            for target in neighbors[source]
+        }
+        for source in range(nclusters)
+    }
 
     # define further necessary fields for the subproblems
-    for cluster_idx in range(0, len(clusters)):
-        problems[cluster_idx].neighbors = sorted(set(shared_lines[cluster_idx].neighbor_cluster.to_list()))
-        problems[cluster_idx].nneighbors = len(problems[cluster_idx].neighbors)
+    for cluster_idx in range(0, nclusters):
+        problem = problems[cluster_idx]
+        problem.neighbors = neighbors[cluster_idx]
 
-        problems[cluster_idx].queues = dict((key, value) for (key, value) in queues.items() if key == cluster_idx)
-        problems[cluster_idx].queues.update(dict(
-            (key0, {key: value}) for (key0, n) in queues.items() for (key, value) in n.items() if
-            key == cluster_idx).items())
-        problems[cluster_idx].nwait = ceil(
-            problems[cluster_idx].nneighbors * problems[cluster_idx].admmopt.nwaitPercent)
+        problem.nneighbors = len(problem.neighbors)
+
+        problem.sending_queues = queues[cluster_idx]
+        problem.receiving_queues = {
+            target: queues[target][cluster_idx]
+            for target in neighbors[cluster_idx]
+        }
+
+        problem.nwait = ceil(
+            problem.nneighbors * problem.admmopt.nwaitPercent)
 
     # define a Queue class for collecting the results from each subproblem after convergence
     output = mp.Manager().Queue()
 
     # define the asynchronous jobs for ADMM routines
     procs = []
-    for cluster_idx in range(0, len(clusters)):
+    for cluster_idx in range(0, nclusters):
         procs += [mp.Process(target=run_worker, args=(cluster_idx + 1, problems[cluster_idx], output))]
 
     start_time = time.time()
@@ -313,7 +308,7 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     obj_total = 0
     obj_cent = results_prob['Problem'][0]['Lower bound']
 
-    for cluster_idx in range(0, len(clusters)):
+    for cluster_idx in range(0, nclusters):
         if cluster_idx != results[cluster_idx][0]:
             print('Error: Result of worker %d not returned!' % (cluster_idx + 1,))
             break
@@ -336,13 +331,13 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     file_object.close()
     # ------------ plots of convergence -----------------
     fig = plt.figure()
-    for cluster_idx in range(0, len(clusters)):
+    for cluster_idx in range(0, nclusters):
         if cluster_idx != results[cluster_idx][0]:
             print('Error: Result of worker %d not returned!' % (cluster_idx + 1,))
             break
         pgap = results[cluster_idx][1]['primal_residual']
         dgap = results[cluster_idx][1]['dual_residual']
-        curfig = fig.add_subplot(1, len(clusters), cluster_idx + 1)
+        curfig = fig.add_subplot(1, nclusters, cluster_idx + 1)
         curfig.plot(pgap, color='red', linewidth=2.5, label='primal residual')
         curfig.plot(dgap, color='blue', linewidth=2.5, label='dual residual')
         curfig.set_yscale('log')

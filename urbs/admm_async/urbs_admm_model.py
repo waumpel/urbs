@@ -33,7 +33,8 @@ class UrbsAdmmModel(object):
         self.ID = None
         self.nbor = {}
         self.pipes = None
-        self.queues = None
+        self.sending_queues = None
+        self.receiving_queues = None
         self.admmopt = AdmmOption()
         self.recvmsg = {}
         self.primalgap = [9999]
@@ -88,37 +89,34 @@ class UrbsAdmmModel(object):
 
 
     def send(self):
-        dest = self.queues[self.ID].keys()
-        for k in dest:
+        for k, que in self.sending_queues.items():
             # prepare the message to be sent to neighbor k
             msg = AdmmMessage()
             msg.config(self.ID, k, self.flows_with_neighbor[k], self.rho,
                        self.lamda[self.lamda.index.isin(self.flows_with_neighbor[k].index)],
                        self.gapAll)
-            self.queues[self.ID][k].put(msg)
+            que.put(msg)
 
     def recv(self, pollrounds=5):
         twait = self.admmopt.pollWaitingtime
-        dest = list(self.queues[self.ID].keys())
         recv_flag = [0] * self.nneighbors
         arrived = 0  # number of arrived neighbors
         pollround = 0
 
         # keep receiving from nbor 1 to nbor K in round until nwait neighbors arrived
         while arrived < self.nwait and pollround < pollrounds:
-            for i in range(len(dest)):
-                k = dest[i]
-                while not self.queues[k][self.ID].empty():  # read from queue until get the last message
-                    self.recvmsg[k] = self.queues[k][self.ID].get(timeout=twait)
+            for i, (k, que) in zip(range(self.nneighbors), self.receiving_queues.items()):
+                # k = dest[i]
+                while not que.empty():  # read from queue until get the last message
+                    self.recvmsg[k] = que.get(timeout=twait)
                     recv_flag[i] = 1
                     # print("Message received at %d from %d" % (self.ID, k))
             arrived = sum(recv_flag)
             pollround += 1
 
     def update_z(self):
-        srcs = self.queues[self.ID].keys()
         flow_global_old = deepcopy(self.flow_global)
-        for k in srcs:
+        for k in self.neighbors:
             if k in self.recvmsg and self.recvmsg[k].tID == self.ID:  # target is this Cluster
                 nborvar = self.recvmsg[k].fields  # nborvar['flow'], nborvar['convergeTable']
                 self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = \
