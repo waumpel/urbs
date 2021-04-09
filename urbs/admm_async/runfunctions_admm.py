@@ -22,7 +22,7 @@ class CouplingVars:
     def __init__(self):
         self.flow_global = {}
         self.rhos = {}
-        self.lambdas = {}
+        self.lamdas = {}
         self.cap_global = {}
         self.residdual = {}
         self.residprim = {}
@@ -173,7 +173,7 @@ def run_regional(input_file, timesteps, scenario, result_dir,
             sit_to = shared_lines[cluster_idx].iloc[i].name[2]
 
             for j in timesteps[1:]:
-                coup_vars.lambdas[cluster_idx, j, year, sit_from, sit_to] = 0
+                coup_vars.lamdas[cluster_idx, j, year, sit_from, sit_to] = 0
                 coup_vars.rhos[cluster_idx, j, year, sit_from, sit_to] = 5
                 coup_vars.flow_global[cluster_idx, j, year, sit_from, sit_to] = 0
 
@@ -221,7 +221,7 @@ def run_regional(input_file, timesteps, scenario, result_dir,
         problem.flow_global = problem.flow_global.to_frame()
 
         problem.lamda = {(key[1], key[2], key[3], key[4]): value
-                         for (key, value) in coup_vars.lambdas.items() if key[0] == cluster_idx}
+                         for (key, value) in coup_vars.lamdas.items() if key[0] == cluster_idx}
         problem.lamda = pd.Series(problem.lamda)
         problem.lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
         problem.lamda = problem.lamda.to_frame()
@@ -312,11 +312,16 @@ def run_regional(input_file, timesteps, scenario, result_dir,
         if cluster_idx != results[cluster_idx][0]:
             print('Error: Result of worker %d not returned!' % (cluster_idx + 1,))
             break
-        obj_total += results[cluster_idx][1]['cost']
+        obj_total += results[cluster_idx][1]['cost'][-1]
 
-        # debug
+    # debug
+    for cluster_idx in range(0, nclusters):
         received_neighbors = results[cluster_idx][1]['received_neighbors']
         print('cluster', cluster_idx, 'received neighbors:', received_neighbors, 'avg:', sum(received_neighbors)/len(received_neighbors))
+
+    # debug
+    for cluster_idx in range(0, nclusters):
+        print('cluster', cluster_idx, 'cost:', results[cluster_idx][1]['cost'])
 
     gap = (obj_total - obj_cent) / obj_cent * 100
     print('The convergence time for original problem is %f' % (orig_duration,))

@@ -45,16 +45,26 @@ class UrbsAdmmModel(object):
         self.lamda = None
         self.received_neighbors = []
 
+
     def solve_problem(self):
         self.sub_persistent.solve(save_results=False, load_solutions=False, warmstart=True)
 
+
+    # TODO: series check??
     def fix_flow_global(self):
+        """
+        Fix the `flow_global` variables in the solver to the values in `self.flow_global`.
+        """
         for key in self.flow_global.index:
             self.sub_pyomo.flow_global[key].fix(self.flow_global.loc[key, 0])
-            self.sub_persistent.update_var(
-                self.sub_pyomo.flow_global[key])
+            self.sub_persistent.update_var(self.sub_pyomo.flow_global[key])
 
-    def fix_lambda(self):
+
+    # TODO: series check??
+    def fix_lamda(self):
+        """
+        Fix the `lamda` variables in the solver to the values in `self.lamda`.
+        """
         for key in self.lamda.index:
             if not isinstance(self.lamda.loc[key], pd.core.series.Series):
                 self.sub_pyomo.lamda[key].fix(self.lamda.loc[key])
@@ -63,7 +73,14 @@ class UrbsAdmmModel(object):
                 self.sub_pyomo.lamda[key].fix(self.lamda.loc[key, 0])
                 self.sub_persistent.update_var(self.sub_pyomo.lamda[key])
 
+
     def set_quad_cost(self, rho_old):
+        """
+        Update the objective function to reflect the difference between `self.rho` and
+        `rho_old`.
+
+        Call this method *after* `fix_flow_global`.
+        """
         quadratic_penalty_change = 0
         # Hard coded transmission name: 'hvac', commodity 'Elec' for performance.
         # Caution, as these need to be adjusted if the transmission of other commodities exists!
@@ -97,7 +114,9 @@ class UrbsAdmmModel(object):
                        self.gapAll)
             que.put(msg)
 
+
     def recv(self, pollrounds=5):
+        self.recvmsg = {}
         twait = self.admmopt.pollWaitingtime
         recv_flag = [0] * self.nneighbors
 
@@ -121,31 +140,40 @@ class UrbsAdmmModel(object):
             except queue.Empty:
                 pass
 
-            # break if enough neighbors have been received
-            if sum(recv_flag) >= self.nwait:
-                break
-
         # store number of received neighbors
         self.received_neighbors.append(sum(recv_flag))
 
 
-    def update_z(self):
+    def update_flow_global(self):
+        """
+        Update `self.flow_global` for all neighbors who sent messages. Calculate the new
+        dual gap and append it to `self.dualgap`.
+        """
         flow_global_old = deepcopy(self.flow_global)
-        for k in self.neighbors:
-            if k in self.recvmsg and self.recvmsg[k].tID == self.ID:  # target is this Cluster
-                nborvar = self.recvmsg[k].fields  # nborvar['flow'], nborvar['convergeTable']
-                self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = \
-                    (self.lamda.loc[self.lamda.index.isin(self.flows_with_neighbor[k].index)] +
-                     nborvar['lambda'] + self.flows_with_neighbor[k] * self.rho + nborvar['flow'] * nborvar['rho']) \
-                    / (self.rho + nborvar['rho'])
-        self.dualgap += [self.rho * (np.sqrt(np.square(self.flow_global - flow_global_old).sum(axis=0)[0]))]
+        for k, msg in self.recvmsg.items():
+            nborvar = msg.fields  # nborvar['flow'], nborvar['convergeTable']
+            self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = \
+                (self.lamda.loc[self.lamda.index.isin(self.flows_with_neighbor[k].index)] +
+                    nborvar['lambda'] + self.flows_with_neighbor[k] * self.rho + nborvar['flow'] * nborvar['rho']) \
+                / (self.rho + nborvar['rho'])
+        self.dualgap.append(self.rho * (np.sqrt(np.square(self.flow_global - flow_global_old).sum(axis=0)[0])))
 
-    def update_y(self):
+
+    def update_lamda(self):
         self.lamda = self.lamda + self.rho * (self.flows_all.loc[:, [0]] - self.flow_global)
 
-    # update rho and primal gap locally
+
     def update_rho(self, nu):
-        self.primalgap += [np.sqrt(np.square(self.flows_all - self.flow_global).sum(axis=0)[0])]
+        """
+        Calculate the new primal gap, append it to `self.primalgap` and store it in
+        `self.gapAll`.
+        Update `self.rho` according to the current primal and dual gaps unless the
+        current iteration is above `self.admmopt.rho_update_nu`.
+
+        ### Arguments
+        * `nu`: The current iteration.
+        """
+        self.primalgap.append(np.sqrt(np.square(self.flows_all - self.flow_global).sum(axis=0)[0]))
         # update rho (only in the first rho_iter_nu iterations)
         if nu <= self.admmopt.rho_update_nu:
             if self.primalgap[-1] > self.admmopt.mu * self.dualgap[-1]:
@@ -155,26 +183,31 @@ class UrbsAdmmModel(object):
         # update local converge table
         self.gapAll[self.ID] = self.primalgap[-1]
 
-    #   # use the maximum rho among neighbors for local update
-    def choose_max_rho(self):
-        srcs = self.recvmsg.keys()
-        for k in srcs:
-            rho_nbor = self.recvmsg[k].fields['rho']
-            self.rho = maximum(self.rho, rho_nbor)  # pick the maximum one
 
-    def converge(self):
-        # first update local converge table using received converge tables
-        if self.recvmsg is not None:
-            for k in self.recvmsg:
-                table = self.recvmsg[k].fields['convergeTable']
-                self.gapAll = list(map(min, zip(self.gapAll, table)))
+    def choose_max_rho(self):
+        """
+        Set `self.rho` to the maximum rho value among self and neighbors.
+        """
+        self.rho = max(self.rho, *[msg.fields['rho'] for msg in self.recvmsg.values()])
+
+
+    def is_converged(self):
+        # first update local convergence table using received convergence tables
+        for msg in self.recvmsg.values():
+            table = msg.fields['convergeTable']
+            self.gapAll = list(map(min, zip(self.gapAll, table))) # TODO: is min adequate? Should we get the most recent value instead?
         # check if all local primal gaps < tolerance
         if max(self.gapAll) < self.convergetol:
             return True
         else:
             return False
 
+
     def retrieve_boundary_flows(self):
+        """
+        Retrieve optimized flow values for shared lines from the solver and store them in
+        `self.flows_all` and `self.flows_with_neighbor`.
+        """
         e_tra_in_per_neighbor = {}
 
         self.sub_persistent.load_vars(self.sub_pyomo.e_tra_in[:, :, :, :, :, :])
@@ -195,7 +228,8 @@ class UrbsAdmmModel(object):
             e_tra_in_per_neighbor[neighbor].reset_index().set_index(['t', 'stf', 'sit', 'sit_'], inplace=True)
             e_tra_in_per_neighbor[neighbor].drop('neighbor_cluster', axis=1, inplace=True)
 
-        return e_tra_in_dict, e_tra_in_per_neighbor
+        self.flows_all = e_tra_in_dict
+        self.flows_with_neighbor = e_tra_in_per_neighbor
 
 
 # ##--------ADMM parameters specification -------------------------------------
@@ -228,6 +262,7 @@ class AdmmMessage(object):
             'rho': None,
             'lambda': None,
             'convergeTable': None}
+
 
     def config(self, f, t, var_flow, var_rho, var_lambda, gapall):  # AVall and var are local variables of f region
         self.fID = f

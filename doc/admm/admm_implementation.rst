@@ -191,7 +191,7 @@ Class ``CouplingVars`` is defined to store some coupling parameters::
         def __init__(self):
             self.flow_global = {}
             self.rhos = {}
-            self.lambdas = {}
+            self.lamdas = {}
             self.cap_global = {}
             self.residdual = {}
             self.residprim = {}
@@ -287,7 +287,7 @@ A `CouplingVars` :ref:`class <coup-vars>` is initialized::
     # initiate a coupling-variables Class
     coup_vars = CouplingVars()
 
-In the following code section, the ``Transmission`` DataFrame is sliced for each cluster (with index ``cluster_idx``), such that ``shared_lines[cluster_idx]`` comprises only the transmission lines which are interfacing with a neighboring cluster and, conversely, ``internal_lines[cluster_idx]`` consists of the transmission lines that connect the sites within the cluster. Afterwards, the ADMM parameters ``coup_vars.lambdas``, ``coup_vars.rhos`` and ``coup_vars.flow_global`` are initialized with the following indices:
+In the following code section, the ``Transmission`` DataFrame is sliced for each cluster (with index ``cluster_idx``), such that ``shared_lines[cluster_idx]`` comprises only the transmission lines which are interfacing with a neighboring cluster and, conversely, ``internal_lines[cluster_idx]`` consists of the transmission lines that connect the sites within the cluster. Afterwards, the ADMM parameters ``coup_vars.lamdas``, ``coup_vars.rhos`` and ``coup_vars.flow_global`` are initialized with the following indices:
 
 - ``cluster_idx``: each cluster index,
 - ``j``: each modelled time-step,
@@ -363,7 +363,7 @@ In the following code section, the ``Transmission`` DataFrame is sliced for each
             sit_to = shared_lines[cluster_idx].iloc[i].name[2]
 
             for j in timesteps[1:]:
-                coup_vars.lambdas[cluster_idx, j, year, sit_from, sit_to] = 0
+                coup_vars.lamdas[cluster_idx, j, year, sit_from, sit_to] = 0
                 coup_vars.rhos[cluster_idx, j, year, sit_from, sit_to] = 5
                 coup_vars.flow_global[cluster_idx, j, year, sit_from, sit_to] = 0
 
@@ -396,7 +396,7 @@ In the next code section, ``problems``, a list of ``UrbsAdmmModel`` Classes and 
 - ``problem`` which is an instance of the ``UrbsAdmmModel`` class, is initialized (please see the UrbsAdmmModel, init Section),
 - a Pyomo object for the subproblem is created using the ``urbs.create_model`` function with the ``type='sub'`` option, See the modified create_model in the model.py changes). This Pyomo instance is stored in the attribute ``sub_pyomo`` of ``problem``,
 - initial values for the global coupling variable values are stored in ``problem.flow_global``, which is a subset of ``coup_vars.flow_global`` where the ``cluster_idx`` corresponds to the cluster in question,
-- initial values for the consensus dual variables are stored in ``problem.lamda``, which is a subset of ``coup_vars.lambdas`` where the ``cluster_idx`` corresponds to the cluster in question,
+- initial values for the consensus dual variables are stored in ``problem.lamda``, which is a subset of ``coup_vars.lamdas`` where the ``cluster_idx`` corresponds to the cluster in question,
 - initial value for the quadratic penalty parameter is stored in ``problem.rho``,
 - the unique index of the cluster is stored in ``problem.ID``,
 - the result directory and the scenario name are stored in the ``problem.result_dir`` and ``problem.sce`` respectively,
@@ -428,7 +428,7 @@ In the next code section, ``problems``, a list of ``UrbsAdmmModel`` Classes and 
         problem.flow_global = problem.flow_global.to_frame()
 
         problem.lamda = {(key[1], key[2], key[3], key[4]): value
-                         for (key, value) in coup_vars.lambdas.items() if key[0] == cluster_idx}
+                         for (key, value) in coup_vars.lamdas.items() if key[0] == cluster_idx}
         problem.lamda = pd.Series(problem.lamda)
         problem.lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
         problem.lamda = problem.lamda.to_frame()
@@ -579,16 +579,14 @@ The ``.unique()`` method is applied to ``.neighbor_cluster`` attribute to retrie
 
     s.neighbor_clusters = s.shared_lines.neighbor_cluster.unique()
 
-The local iteration counter ``nu`` is initialized, and the maximum number of iterations ``maxit`` is retrieved from the ``admmopt`` attribute of the subproblem::
+The maximum number of iterations ``maxit`` is retrieved from the ``admmopt`` attribute of the subproblem::
 
-    nu = 0  # iteration count
-    maxit = s.admmopt.iterMaxlocal  # get maximum iteration
+    maxit = s.admmopt.iterMaxlocal # get maximum iteration
 
-The convergence flag is initialized as ``False``, the convergence gap as ``10**8`` and an array keeping track of the objective function value of the solutions as ``np.zeros``::
+The convergence gap is initialized as ``10**8``. ``cost_history`` keeps track  of the objective function value of the solutions::
 
-    s.flag = False
     s.gapAll = [10 ** 8] * s.na
-    cost_history = np.zeros(maxit)
+    cost_history = []
 
 The absolute convergence tolerance is calculated by scaling ``s.conv_rel`` (user input for relative convergence tolerance, set in the ``admmopt`` attribute of the subproblem) with the number of the coupling variables in the subproblem (``len(s.flow_global)``, added 1 to ensure convergence for the subproblems without any coupling variables)::
 
@@ -596,65 +594,52 @@ The absolute convergence tolerance is calculated by scaling ``s.conv_rel`` (user
 
 Now, the local ADMM iterations take place::
 
-    while nu <= maxit-1 and not s.flag:
+    for nu in range(maxit):
 
-First, if any message from neighbors is received (if ``s.recvmsg`` is not empty), the global values of the coupling variables are updated (with the ``.update_z`` :ref:`method <update-z>`), along with choosing the quadratic penalty value that corresponds to the maximum among all the neighbors (with the ``.choose_max_rho`` :ref:`method <update-rho>`)::
-
-        if s.recvmsg:
-            s.update_z()  # update global flows
-            s.choose_max_rho()  # update choose max rho
-
-Then, to prepare the model for the next run, the updated global values, consensus Lagrange multipliers and penalty parameters are set for the Gurobi instance of the subproblem. For these steps, the :ref:`methods <fix>` ``.fix_flow_global``, ``.fix_lambda`` and ``set_quad_cost`` is applied respectively::
+First, to prepare the model for the next (first) run, the updated (initial) global values, consensus Lagrange multipliers and penalty parameters are set for the Gurobi instance of the subproblem. For these steps, the :ref:`methods <fix>` ``.fix_flow_global``, ``.fix_lamda`` and ``set_quad_cost`` are applied respectively::
 
         s.fix_flow_global()
-        s.fix_lambda()
+        s.fix_lamda()
 
         if nu > 0:
             s.set_quad_cost(rho_old)
 
 Now the subproblem can be solved, using the ``.solve_problem`` :ref:`method <solve-problem>`::
 
-        s.result = s.solve_problem()
+        s.solve_problem()
 
-After solving the problem, the optimal values of the coupling variables are extracted using the :ref:`method <retrieve-boundary-flows>` ``.retrieve_boundary_flows``. The output of this method are twofold:
+After solving the problem, the optimal values of the coupling variables are extracted using the :ref:`method <retrieve-boundary-flows>` ``.retrieve_boundary_flows`` and stored in two members of ``s``:
 
 - ``s.flows_all``: a ``pd.MultiIndex`` containing all the coupling variables,
 - ``s.flows_with_neighbor``: a dictionary of ``pd.MultiIndex``es , whose elements are subsets of ``flows_all`` that are shared with a certain neighbor. For instance, for the subproblem with indexs 0, s.flows_with_neighbor[2] will return the values of all coupling variables for the flows between the cluster 0 and 2.
 
-Additionally, the objective value of the optimum is saved in ``cost_history``::
+Additionally, the objective value of the optimum is saved in ``cost_history`` and the old value of ``s.rho`` is stored::
 
-        # retrieve
-        s.flows_all, s.flows_with_neighbor = s.retrieve_boundary_flows()
-        cost_history[nu] = s.sub_persistent._solver_model.objval
-
-After obtaining the solutions, the consensus Lagrange multiplier and quadratic penalty parameter is updated with the :ref:`method <update-y>` ``.update_y`` and the :ref:`method <update-rho>` ``.update_rho`` respectively::
-
+        cost_history.append(s.sub_persistent._solver_model.objval) # TODO: use public method instead
         rho_old = s.rho
-        if s.recvmsg:  # not the initialization
-            s.update_y()  # update lambda
+
+Now the subproblem checks for messages from its neighbors::
+
+        s.recv(pollrounds=5)
+
+If any messages are received, the global flow values, Lagrange multipliers and penalty parameter are updated with :ref:`method <update_flow_global>` ``.update_flow_global``, :ref:`method <update_lamda>` ``.update_lamda`` and :ref:`method <update-rho>` ``.update_rho``::
+
+        if s.recvmsg:
+            s.update_flow_global()
+            s.update_lamda()
             s.update_rho(nu)
+
+Now the subproblem can send its updated values to its neighbors::
+
+        s.send()
 
 Convergence is checked with the ``.converge`` :ref:`method <converge>`::
 
-        # check convergence
-        s.flag = s.converge()
+        if s.is_converged():
+            print("Worker %d converged!" % (ID,))
+            break
 
-At the last step of each iteration, the recvmsg cache is emptied. Afterwards, relevant :ref:`messages <message>` are sent to every neighbor, and are received from neighbors with the ``.send`` :ref:`method <send>` and the ``.recv`` :ref:`method <recv>` respectively. For receiving methods, an optional argument ``pollrounds`` can be given. This gives the number of queries made for each message reception per neighbor (default value is 5), and thereby ensures that the message received is as up-to-date as possible.::
-
-        s.recvmsg = {}  # clear the received messages
-
-        s.send()
-        s.recv(pollrounds=5)
-
-The local iteration counter is updated before moving onto the next iteration::
-
-        nu += 1
-
-When the algorithm converges, the final pyomo model of the subproblem and the corresponding solution is saved with the save function::
-
-    save(s.sub_pyomo, os.path.join(s.result_dir, '_{}_'.format(ID),'{}.h5'.format(s.sce)))
-
-Additionally, a dictionary consisting of the final objective value, the values of coupling variables and primal/dual residuals is created and put into the ``Queue`` called ``output``::
+Upon convergence, a dictionary consisting of the final objective value, the values of coupling variables and primal/dual residuals is created and put into the ``Queue`` called ``output``::
 
     output_package = {'cost': cost_history[nu - 1], 'coupling_flows': s.flow_global,
                       'primal_residual': s.primalgap, 'dual_residual': s.dualgap}
@@ -793,15 +778,21 @@ Now let us return to the class ``UrbsAdmmModel`` and go through its methods.
 
 .. _fix:
 
-Three following methods (``.fix_flow_global``, ``.fix_lambda`` and ``.set_quad_cost``) interface with the pyomo object and persistent solver interface of the subproblem, and modify the cost function with the updated global values of the coupling variable, consensus Lagrange multiplier and the quadratic penalty parameter. Observe that in the model, ``lamda`` (consensus Lagrange multiplier) and ``flow_global`` (global value of the coupling variable) are defined as ``Variables`` whose values are then fixed in the model with the ``.fix`` method, whereas the quadratic penalty parameter ``rho`` is a real number.::
+Three following methods (``.fix_flow_global``, ``.fix_lamda`` and ``.set_quad_cost``) interface with the pyomo object and persistent solver interface of the subproblem, and modify the cost function with the updated global values of the coupling variable, consensus Lagrange multiplier and the quadratic penalty parameter. Observe that in the model, ``lamda`` (consensus Lagrange multiplier) and ``flow_global`` (global value of the coupling variable) are defined as ``Variables`` whose values are then fixed in the model with the ``.fix`` method, whereas the quadratic penalty parameter ``rho`` is a real number.::
 
     def fix_flow_global(self):
+        """
+        Fix the `flow_global` variables in the solver to the values in `self.flow_global`.
+        """
         for key in self.flow_global.index:
             self.sub_pyomo.flow_global[key].fix(self.flow_global.loc[key, 0])
-            self.sub_persistent.update_var(
-                self.sub_pyomo.flow_global[key])
+            self.sub_persistent.update_var(self.sub_pyomo.flow_global[key])
 
-    def fix_lambda(self):
+
+    def fix_lamda(self):
+        """
+        Fix the `lamda` variables in the solver to the values in `self.lamda`.
+        """
         for key in self.lamda.index:
             if not isinstance(self.lamda.loc[key], pd.core.series.Series):
                 self.sub_pyomo.lamda[key].fix(self.lamda.loc[key])
@@ -810,7 +801,14 @@ Three following methods (``.fix_flow_global``, ``.fix_lambda`` and ``.set_quad_c
                 self.sub_pyomo.lamda[key].fix(self.lamda.loc[key, 0])
                 self.sub_persistent.update_var(self.sub_pyomo.lamda[key])
 
+
     def set_quad_cost(self, rho_old):
+        """
+        Update the objective function to reflect the difference between `self.rho` and
+        `rho_old`.
+
+        Call this method *after* `fix_flow_global`.
+        """
         quadratic_penalty_change = 0
         # Hard coded transmission name: 'hvac', commodity 'Elec' for performance.
         # Caution, as these need to be adjusted if the transmission of other commodities exists!
@@ -855,6 +853,7 @@ These values are inserted into the message with the ``.config`` method, and the 
 Next, the ``.recv`` method::
 
     def recv(self, pollrounds=5):
+        self.recvmsg = {}
         twait = self.admmopt.pollWaitingtime
         recv_flag = [0] * self.nneighbors
 
@@ -878,46 +877,52 @@ Next, the ``.recv`` method::
             except queue.Empty:
                 pass
 
-            # break if enough neighbors have been received
-            if sum(recv_flag) >= self.nwait:
-                break
+The ``recv`` method attempts to receive the ``AdmmMessage`` from at least ``self.nwait`` neighbors. Within the loop ``for i, (k, que) in zip(range(self.nneighbors), self.receiving_queues.items())``, the message-reception queue from each neighbor is queried (with the ``.get`` method) until the queue is empty (hence ``while not que.empty()``). The method terminates When messages from enough neighbors have arrived or a certain number of pollrounds have been performed.
 
+Then we come to the three methods that update the global values of the coupling variable (``.update_flow_global``), consensus Lagrange multiplier (``.update_lamda``) and the quadratic penalty parameter (``.update_rho``). Note that these methods are used to obtain new values for these variables, and their application to the problem takes place afterwards with the methods  ``.fix_flow_global``, ``.fix_lamda`` and ``.set_quad_cost`` as explained earlier.
 
-The ``recv`` method attempts to receive the ``AdmmMessage`` from at least ``self.nwait`` neighbors. Within the loop ``for i, (k, que) in zip(range(self.nneighbors), self.receiving_queues.items())``, the message-reception queue from each neighbor is queried (with the ``.get`` method) until the queue is empty (hence ``while not que.empty()``). When the ``arrived`` counter is at least ``self.nwait``, the ``.recv`` procedure finishes.
+.. _update_flow_global:
 
-Then we come to the three methods that update the global values of the coupling variable (``.update_z``), consensus Lagrange multiplier (``.update_y``) and the quadratic penalty parameter (``.update_rho``). Note that these methods are used to obtain new values for these variables, and their application to the problem takes place afterwards with the methods  ``.fix_flow_global``, ``.fix_lambda`` and ``.set_quad_cost`` as explained earlier.
+Starting with ``update_flow_global``::
 
-.. _update-z:
-
-Starting with ``update_z``::
-
-    def update_z(self):
+    def update_flow_global(self):
+        """
+        Update `self.flow_global` for all neighbors who sent messages. Calculate the new
+        dual gap and append it to `self.dualgap`.
+        """
         flow_global_old = deepcopy(self.flow_global)
-        for k in self.neighbors:
-            if k in self.recvmsg and self.recvmsg[k].tID == self.ID:  # target is this Cluster
-                nborvar = self.recvmsg[k].fields  # nborvar['flow'], nborvar['convergeTable']
-                self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = \
-                    (self.lamda.loc[self.lamda.index.isin(self.flows_with_neighbor[k].index)] +
-                     nborvar['lambda'] + self.flows_with_neighbor[k] * self.rho + nborvar['flow'] * nborvar['rho']) \
-                    / (self.rho + nborvar['rho'])
-        self.dualgap += [self.rho * (np.sqrt(np.square(self.flow_global - flow_global_old).sum(axis=0)[0]))]
+        for k, msg in self.recvmsg.items():
+            nborvar = msg.fields  # nborvar['flow'], nborvar['convergeTable']
+            self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = \
+                (self.lamda.loc[self.lamda.index.isin(self.flows_with_neighbor[k].index)] +
+                    nborvar['lambda'] + self.flows_with_neighbor[k] * self.rho + nborvar['flow'] * nborvar['rho']) \
+                / (self.rho + nborvar['rho'])
+        self.dualgap.append(self.rho * (np.sqrt(np.square(self.flow_global - flow_global_old).sum(axis=0)[0])))
 
-For updating the global variable, a loop is made, checking for each source (neighboring cluster) whether a new message is present that is meant for the cluster in question (``self.recvmsg and self.recvmsg[k].tID == self.ID``), and if yes, the global variable is updated using the equation provided in the theoretical section of the documentation. After the global value is updated using information from all sending neighbors, the new value for the dual residual is also calculated.
+For updating the global variable, a loop is made, checking for each source (neighboring cluster) whether a new message is present, and if yes, the global variable is updated using the equation provided in the theoretical section of the documentation. After the global value is updated using information from all sending neighbors, the new value for the dual residual is also calculated.
 
-.. _update-y:
+.. _update_lamda:
 
-After updating the global flow value, the Lagrange multiplier update can be made by the ``update_y`` method using the equation provided in the theoretical section of the documentation::
+After updating the global flow value, the Lagrange multiplier update can be made by the ``update_lamda`` method using the equation provided in the theoretical section of the documentation::
 
-    def update_y(self):
+    def update_lamda(self):
         self.lamda = self.lamda + self.rho * (self.flows_all.loc[:, [0]] - self.flow_global)
 
 .. _update-rho:
 
 Then the quadratic penalty parameter is updated by the ``.update_rho`` method and then replaced by the maximum quadratic penalty parameter across all neighbors by the ``.choose_max_rho`` method::
 
-    # update rho and primal gap locally
     def update_rho(self, nu):
-        self.primalgap += [np.sqrt(np.square(self.flows_all - self.flow_global).sum(axis=0)[0])]
+        """
+        Calculate the new primal gap, append it to `self.primalgap` and store it in
+        `self.gapAll`.
+        Update `self.rho` according to the current primal and dual gaps unless the
+        current iteration is above `self.admmopt.rho_update_nu`.
+
+        ### Arguments
+        * `nu`: The current iteration.
+        """
+        self.primalgap.append(np.sqrt(np.square(self.flows_all - self.flow_global).sum(axis=0)[0]))
         # update rho (only in the first rho_iter_nu iterations)
         if nu <= self.admmopt.rho_update_nu:
             if self.primalgap[-1] > self.admmopt.mu * self.dualgap[-1]:
@@ -927,12 +932,12 @@ Then the quadratic penalty parameter is updated by the ``.update_rho`` method an
         # update local converge table
         self.gapAll[self.ID] = self.primalgap[-1]
 
-    #   # use the maximum rho among neighbors for local update
+
     def choose_max_rho(self):
-        srcs = self.recvmsg.keys()
-        for k in srcs:
-            rho_nbor = self.recvmsg[k].fields['rho']
-            self.rho = maximum(self.rho, rho_nbor)  # pick the maximum one
+        """
+        Set `self.rho` to the maximum rho value among self and neighbors.
+        """
+        self.rho = max(self.rho, *[msg.fields['rho'] for msg in self.recvmsg.values()])
 
 Whether the quadratic penalty parameter has to increase or decrease depends on the relation between ``primalgap`` and ``dualgap``, ``admmopt.tau``,  ``admmopt.tau_max`` ``admmopt.rho_max`` and ``admmopt.tau_max``. Therefore, before updating ``rho``, the primal residual ``primalgap`` is also calculated within this method. For a mathematical description of the ``rho`` update, please refer to page 20 of https://stanford.edu/class/ee367/reading/admm_distr_stats.pdf.
 
@@ -940,12 +945,11 @@ Whether the quadratic penalty parameter has to increase or decrease depends on t
 
 The convergence is checked with the method ``.converge``::
 
-    def converge(self):
-        # first update local converge table using received converge tables
-        if self.recvmsg is not None:
-            for k in self.recvmsg:
-                table = self.recvmsg[k].fields['convergeTable']
-                self.gapAll = list(map(min, zip(self.gapAll, table)))
+    def is_converged(self):
+        # first update local convergence table using received convergence tables
+        for msg in self.recvmsg.values():
+            table = msg.fields['convergeTable']
+            self.gapAll = list(map(min, zip(self.gapAll, table))) # TODO: is min adequate? Should we get the most recent value instead?
         # check if all local primal gaps < tolerance
         if max(self.gapAll) < self.convergetol:
             return True
@@ -959,6 +963,10 @@ Here, a convergence table is updated (or created, in case the first iteration) w
 The last method defined for ``UrbsAdmmModel`` is ``retrieve_boundary_flows``::
 
     def retrieve_boundary_flows(self):
+        """
+        Retrieve optimized flow values for shared lines from the solver and store them in
+        `self.flows_all` and `self.flows_with_neighbor`.
+        """
         e_tra_in_per_neighbor = {}
 
         self.sub_persistent.load_vars(self.sub_pyomo.e_tra_in[:, :, :, :, :, :])
@@ -979,7 +987,8 @@ The last method defined for ``UrbsAdmmModel`` is ``retrieve_boundary_flows``::
             e_tra_in_per_neighbor[neighbor].reset_index().set_index(['t', 'stf', 'sit', 'sit_'], inplace=True)
             e_tra_in_per_neighbor[neighbor].drop('neighbor_cluster', axis=1, inplace=True)
 
-        return e_tra_in_dict, e_tra_in_per_neighbor
+        self.flows_all = e_tra_in_dict
+        self.flows_with_neighbor = e_tra_in_per_neighbor
 
 This method loads the optimized flow variables from the model solution (``self.sub_persistent.load_vars(self.sub_pyomo.e_tra_in[:, :, :, :, :, :])``), and then applies to it a series of ``pd.DataFrame`` operations to produce the necessary data structures.
 

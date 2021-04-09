@@ -31,7 +31,7 @@ The initialized values of ADMM parameters can be set in the following :ref:`line
 ::
 
     for j in timesteps[1:]:
-        coup_vars.lambdas[cluster_idx, j, year, sit_from, sit_to] = 0
+        coup_vars.lamdas[cluster_idx, j, year, sit_from, sit_to] = 0
         coup_vars.rhos[cluster_idx, j, year, sit_from, sit_to] = 5
         coup_vars.flow_global[cluster_idx, j, year, sit_from, sit_to] = 0
 

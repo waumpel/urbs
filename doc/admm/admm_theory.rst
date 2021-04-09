@@ -106,7 +106,7 @@ The asynchronous ADMM algorithm for each subsystem :math:`k` operates as follows
 
 2) Check if at least :math:`\left \lceil{\eta \lVert \mathcal N_k \rVert}\right \rceil` neighbors have new information to provide. If not, wait for it. If a problem :math:`l` had already been solved multiple times since the last time information was received from it, pick the most recent information (corresponding to its current local iteration :math:`\nu_l`). (:func:`recv` is where this step is implemented):
 
-3) For each neighbor :math:`l` that provided new information, apply a modified averaging step (:func:`update_z` is where this step is implemented).
+3) For each neighbor :math:`l` that provided new information, apply a modified averaging step (:func:`update_flow_global` is where this step is implemented).
 
 .. math::
 
