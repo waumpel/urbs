@@ -120,13 +120,7 @@ This update step looks differently than that of synchronous ADMM, as it factors 
 
  \boldsymbol \lambda_{k}^{\nu_k+1}:=\boldsymbol \lambda_{k}^{\nu_k}+\rho \left(\boldsymbol y_{k}^{\nu_k+1}-{\boldsymbol y_{g,k}^{\nu_k+1}}\right)
 
-4) Update (all) consensus Lagrangian multipliers of subproblem :math:`k` as usual:
-
-.. math::
-
- \boldsymbol \lambda_{k}^{\nu_k+1}:=\boldsymbol \lambda_{k}^{\nu_k}+\rho \left(\boldsymbol y_{k}^{\nu_k+1}-{\boldsymbol y_{g,k}^{\nu_k+1}}\right)
-
-5) To check the convergence of a subproblem, collect all primal and dual residuals from the neighbors. If the maximum of these residuals is smaller than the convergence tolerance set for this subproblem, the subproblem converges:
+4) To check the convergence of a subproblem, collect all primal and dual residuals from the neighbors. If the maximum of these residuals is smaller than the convergence tolerance set for this subproblem, the subproblem converges:
 
 .. math::
 

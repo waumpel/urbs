@@ -5,202 +5,110 @@
 ############################################################################
 
 from copy import deepcopy
+from math import ceil
 import queue
 
 import numpy as np
-from numpy import maximum
 import pandas as pd
 import pyomo.environ as pyomo
+from pyomo.environ import SolverFactory
 
+from urbs.model import cost_rule_sub
 
 class UrbsAdmmModel(object):
-    """This class encapsulates the local urbs subproblem and implements admm steps
+    """
+    Encapsulates a local urbs subproblem and implements ADMM steps
     including x-update(solving subproblem), send data to neighbors, receive data
-    from neighbors, z-update (global flows) and y-update (lambdas)
+    from neighbors, z-update (global flows) and y-update (lambdas).
+
+    ### Members
+
+    `admmopt`: `AdmmOption` object.
+    `dualgap`: List holding the dual gaps after each iteration.
+    `flow_global`: `pd.Series` holding the global flow values. Index is
+        `['t', 'stf', 'sit', 'sit_']`.
+    `flows_all`: `pd.Series` holding the values of the local flow variables after each
+        solver iteration. Index is `['t', 'stf', 'sit', 'sit_']`. Initial value is `None`.
+    `flows_with_neighbor`: `pd.Series` holding the values of the local flow variables
+        with each neighbor after each solver iteration. Index is
+        `['t', 'stf', 'sit', 'sit_']`.Initial value is `None`.
+    `ID`: ID of this subproblem (zero-based integer).
+    `initial_values`: `InitialValues` object.
+    `lamda`: `pd.Series` holding the Lagrange multipliers. Index is
+        `['t', 'stf', 'sit', 'sit_']`.
+    `model`: `pyomo.ConcreteModel`.
+    `neighbors`: List of neighbor IDs.
+    `n_neighbors`: Number of neighbors.
+    `nwait`: Number of updated neighbors required for the next iteration.
+    `primalgap`: List of dual gaps after each iteration.
+    `received_neighbors`: List holding the number of updated neighbors in each iteration.
+    `receiving_queues`: Dict mapping each neighbor ID to a `mp.Queue` for receiving messages
+        from that neighbor.
+    `recvmsg`: Dict mapping each neighbor ID to the most recent message from that neighbor.
+    `result_dir`: Result directory.
+    `rho`: Quadratic penalty coefficient. Initial value taken from `initial_values`.
+    `scenario_name`: Scenario name.
+    `sending_queues`: Dict mapping each neighbor ID to a `mp.Queue` for sending messages to
+        that neighbor.
+    `shared_lines`: DataFrame of inter-cluster transmission lines. A copy of a slice of the
+        'Transmision' DataFrame, enriched with the columns `cluster_from`, `cluster_to` and
+        `neighbor_cluster`. Index is
+        `['support_timeframe', 'Site In', 'Site Out', 'Transmission', 'Commodity']`.
+    `shared_lines_index`: `shared_lines.index.to_frame()`.
+    `solver`: `GurobiPersistent` solver interface to `model`.
+    `terminated`: Flag indicating whether the solver for this model has terminated, i.e.
+        reached convergence or exceeded its maximum number of iterations.
     """
 
-    def __init__(self):
-        # initialize all the fields
-        self.shared_lines = None
+    def __init__(
+        self,
+        admmopt,
+        flow_global,
+        ID,
+        initial_values,
+        lamda,
+        neighbors,
+        receiving_queues,
+        result_dir,
+        scenario_name,
+        sending_queues,
+        shared_lines,
+        shared_lines_index,
+        model,
+    ):
+        self.admmopt = admmopt
+        self.dualgap = []
+        self.flow_global = flow_global
         self.flows_all = None
         self.flows_with_neighbor = None
-        self.flow_global = None
-        self.sub_pyomo = None
-        self.sub_persistent = None
-        self.neighbors = None
-        self.nneighbors = None
-        self.nwait = None
-        self.var = {'flow_global': None, 'rho': None}
-        self.ID = None
-        self.nbor = {}
-        self.pipes = None
-        self.sending_queues = None
-        self.receiving_queues = None
-        self.admmopt = AdmmOption()
-        self.recvmsg = {}
-        self.primalgap = [9999]
-        self.dualgap = [9999]
-        self.gapAll = None
-        self.rho = None
-        self.lamda = None
+        self.ID = ID
+        self.initial_values = initial_values
+        self.lamda = lamda
+        self.model = model
+        self.neighbors = neighbors
+        self.n_neighbors = len(neighbors)
+        self.nwait = ceil(self.n_neighbors * admmopt.wait_percent)
+        self.primalgap = []
         self.received_neighbors = []
+        self.receiving_queues = receiving_queues
+        self.recvmsg = {}
+        self.result_dir = result_dir
+        self.rho = initial_values.rho
+        self.scenario_name = scenario_name
+        self.sending_queues = sending_queues
+        self.shared_lines = shared_lines
+        self.shared_lines_index = shared_lines_index
+
+        self.solver = SolverFactory('gurobi_persistent')
+        self.solver.set_instance(model, symbolic_solver_labels=False)
+        self.solver.set_gurobi_param('Method', 2)
+        self.solver.set_gurobi_param('Threads', 1)
+
+        self.terminated = False
 
 
     def solve_problem(self):
-        self.sub_persistent.solve(save_results=False, load_solutions=False, warmstart=True)
-
-
-    # TODO: series check??
-    def fix_flow_global(self):
-        """
-        Fix the `flow_global` variables in the solver to the values in `self.flow_global`.
-        """
-        for key in self.flow_global.index:
-            self.sub_pyomo.flow_global[key].fix(self.flow_global.loc[key, 0])
-            self.sub_persistent.update_var(self.sub_pyomo.flow_global[key])
-
-
-    # TODO: series check??
-    def fix_lamda(self):
-        """
-        Fix the `lamda` variables in the solver to the values in `self.lamda`.
-        """
-        for key in self.lamda.index:
-            if not isinstance(self.lamda.loc[key], pd.core.series.Series):
-                self.sub_pyomo.lamda[key].fix(self.lamda.loc[key])
-                self.sub_persistent.update_var(self.sub_pyomo.lamda[key])
-            else:
-                self.sub_pyomo.lamda[key].fix(self.lamda.loc[key, 0])
-                self.sub_persistent.update_var(self.sub_pyomo.lamda[key])
-
-
-    def set_quad_cost(self, rho_old):
-        """
-        Update the objective function to reflect the difference between `self.rho` and
-        `rho_old`.
-
-        Call this method *after* `fix_flow_global`.
-        """
-        quadratic_penalty_change = 0
-        # Hard coded transmission name: 'hvac', commodity 'Elec' for performance.
-        # Caution, as these need to be adjusted if the transmission of other commodities exists!
-        for key in self.flow_global.index:
-            if (key[2] == 'Carbon_site') or (key[3] == 'Carbon_site'):
-                quadratic_penalty_change += 0.5 * (self.rho - rho_old) * \
-                    (self.sub_pyomo.e_tra_in[key, 'CO2_line', 'Carbon'] -
-                     self.sub_pyomo.flow_global[key]) ** 2
-            else:
-                quadratic_penalty_change += 0.5 * (self.rho - rho_old) * \
-                    (self.sub_pyomo.e_tra_in[key, 'hvac', 'Elec'] -
-                     self.sub_pyomo.flow_global[key]) ** 2
-
-        old_expression = self.sub_pyomo.objective_function.expr
-        self.sub_pyomo.del_component('objective_function')
-        self.sub_pyomo.add_component(
-            'objective_function',
-            pyomo.Objective(
-                expr = old_expression + quadratic_penalty_change, sense=pyomo.minimize
-            )
-        )
-        self.sub_persistent.set_objective(self.sub_pyomo.objective_function)
-
-
-    def send(self):
-        for k, que in self.sending_queues.items():
-            # prepare the message to be sent to neighbor k
-            msg = AdmmMessage()
-            msg.config(self.ID, k, self.flows_with_neighbor[k], self.rho,
-                       self.lamda[self.lamda.index.isin(self.flows_with_neighbor[k].index)],
-                       self.gapAll)
-            que.put(msg)
-
-
-    def recv(self, pollrounds=5):
-        self.recvmsg = {}
-        twait = self.admmopt.pollWaitingtime
-        recv_flag = [0] * self.nneighbors
-
-        for _ in range(pollrounds):
-            # read accumulated messages from all neighbors
-            for i, (k, que) in zip(range(self.nneighbors), self.receiving_queues.items()):
-                while not que.empty():
-                    self.recvmsg[k] = que.get(block=False) # don't wait
-                    recv_flag[i] = 1
-
-            # break if enough neighbors have been received
-            if sum(recv_flag) >= self.nwait:
-                break
-
-            # otherwise, wait for a message from the last neighbor
-            k, que = list(self.receiving_queues.items())[-1]
-            try:
-                self.recvmsg[k] = que.get(timeout=twait)
-                recv_flag[-1] = 1
-
-            except queue.Empty:
-                pass
-
-        # store number of received neighbors
-        self.received_neighbors.append(sum(recv_flag))
-
-
-    def update_flow_global(self):
-        """
-        Update `self.flow_global` for all neighbors who sent messages. Calculate the new
-        dual gap and append it to `self.dualgap`.
-        """
-        flow_global_old = deepcopy(self.flow_global)
-        for k, msg in self.recvmsg.items():
-            nborvar = msg.fields  # nborvar['flow'], nborvar['convergeTable']
-            self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = \
-                (self.lamda.loc[self.lamda.index.isin(self.flows_with_neighbor[k].index)] +
-                    nborvar['lambda'] + self.flows_with_neighbor[k] * self.rho + nborvar['flow'] * nborvar['rho']) \
-                / (self.rho + nborvar['rho'])
-        self.dualgap.append(self.rho * (np.sqrt(np.square(self.flow_global - flow_global_old).sum(axis=0)[0])))
-
-
-    def update_lamda(self):
-        self.lamda = self.lamda + self.rho * (self.flows_all.loc[:, [0]] - self.flow_global)
-
-
-    def update_rho(self, nu):
-        """
-        Calculate the new primal gap, append it to `self.primalgap` and store it in
-        `self.gapAll`.
-        Update `self.rho` according to the current primal and dual gaps unless the
-        current iteration is above `self.admmopt.rho_update_nu`.
-
-        ### Arguments
-        * `nu`: The current iteration.
-        """
-        self.primalgap.append(np.sqrt(np.square(self.flows_all - self.flow_global).sum(axis=0)[0]))
-        # update rho (only in the first rho_iter_nu iterations)
-        if nu <= self.admmopt.rho_update_nu:
-            if self.primalgap[-1] > self.admmopt.mu * self.dualgap[-1]:
-                self.rho = min(self.admmopt.rho_max, self.rho * self.admmopt.tau)
-            elif self.dualgap[-1] > self.admmopt.mu * self.primalgap[-1]:
-                self.rho = min(self.rho / self.admmopt.tau, self.admmopt.rho_max)
-        # update local converge table
-        self.gapAll[self.ID] = self.primalgap[-1]
-
-
-    def choose_max_rho(self):
-        """
-        Set `self.rho` to the maximum rho value among self and neighbors.
-        """
-        self.rho = max(self.rho, *[msg.fields['rho'] for msg in self.recvmsg.values()])
-
-
-    def is_converged(self):
-        # first update local convergence table using received convergence tables
-        for msg in self.recvmsg.values():
-            table = msg.fields['convergeTable']
-            self.gapAll = list(map(min, zip(self.gapAll, table))) # TODO: is min adequate? Should we get the most recent value instead?
-        # check if all local primal gaps < tolerance
-        if max(self.gapAll) < self.convergetol:
-            return True
-        else:
-            return False
+        self.solver.solve(save_results=False, load_solutions=False, warmstart=True)
 
 
     def retrieve_boundary_flows(self):
@@ -208,33 +116,207 @@ class UrbsAdmmModel(object):
         Retrieve optimized flow values for shared lines from the solver and store them in
         `self.flows_all` and `self.flows_with_neighbor`.
         """
-        e_tra_in_per_neighbor = {}
+        index = self.shared_lines_index
 
-        self.sub_persistent.load_vars(self.sub_pyomo.e_tra_in[:, :, :, :, :, :])
-        boundary_lines_pairs = self.shared_lines.reset_index().set_index(['Site In', 'Site Out']).index
-        e_tra_in_dict = {(tm, stf, sit_in, sit_out): v.value for (tm, stf, sit_in, sit_out, tra, com), v in
-                         self.sub_pyomo.e_tra_in.items() if ((sit_in, sit_out) in boundary_lines_pairs)}
+        self.solver.load_vars(self.model.e_tra_in[:, :, :, :, :, :])
 
-        e_tra_in_dict = pd.DataFrame(list(e_tra_in_dict.values()),
-                                     index=pd.MultiIndex.from_tuples(e_tra_in_dict.keys())).rename_axis(
-            ['t', 'stf', 'sit', 'sit_'])
+        flows_all = {}
+        flows_with_neighbor = {k: {} for k in self.neighbors}
 
-        for (tm, stf, sit_in, sit_out) in e_tra_in_dict.index:
-            e_tra_in_dict.loc[(tm, stf, sit_in, sit_out), 'neighbor_cluster'] = self.shared_lines.reset_index(). \
-                set_index(['support_timeframe', 'Site In', 'Site Out']).loc[(stf, sit_in, sit_out), 'neighbor_cluster']
+        for (tm, stf, sit_in, sit_out, tra, com), v in self.model.e_tra_in.items():
+            if (sit_in, sit_out) in zip(index['Site In'], index['Site Out']):
+                flows_all[(tm, stf, sit_in, sit_out)] = v.value
+                k = self.shared_lines.loc[(stf, sit_in, sit_out, tra, com), 'neighbor_cluster']
+                flows_with_neighbor[k][(tm, stf, sit_in, sit_out)] = v.value
 
-        for neighbor in self.neighbors:
-            e_tra_in_per_neighbor[neighbor] = e_tra_in_dict.loc[e_tra_in_dict['neighbor_cluster'] == neighbor]
-            e_tra_in_per_neighbor[neighbor].reset_index().set_index(['t', 'stf', 'sit', 'sit_'], inplace=True)
-            e_tra_in_per_neighbor[neighbor].drop('neighbor_cluster', axis=1, inplace=True)
 
-        self.flows_all = e_tra_in_dict
-        self.flows_with_neighbor = e_tra_in_per_neighbor
+        flows_all = pd.Series(flows_all)
+        flows_all.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+
+        for k in flows_with_neighbor:
+            flows = pd.Series(flows_with_neighbor[k])
+            flows.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+            flows_with_neighbor[k] = flows
+
+        self.flows_all = flows_all
+        self.flows_with_neighbor = flows_with_neighbor
+
+
+    def active_neighbors(self):
+        """
+        Return a list of IDs of those neighbors who have not terminated yet.
+        """
+        return [
+            k for k in self.neighbors
+            if k not in self.recvmsg or not self.recvmsg[k].terminated
+        ]
+
+
+    def recv(self, block):
+        """
+        Check for new messages from active neighbors and store them in `self.recvmsg`.
+
+        If `block` is true, wait for messages from at least `self.n_wait` neighbors
+        (or fewer if not enough neighbors remain active).
+        If `block` is false, perform at most `self.admmopt.pollrounds` pollrounds.
+
+        Return the number of updated neighbors and append that number to
+        `self.received_neighbors`.
+        """
+        active_neighbors = self.active_neighbors()
+        n_wait = min(self.nwait, len(active_neighbors))
+        twait = self.admmopt.poll_wait_time
+        pollrounds = self.admmopt.pollrounds
+        pollround = 0
+        new_msgs = {}
+
+        while len(new_msgs) < n_wait:
+            # read accumulated messages from active neighbors
+            for k in active_neighbors:
+                que = self.receiving_queues[k]
+                while not que.empty():
+                    new_msgs[k] = que.get(block=False) # don't wait
+
+            # otherwise, wait for a message from the last neighbor
+            k = active_neighbors[-1]
+            que = self.receiving_queues[k]
+            try:
+                new_msgs[k] = que.get(timeout=twait)
+            except queue.Empty:
+                pass
+
+            pollround += 1
+            # break if non-blocking and pollrounds exceeded
+            if not block and pollround >= pollrounds:
+                break
+
+        # store new messages
+        self.recvmsg.update(new_msgs)
+
+        # store and return number of received neighbors
+        nrecv = len(new_msgs)
+        self.received_neighbors.append(nrecv)
+        return nrecv
+
+
+    def send(self):
+        """
+        Send an `AdmmMessage` with the current status to each neighbor.
+        """
+        for k, que in self.sending_queues.items():
+            msg = AdmmMessage(
+                self.ID,
+                k,
+                self.flows_with_neighbor[k],
+                self.rho,
+                self.lamda[self.lamda.index.isin(self.flows_with_neighbor[k].index)],
+                self.primalgap[-1],
+                self.terminated
+            )
+            que.put(msg)
+
+
+    def update_flow_global(self):
+        """
+        Update `self.flow_global` for ALL neighbors, using the values from the most recent
+        messages. If a neighbor hasn't sent any messages yet, the `initial_values` are used.
+        Also calculate the new dual gap and append it to `self.dualgap`.
+        """
+        flow_global_old = deepcopy(self.flow_global)
+        for k in self.neighbors:
+            if k in self.recvmsg:
+                msg = self.recvmsg[k]
+                lamda = msg.lamda
+                flow = msg.flow
+                rho = msg.rho
+            else:
+                lamda = self.initial_values.lamda
+                flow = self.initial_values.flow
+                rho = self.initial_values.rho
+
+            self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = (
+                (self.lamda.loc[self.lamda.index.isin(self.flows_with_neighbor[k].index)] +
+                 lamda + self.flows_with_neighbor[k] * self.rho + flow * rho) /
+                (self.rho + rho))
+
+        self.dualgap.append(
+            self.rho * np.sqrt(
+                np.square(self.flow_global - flow_global_old).sum(axis=0)
+            )
+        )
+
+
+    def update_lamda(self):
+        """
+        Update `self.lamda` using the updated values of `self.flows_all` and
+        `self.flow_global`.
+        """
+        self.lamda = self.lamda + self.rho * (self.flows_all - self.flow_global)
+
+
+    def update_rho(self, nu):
+        """
+        Calculate the new primal gap, append it to `self.primalgap`.
+        Update `self.rho` according to the new primal and dual gaps unless the
+        current iteration is above `self.admmopt.rho_update_nu`.
+
+        ### Arguments
+        * `nu`: The current iteration.
+        """
+        # primal gap normalized by number of global constraints
+        primalgap = np.sqrt(np.square(self.flows_all - self.flow_global).sum(axis=0)) \
+            / min(1, len(self.flow_global))
+        self.primalgap.append(primalgap)
+
+        if nu <= self.admmopt.rho_update_nu:
+            if primalgap > self.admmopt.mu * self.dualgap[-1]:
+                self.rho = min(self.admmopt.rho_max, self.rho * self.admmopt.tau)
+            elif self.dualgap[-1] > self.admmopt.mu * primalgap:
+                self.rho = min(self.rho / self.admmopt.tau, self.admmopt.rho_max)
+
+
+    def update_cost_rule(self):
+        """
+        Update those components of `self.model` that use `cost_rule_sub` to reflect
+        changes to `self.flow_global`, `self.lamda` and `self.rho`.
+        Currently only supports models with `cost` objective, i.e. only the objective
+        function is updated.
+        """
+        m = self.model
+        if m.obj.value == 'cost':
+            m.del_component(m.objective_function)
+            m.objective_function = pyomo.Objective(
+                rule=cost_rule_sub(flow_global=self.flow_global,
+                                   lamda=self.lamda,
+                                   rho=self.rho),
+                sense=pyomo.minimize,
+                doc='minimize(cost = sum of all cost types)')
+
+            self.solver.set_objective(m.objective_function)
+        else:
+            raise NotImplementedError("Objectives other than 'cost' are not supported.")
+
+
+    def choose_max_rho(self):
+        """
+        Set `self.rho` to the maximum rho value among self and neighbors.
+        """
+        self.rho = max(self.rho, *[msg.rho for msg in self.recvmsg.values()])
+
+
+    def is_converged(self):
+        """
+        Return whether the current primal gap is below the tolerance threshold.
+        """
+        return self.primalgap[-1] < self.admmopt.primal_tolerance
 
 
 # ##--------ADMM parameters specification -------------------------------------
 class AdmmOption(object):
-    """ This class defines all the parameters to use in admm """
+    """
+    This class defines all the parameters to use in ADMM.
+    """
+    # TODO: docstring
 
     def __init__(self):
         self.rho_max = 10  # upper bound for penalty rho
@@ -243,32 +325,25 @@ class AdmmOption(object):
         self.zeta = 1  # parameter for residual balancing of rho
         self.theta = 0.99  # multiplier for determining whether to update rho
         self.mu = 10  # multiplier for determining whether to update rho
-        self.pollWaitingtime = 0.001  # waiting time of receiving from one pipe
-        self.nwaitPercent = 0.2  # waiting percentage of neighbors (0, 1]
-        self.iterMaxlocal = 20  # local maximum iteration
-        #self.convergetol = 365 * 10 ** 1#  convergence criteria for maximum primal gap
+        self.pollrounds = 5
+        self.poll_wait_time = 0.001  # waiting time of receiving from one pipe
+        self.wait_percent = 0.2  # waiting percentage of neighbors (0, 1]
+        self.max_iter = 20  # local maximum iteration
         self.rho_update_nu = 50 # rho is updated only for the first 50 iterations
-        self.conv_rel = 0.1 # the relative convergece tolerance, to be multiplied with len(s.flow_global)
+        self.primal_tolerance = 0.1 # the relative convergece tolerance, to be multiplied with len(s.flow_global)
 
 
 class AdmmMessage(object):
-    """ This class defines the message region i sends to/receives from j """
+    """
+    This class defines the message region i sends to/receives from j.
+    """
+    # TODO: docstring
 
-    def __init__(self):
-        self.fID = 0  # source region ID
-        self.tID = 0  # destination region ID
-        self.fields = {
-            'flow': None,
-            'rho': None,
-            'lambda': None,
-            'convergeTable': None}
-
-
-    def config(self, f, t, var_flow, var_rho, var_lambda, gapall):  # AVall and var are local variables of f region
-        self.fID = f
-        self.tID = t
-
-        self.fields['flow'] = var_flow
-        self.fields['rho'] = var_rho
-        self.fields['lambda'] = var_lambda
-        self.fields['convergeTable'] = gapall
+    def __init__(self, source, target, flow, rho, lamda, primalgap, terminated):
+        self.source = source  # source region ID
+        self.target = target  # destination region ID
+        self.flow = flow
+        self.rho = rho
+        self.lamda = lamda
+        self.primalgap = primalgap
+        self.terminated = terminated

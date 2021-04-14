@@ -35,6 +35,7 @@ Let us start with the imported packages:
 
 ::
 
+    import argparse
     from multiprocessing import freeze_support
     import os
     import shutil
@@ -46,6 +47,13 @@ Let us start with the imported packages:
 
 
 ``run_regional`` commences the ADMM routine. ``freeze_support`` allows for parallel operation on Windows systems.
+
+Parsing command line arguments::
+
+    options = argparse.ArgumentParser()
+    options.add_argument('-c', '--centralized', action='store_true',
+                        help='Additionally compute the centralized solution for comparison.')
+    args = options.parse_args()
 
 Moving on to the input settings:
 
@@ -135,11 +143,15 @@ Finally, the ``urbs.run_regional`` function is called, commencing the ADMM routi
 
     if __name__ == '__main__':
         freeze_support()
-        for scenario in test_scenarios:
-            timesteps = range(offset, offset + length + 1)
-            prob = run_regional(input_path, timesteps,
-                                scenario,result_dir,dt,objective,
-                                clusters=clusters)
+        for scenario in scenarios:
+            run_regional(input_file=input_path,
+                        timesteps=timesteps,
+                        scenario=scenario,
+                        result_dir=result_dir,
+                        dt=dt,
+                        objective=objective,
+                        clusters=clusters,
+                        centralized = args.centralized)
 
 To read about the ``run_regional`` function, please proceed to the next section, where the ``runfunctions_admm.py`` script, where this function resides, is described.
 
@@ -151,7 +163,6 @@ runfunctions_admm.py
 Imports::
 
     from datetime import date, datetime
-    from math import ceil
     import multiprocessing as mp
     import os
     import queue
@@ -166,8 +177,7 @@ Imports::
     from urbs.input import read_input, add_carbon_supplier
     from urbs.validation import validate_dc_objective, validate_input
     from .run_worker import run_worker
-    from .urbs_admm_model import UrbsAdmmModel
-
+    from .urbs_admm_model import AdmmOption, UrbsAdmmModel
 
 Besides the usual imports of ``runfunctions.py``, additional imports are necessary:
 
@@ -182,19 +192,28 @@ Besides the usual imports of ``runfunctions.py``, additional imports are necessa
 - ``numpy`` and ``math.ceil`` are required for array operations and a ceiling function respectively.
 
 
-.. _coup-vars:
+.. _initial_values:
 
-Class ``CouplingVars`` is defined to store some coupling parameters::
+Class ``InitialValues`` is used to hold initial values for several variables and parameters.::
 
-    class CouplingVars:
+    class InitialValues:
+        """
+        Holds the initial values for several variables and parameters.
+        Intended use: Each member holds a scalar value that is used for all values in a
+        `pd.Series` or `pd.DataFrame`.
 
-        def __init__(self):
-            self.flow_global = {}
-            self.rhos = {}
-            self.lamdas = {}
-            self.cap_global = {}
-            self.residdual = {}
-            self.residprim = {}
+        ### Members:
+        * `flow`
+        * `flow_global`
+        * `rho`
+        * `lamda`
+        """
+
+        def __init__(self, flow, flow_global, rho, lamda):
+            self.flow = flow
+            self.flow_global = flow_global
+            self.rho = rho
+            self.lamda = lamda
 
 Functions ``prepare_result_directory`` and ``setup_solver`` are unchanged except enforcing the barrier method for the gurobi solver (``method=2``). Please note that only gurobi is supported as a solver in this implementation!::
 
@@ -245,8 +264,14 @@ Now that the auxiliary functions are explained, the main function of this script
 
 The docstring of the function gives an overview regarding the input and output arguments::
 
-    def run_regional(input_file, timesteps, scenario, result_dir,
-                     dt, objective, clusters=None):
+    def run_regional(input_file,
+                    timesteps,
+                    scenario,
+                    result_dir,
+                    dt,
+                    objective,
+                    clusters,
+                    centralized=False):
         """ run an urbs model for given input, time steps and scenario with regional decomposition using ADMM
 
         Args:
@@ -270,7 +295,7 @@ First, the model year is hard-coded to be used as the support year (``stf``) ind
 Then, similarly to regular urbs, the scenario is set up, the model data is read and and validations are made in the following steps::
 
     # scenario name, read and modify data for scenario
-    sce = scenario.__name__
+    scenario_name = scenario.__name__
     data_all = read_input(input_file, year)
     data_all = scenario(data_all)
     validate_input(data_all)
@@ -282,24 +307,7 @@ If there is a global CO2 limit set in the model, the necessary modifications to 
         data_all = add_carbon_supplier(data_all, clusters)
         clusters.append(['Carbon_site'])
 
-A `CouplingVars` :ref:`class <coup-vars>` is initialized::
-
-    # initiate a coupling-variables Class
-    coup_vars = CouplingVars()
-
-In the following code section, the ``Transmission`` DataFrame is sliced for each cluster (with index ``cluster_idx``), such that ``shared_lines[cluster_idx]`` comprises only the transmission lines which are interfacing with a neighboring cluster and, conversely, ``internal_lines[cluster_idx]`` consists of the transmission lines that connect the sites within the cluster. Afterwards, the ADMM parameters ``coup_vars.lamdas``, ``coup_vars.rhos`` and ``coup_vars.flow_global`` are initialized with the following indices:
-
-- ``cluster_idx``: each cluster index,
-- ``j``: each modelled time-step,
-- ``year``: the support timeframe (a single year in this case),
-- ``sit_from``: first end of the transmission line (obtained from ``shared_lines[cluster_idx]``)
-- ``sit_to``: second end of the transmission line (obtained from ``shared_lines[cluster_idx]``)
-
-.. _init-vals-section:
-
-::
-
-    # identify the shared and internal lines
+Now, a dict is set up that maps the name of each site to the index of the cluster it belongs to::
 
     nclusters = len(clusters)
 
@@ -308,6 +316,14 @@ In the following code section, the ``Transmission`` DataFrame is sliced for each
     for cluster, cluster_idx in zip(clusters, range(nclusters)):
         for site in cluster:
             site_cluster_map[site] = cluster_idx
+
+In the following code section, the ``Transmission`` DataFrame is sliced for each cluster (with index ``cluster_idx``), such that ``shared_lines[cluster_idx]`` comprises only the transmission lines which are interfacing with a neighboring cluster and, conversely, ``internal_lines[cluster_idx]`` consists of the transmission lines that connect the sites within the cluster.
+
+.. _init-vals-section:
+
+::
+
+    # identify the shared and internal lines
 
     # used as indices for creating `shared_lines` and `internal_lines`
     shared_lines_logic = np.zeros((nclusters, data_all['transmission'].shape[0]), dtype=bool)
@@ -340,12 +356,12 @@ In the following code section, the ``Transmission`` DataFrame is sliced for each
             internal_lines_logic[from_cluster_idx, row] = True
             internal_lines_logic[to_cluster_idx, row] = True
 
-    # map cluster_idx -> slice of data_all['transmission']
+    # map cluster_idx -> slice of data_all['transmission'] (copies)
     shared_lines = [
         data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]]
         for cluster_idx in range(0, nclusters)
     ]
-    # map cluster_idx -> slice of data_all['transmission']
+    # map cluster_idx -> slice of data_all['transmission'] (copies)
     internal_lines = [
         data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]]
         for cluster_idx in range(0, nclusters)
@@ -356,128 +372,97 @@ In the following code section, the ``Transmission`` DataFrame is sliced for each
         for cluster_idx in range(0, nclusters)
     ]
 
-    # initialize coupling variables
-    for cluster_idx in range(0, nclusters):
-        for i in range(0, shared_lines[cluster_idx].shape[0]):
-            sit_from = shared_lines[cluster_idx].iloc[i].name[1]
-            sit_to = shared_lines[cluster_idx].iloc[i].name[2]
+Before the individual subproblems are created, an ``InitialValues`` object and several queues for communication between clusters are initialized::
 
-            for j in timesteps[1:]:
-                coup_vars.lamdas[cluster_idx, j, year, sit_from, sit_to] = 0
-                coup_vars.rhos[cluster_idx, j, year, sit_from, sit_to] = 5
-                coup_vars.flow_global[cluster_idx, j, year, sit_from, sit_to] = 0
+    admmopt = AdmmOption()
 
-.. _orig-solve-section:
-
-In the following optional step, the original problem is built and solved. This is the same as the regular urbs routine, and is used for testing purposes (e.g. comparing the ADMM result against this, making a runtime test). For your actual usage, feel free to comment this section out::
-
-    # (optional) create the central problem to compare results
-    prob = create_model(data_all, timesteps, dt, type='normal')
-
-    # refresh time stamp string and create filename for logfile
-    log_filename = os.path.join(result_dir, '{}.log').format(sce)
-
-    # setup solver
-    solver_name = 'gurobi'
-    optim = SolverFactory(solver_name)  # cplex, glpk, gurobi, ...
-    optim = setup_solver(optim, logfile=log_filename)
-
-    # original problem solution (not necessary for ADMM, to compare results)
-    orig_time_before_solve = time.time()
-    results_prob = optim.solve(prob, tee=False)
-    orig_time_after_solve = time.time()
-    orig_duration = orig_time_after_solve - orig_time_before_solve
-    flows_from_original_problem = dict((name, entity.value) for (name, entity) in prob.e_tra_in.items())
-    flows_from_original_problem = pd.DataFrame.from_dict(flows_from_original_problem, orient='index',
-                                                         columns=['Original'])
-
-In the next code section, ``problems``, a list of ``UrbsAdmmModel`` Classes and ``sub``, a dictionary for keeping the Pyomo object of subproblems are initialized. Next, the following steps take place for each region cluster ``cluster_idx``:
-
-- ``problem`` which is an instance of the ``UrbsAdmmModel`` class, is initialized (please see the UrbsAdmmModel, init Section),
-- a Pyomo object for the subproblem is created using the ``urbs.create_model`` function with the ``type='sub'`` option, See the modified create_model in the model.py changes). This Pyomo instance is stored in the attribute ``sub_pyomo`` of ``problem``,
-- initial values for the global coupling variable values are stored in ``problem.flow_global``, which is a subset of ``coup_vars.flow_global`` where the ``cluster_idx`` corresponds to the cluster in question,
-- initial values for the consensus dual variables are stored in ``problem.lamda``, which is a subset of ``coup_vars.lamdas`` where the ``cluster_idx`` corresponds to the cluster in question,
-- initial value for the quadratic penalty parameter is stored in ``problem.rho``,
-- the unique index of the cluster is stored in ``problem.ID``,
-- the result directory and the scenario name are stored in the ``problem.result_dir`` and ``problem.sce`` respectively,
-- the ``cluster_from``, ``cluster_to`` and ``neighbor_cluster`` columns are appended to ``shared_lines[cluster_idx]`` DataFrame using the ``calculate_neighbor_cluster_per_line`` function. The appended DataFrame is then stored in ``problem.shared_lines``
-- the information for the total number of clusters is stored in ``problem.na``
-- the prepared instance ``problem`` is added to the list of ``problems``
-
-.. _init-vals-section2:
-
- ::
-
-    problems = []
-    sub = {}
-
-    # initiate urbs_admm_model Classes for each subproblem
-    for cluster_idx in range(0, nclusters):
-        problem = UrbsAdmmModel()
-        sub[cluster_idx] = urbs.create_model(data_all, timesteps, type='sub',
-                                             sites=clusters[cluster_idx],
-                                             coup_vars=coup_vars,
-                                             data_transmission_boun=shared_lines[cluster_idx],
-                                             data_transmission_int=internal_lines[cluster_idx],
-                                             cluster=cluster_idx)
-        problem.sub_pyomo = sub[cluster_idx]
-        problem.flow_global = {(key[1], key[2], key[3], key[4]): value
-                               for (key, value) in coup_vars.flow_global.items() if key[0] == cluster_idx}
-        problem.flow_global = pd.Series(problem.flow_global)
-        problem.flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-        problem.flow_global = problem.flow_global.to_frame()
-
-        problem.lamda = {(key[1], key[2], key[3], key[4]): value
-                         for (key, value) in coup_vars.lamdas.items() if key[0] == cluster_idx}
-        problem.lamda = pd.Series(problem.lamda)
-        problem.lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-        problem.lamda = problem.lamda.to_frame()
-
-        problem.rho = 5
-
-        problem.ID = cluster_idx
-        problem.result_dir = result_dir
-        problem.sce = sce
-        # enlarge shared_lines (copies of slices of data_all['transmission'])
-        shared_lines[cluster_idx]['cluster_from'] = cluster_from[cluster_idx]
-        shared_lines[cluster_idx]['cluster_to'] = cluster_to[cluster_idx]
-        shared_lines[cluster_idx]['neighbor_cluster'] = neighbor_cluster[cluster_idx]                clusters)
-        problem.shared_lines = shared_lines[cluster_idx]
-        problem.na = nclusters
-        problems.append(problem)
-
-In the next step, ``queues`` are created for each communication channel. These are then stored in the respective ``problem``, along with the following attributes:
-
-- ``neighbors``: the indices of clusters that neighbor the cluster in question,
-- ``nneighbors``: the number of neighboring clusters,
-- ``nwait``: the number of neighboring subproblems, that the subproblem has to wait for in order to move on to the next iteration. This is calculated using the product ``admmopt.nwaitPercent`` of ``nneighbors``, rounded up.
-
-::
+    initial_values = InitialValues(
+        flow=0,
+        flow_global=0,
+        lamda=0,
+        rho=5
+    )
 
     # create Queues for each communication channel
     queues = {
         source: {
-            target: mp.Manager().Queue()
+            target: mp.Manager().Queue() # TODO: is creation of multiple managers intended?
             for target in neighbors[source]
         }
         for source in range(nclusters)
     }
 
-    # define further necessary fields for the subproblems
+In the next code section, an ``UrbsAdmmModel`` is initialized for each cluster and stored in the list ``problems``. Each model's pyomo model is stored in the dict ``sub``. Several variables are initialized and passed to ``create_model`` and the ``UrbsAdmmModel`` constructor:
+
+- ``index``: An auxiliary dataframe for identifying the sites at either end of shared lines.
+- ``flow_global``: A dataframe holding the initial values of the global flow variables for all shared lines. Its index is ``['t', 'stf', 'sit', 'sit_']``.
+- ``lamda``: A dataframe holding the initial values of the Lagrange multipliers for all shared lines. Its index is ``['t', 'stf', 'sit', 'sit_']``.
+- ``model``: A ``pyomo.ConcreteModel`` constructed by ``create_model``. Note that ``type='sub'`` is passed as an argument indicating that a subproblem for the ADMM algorithm is created.
+- ``receiving_queues``: A dict of queues for receiving messages.
+- ``shared_lines`` is enlarged by the columns ``cluster_from, cluster_to, neighbor_cluster``.
+
+.. _init-vals-section2:
+
+::
+
+    problems = []
+    sub = {}
+
+    # initialize pyomo models and `UrbsAdmmModel`s
     for cluster_idx in range(0, nclusters):
-        problem = problems[cluster_idx]
-        problem.neighbors = neighbors[cluster_idx]
+        index = shared_lines[cluster_idx].index.to_frame()
 
-        problem.nneighbors = len(problem.neighbors)
+        flow_global = pd.Series({
+            (t, year, source, target): initial_values.flow_global
+            for t in timesteps[1:]
+            for source, target in zip(index['Site In'], index['Site Out'])
+        })
+        flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
 
-        problem.sending_queues = queues[cluster_idx]
-        problem.receiving_queues = {
+        lamda = pd.Series({
+            (t, year, source, target): initial_values.lamda
+            for t in timesteps[1:]
+            for source, target in zip(index['Site In'], index['Site Out'])
+        })
+        lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+
+        model = create_model(data_all, timesteps, type='sub',
+                             sites=clusters[cluster_idx],
+                             data_transmission_boun=shared_lines[cluster_idx],
+                             data_transmission_int=internal_lines[cluster_idx],
+                             flow_global=flow_global,
+                             lamda=lamda,
+                             rho=initial_values.rho)
+
+        sub[cluster_idx] = model
+
+        receiving_queues = {
             target: queues[target][cluster_idx]
             for target in neighbors[cluster_idx]
         }
 
-        problem.nwait = ceil(
-            problem.nneighbors * problem.admmopt.nwaitPercent)
+        # enlarge shared_lines (copies of slices of data_all['transmission'])
+        shared_lines[cluster_idx]['cluster_from'] = cluster_from[cluster_idx]
+        shared_lines[cluster_idx]['cluster_to'] = cluster_to[cluster_idx]
+        shared_lines[cluster_idx]['neighbor_cluster'] = neighbor_cluster[cluster_idx]
+
+        problem = UrbsAdmmModel(
+            admmopt = admmopt,
+            flow_global = flow_global,
+            ID = cluster_idx,
+            initial_values = initial_values,
+            lamda = lamda,
+            model = model,
+            neighbors = neighbors[cluster_idx],
+            receiving_queues = receiving_queues,
+            result_dir = result_dir,
+            scenario_name = scenario_name,
+            sending_queues = queues[cluster_idx],
+            shared_lines = shared_lines[cluster_idx],
+            shared_lines_index = index,
+        )
+
+        problems.append(problem)
 
 Then, another Queue is created, which is used by each subproblem after they converge to send their solutions::
 
@@ -524,33 +509,72 @@ While the processes are running, attempts to fetch results from ``output`` is ma
 
 .. _test-section:
 
+Now the computation time is measured and the results are collected.
 
-Finally, the subproblem results are recovered and compared against the original problem in the following code section::
-
-    # ------------get results ---------------------------
     ttime = time.time()
     tclock = time.clock()
     totaltime = ttime - start_time
     clocktime = tclock - start_clock
 
+    # get results
     results = sorted(results, key=lambda x: x[0])
 
     obj_total = 0
-    obj_cent = results_prob['Problem'][0]['Lower bound']
 
     for cluster_idx in range(0, nclusters):
         if cluster_idx != results[cluster_idx][0]:
             print('Error: Result of worker %d not returned!' % (cluster_idx + 1,))
             break
-        obj_total += results[cluster_idx][1]['cost']
+        obj_total += results[cluster_idx][1]['cost'][-1]
 
-    gap = (obj_total - obj_cent) / obj_cent * 100
-    print('The convergence time for original problem is %f' % (orig_duration,))
+If the optional ``centralized`` is passed, the urbs model is additionally solved in a centralized fashion, i.e. withouth ADMM. This is useful for benchmarking and analyzing ADMM::
+
+    # (optinal) solve the centralized problem
+    if centralized:
+        prob = create_model(data_all, timesteps, dt, type='normal')
+
+        # refresh time stamp string and create filename for logfile
+        log_filename = os.path.join(result_dir, '{}.log').format(scenario_name)
+
+        # setup solver
+        solver_name = 'gurobi'
+        optim = SolverFactory(solver_name)  # cplex, glpk, gurobi, ...
+        optim = setup_solver(optim, logfile=log_filename)
+
+        # original problem solution (not necessary for ADMM, to compare results)
+        orig_time_before_solve = time.time()
+        results_prob = optim.solve(prob, tee=False)
+        orig_time_after_solve = time.time()
+        orig_duration = orig_time_after_solve - orig_time_before_solve
+        flows_from_original_problem = dict((name, entity.value) for (name, entity) in prob.e_tra_in.items())
+        flows_from_original_problem = pd.DataFrame.from_dict(flows_from_original_problem, orient='index',
+                                                         columns=['Original'])
+
+        obj_cent = results_prob['Problem'][0]['Lower bound']
+
+Finally, some results are printed out and written to a log file::
+
+    # print results
     print('The convergence time for ADMM is %f' % (totaltime,))
     print('The convergence clock time is %f' % (clocktime,))
     print('The objective function value is %f' % (obj_total,))
-    print('The central objective function value is %f' % (obj_cent,))
-    print('The gap in objective function is %f %%' % (gap,))
+
+    if centralized:
+        gap = (obj_total - obj_cent) / obj_cent * 100
+        print('The convergence time for original problem is %f' % (orig_duration,))
+        print('The central objective function value is %f' % (obj_cent,))
+        print('The gap in objective function is %f %%' % (gap,))
+
+    # testlog
+    file_object = open('log_for_test.txt', 'a')
+    file_object.write('Timesteps for this test is %f' % (len(timesteps),))
+    file_object.write('The convergence time for ADMM is %f' % (totaltime,))
+
+    if centralized:
+        file_object.write('The convergence time for original problem is %f' % (orig_duration,))
+        file_object.write('The gap in objective function is %f %%' % (gap,))
+
+    file_object.close()
 
 .. _runworker-section:
 
@@ -565,84 +589,61 @@ The function takes three input arguments:
 - ``s``: the ``UrbsAdmmModel`` instance corresponding to the cluster,
 - ``output``: the Queue to be used for sending the subproblem solution
 
-Since ADMM is an iterative method, the subproblems are expected to be solved multiple times (in the order of 10's, possibly 100's), with slightly different parameters in each iteration. The pyomo model which defines the optimization problem, first needs to be converted into a lower-level problem formulation (ultimately a set of matrices and vectors), which may take a very long time. Therefore, it is more practical that this conversion step happens only once, and the adjustments between iterations are made on the low-level problem formulation. Pyomo supports the usage of persistent solver interfaces (https://pyomo.readthedocs.io/en/stable/advanced_topics/persistent_solvers.html) for Gurobi, which exactly serves this purpose. These instances are created from the pyomo object with the following code section, and stored in the ``sub_persistent`` attribute::
+``cost_history`` keeps track  of the objective function value of the solutions. ``max_iter`` is the maximal number of iterations::
 
-    s.sub_persistent = SolverFactory('gurobi_persistent')
-    s.sub_persistent.set_instance(s.sub_pyomo, symbolic_solver_labels=False)
-
-Afterwards, the solver parameters can be directly set on the persistent solver instance (``Method=2`` for barrier method, ``Thread=1`` for allowing the usage of a single CPU)::
-
-    s.sub_persistent.set_gurobi_param('Method', 2)
-    s.sub_persistent.set_gurobi_param('Threads', 1)
-
-The ``.unique()`` method is applied to ``.neighbor_cluster`` attribute to retrieve the unique neighbors::
-
-    s.neighbor_clusters = s.shared_lines.neighbor_cluster.unique()
-
-The maximum number of iterations ``maxit`` is retrieved from the ``admmopt`` attribute of the subproblem::
-
-    maxit = s.admmopt.iterMaxlocal # get maximum iteration
-
-The convergence gap is initialized as ``10**8``. ``cost_history`` keeps track  of the objective function value of the solutions::
-
-    s.gapAll = [10 ** 8] * s.na
     cost_history = []
-
-The absolute convergence tolerance is calculated by scaling ``s.conv_rel`` (user input for relative convergence tolerance, set in the ``admmopt`` attribute of the subproblem) with the number of the coupling variables in the subproblem (``len(s.flow_global)``, added 1 to ensure convergence for the subproblems without any coupling variables)::
-
-    s.convergetol = s.conv_rel * (len(s.flow_global)+1) #  # convergence criteria for maximum primal gap
+    max_iter = s.admmopt.max_iter
 
 Now, the local ADMM iterations take place::
 
-    for nu in range(maxit):
+    for nu in range(max_iter):
 
-First, to prepare the model for the next (first) run, the updated (initial) global values, consensus Lagrange multipliers and penalty parameters are set for the Gurobi instance of the subproblem. For these steps, the :ref:`methods <fix>` ``.fix_flow_global``, ``.fix_lamda`` and ``set_quad_cost`` are applied respectively::
+First, the subproblem in its current state is solved. For the first iteration, initial values are set in ``run_regional`` and the ``UrbsAdmmModel`` constructor::
 
-        s.fix_flow_global()
-        s.fix_lamda()
+    start_time = time()
+    s.solve_problem()
+    end_time = time()
 
-        if nu > 0:
-            s.set_quad_cost(rho_old)
+After solving the problem, the optimal values of the coupling variables are extracted using the :ref:`method <retrieve-boundary-flows>` ``.retrieve_boundary_flows`` and stored in ``s.flows_all`` and ``s.flows_with_neighbor``. Additionally, the objective value of the optimum is saved in ``cost_history``::
 
-Now the subproblem can be solved, using the ``.solve_problem`` :ref:`method <solve-problem>`::
+    s.retrieve_boundary_flows()
+    cost_history.append(s.solver._solver_model.objval) # TODO: use public method instead
 
-        s.solve_problem()
+Now the subproblem checks for messages from its neighbors. In the first iteration, it does not block until enough neighbors have sent a message, as this would result in a deadlock. After the first iteration it does block::
 
-After solving the problem, the optimal values of the coupling variables are extracted using the :ref:`method <retrieve-boundary-flows>` ``.retrieve_boundary_flows`` and stored in two members of ``s``:
+    # Don't block in the first iteration to avoid deadlock.
+    s.recv(block=nu > 0)
 
-- ``s.flows_all``: a ``pd.MultiIndex`` containing all the coupling variables,
-- ``s.flows_with_neighbor``: a dictionary of ``pd.MultiIndex``es , whose elements are subsets of ``flows_all`` that are shared with a certain neighbor. For instance, for the subproblem with indexs 0, s.flows_with_neighbor[2] will return the values of all coupling variables for the flows between the cluster 0 and 2.
+Now the global flow values, Lagrange multipliers and penalty parameter are updated with :ref:`method <update_flow_global>` ``.update_flow_global``, :ref:`method <update_lamda>` ``.update_lamda`` and :ref:`method <update_rho>` ``.update_rho``. This update is carried out even if no messages have arrived because the values can change based on new local values alone::
 
-Additionally, the objective value of the optimum is saved in ``cost_history`` and the old value of ``s.rho`` is stored::
+    s.update_flow_global()
+    # s.choose_max_rho() # TODO: not needed?
+    s.update_lamda()
+    s.update_rho(nu)
 
-        cost_history.append(s.sub_persistent._solver_model.objval) # TODO: use public method instead
-        rho_old = s.rho
+Next, the subproblem checks for convergence and whether it has reached its last iteration, updating its ``terminated`` flag if necessary::
 
-Now the subproblem checks for messages from its neighbors::
+    converged = s.is_converged()
+    last_iteration = nu == max_iter - 1
+    s.terminated = converged or last_iteration
 
-        s.recv(pollrounds=5)
+Now the subproblem can send its updated values and termination status to its neighbors::
 
-If any messages are received, the global flow values, Lagrange multipliers and penalty parameter are updated with :ref:`method <update_flow_global>` ``.update_flow_global``, :ref:`method <update_lamda>` ``.update_lamda`` and :ref:`method <update-rho>` ``.update_rho``::
+    s.send()
 
-        if s.recvmsg:
-            s.update_flow_global()
-            s.update_lamda()
-            s.update_rho(nu)
+Upon convergence, the loop is exited. Finally, before the next iteration starts, the updated values are used to update the objective function::
 
-Now the subproblem can send its updated values to its neighbors::
+    s.update_cost_rule()
 
-        s.send()
+Once the subproblem has terminated, it sends a dictionary consisting of the final objective value, the values of coupling variables and primal/dual residuals via the ``output`` queue::
 
-Convergence is checked with the ``.converge`` :ref:`method <converge>`::
-
-        if s.is_converged():
-            print("Worker %d converged!" % (ID,))
-            break
-
-Upon convergence, a dictionary consisting of the final objective value, the values of coupling variables and primal/dual residuals is created and put into the ``Queue`` called ``output``::
-
-    output_package = {'cost': cost_history[nu - 1], 'coupling_flows': s.flow_global,
-                      'primal_residual': s.primalgap, 'dual_residual': s.dualgap}
+    output_package = {
+        'cost': cost_history,
+        'coupling_flows': s.flow_global,
+        'primal_residual': s.primalgap,
+        'dual_residual': s.dualgap,
+        'received_neighbors': s.received_neighbors,
+    }
     output.put((ID - 1, output_package))
 
 
@@ -652,62 +653,70 @@ In this section, the initialization attributes and methods of the  ``UrbsAdmmMod
 
 While the order in which these ADMM steps are followed is listed in the previous section, here the steps themselves will be described.
 
-Starting with the attributes list of an ``UrbsAdmmModel`` instance::
+An ``UrbsAdmmModel`` has the following members::
 
-    class UrbsAdmmModel(object):
-        def __init__(self):
-            # initialize all the fields
-            self.shared_lines = None
-            self.flows_all = None
-            self.flows_with_neighbor = None
-            self.flow_global = None
-            self.sub_pyomo = None
-            self.sub_persistent = None
-            self.neighbors = None
-            self.nneighbors = None
-            self.nwait = None
-            self.var = {'flow_global': None, 'rho': None}
-            self.ID = None
-            self.nbor = {}
-            self.pipes = None
-            self.sending_queues = None
-            self.receiving_queues = None
-            self.admmopt = AdmmOption()
-            self.recvmsg = {}
-            self.primalgap = [9999]
-            self.dualgap = [9999]
-            self.gapAll = None
-            self.rho = None
-            self.lamda = None
+``admmopt``: ``AdmmOption`` object.
+``dualgap``: List holding the dual gaps after each iteration.
+``flow_global``: ``pd.Series`` holding the global flow values. Index is
+    ``['t', 'stf', 'sit', 'sit_']``.
+``flows_all``: ``pd.Series`` holding the values of the local flow variables after each
+    solver iteration. Index is ``['t', 'stf', 'sit', 'sit_']``. Initial value is ``None``.
+``flows_with_neighbor``: ``pd.Series`` holding the values of the local flow variables
+    with each neighbor after each solver iteration. Index is
+    ``['t', 'stf', 'sit', 'sit_']``.Initial value is ``None``.
+``ID``: ID of this subproblem (zero-based integer).
+``initial_values``: ``InitialValues`` object.
+``lamda``: ``pd.Series`` holding the Lagrange multipliers. Index is
+    ``['t', 'stf', 'sit', 'sit_']``.
+``model``: ``pyomo.ConcreteModel``.
+``neighbors``: List of neighbor IDs.
+``n_neighbors``: Number of neighbors.
+``nwait``: Number of updated neighbors required for the next iteration.
+``primalgap``: List of dual gaps after each iteration.
+``received_neighbors``: List holding the number of updated neighbors in each iteration.
+``receiving_queues``: Dict mapping each neighbor ID to a ``mp.Queue`` for receiving messages
+    from that neighbor.
+``recvmsg``: Dict mapping each neighbor ID to the most recent message from that neighbor.
+``result_dir``: Result directory.
+``rho``: Quadratic penalty coefficient. Initial value taken from ``initial_values``.
+``scenario_name``: Scenario name.
+``sending_queues``: Dict mapping each neighbor ID to a ``mp.Queue`` for sending messages to
+    that neighbor.
+``shared_lines``: DataFrame of inter-cluster transmission lines. A copy of a slice of the
+    'Transmision' DataFrame, enriched with the columns ``cluster_from``, ``cluster_to`` and
+    ``neighbor_cluster``. Index is
+    ``['support_timeframe', 'Site In', 'Site Out', 'Transmission', 'Commodity']``.
+``shared_lines_index``: ``shared_lines.index.to_frame()``.
+``solver``: ``GurobiPersistent`` solver interface to ``model``.
+``terminated``: Flag indicating whether the solver for this model has terminated, i.e.
+    reached convergence or exceeded its maximum number of iterations.
 
-These attributes are described as follows:
+``solver`` is initialized in the constructor::
 
-- ``self.shared_lines``:  A pd.MultiIntex, that is a subset of Transmission lines that connect this cluster with other clusters,
-- ``self.flows_all``: a ``pd.MultiIndex`` containing the optimized values of all the coupling variables (``Elec`` and ``Carbon`` flows) after a subproblem solution
-- ``self.flows_with_neighbor``: a dictionary of ``pd.MultiIndex``es , whose elements are subsets of ``flows_all`` that are shared with a certain neighbor
-- ``self.flow_global``:  a ``pd.MultiIndex`` containing the global values of all the coupling variables (``Elec`` and ``Carbon`` flows)
-- ``self.sub_pyomo``: a ``pyomo.environ.ConcreteModel`` object that represents the subproblem
-- ``self.sub_persistent``: a ``GurobiPersistent`` object, a persistent solver interface on which the model adjustments are made
-- ``self.neighbors``: the indices of clusters that neighbor the cluster in question
-- ``self.nneighbors``: the number of neighboring clusters
-- ``self.nwait``: the number of neighboring subproblems, that the subproblem has to wait for in order to move on to the next iteration. This is calculated using the product ``admmopt.nwaitPercent`` of ``nneighbors``, rounded up.
-- ``self.ID``: the subproblem ID. An integer starting from 0 (for the first subproblem).
-- ``self.sending_queues``: a dictionary mapping the index of each neighboring cluster to a ``mp.Manager().Queue()`` used for sending messages to that cluster.
-- ``self.receiving_queues``: a dictionary mapping the index of each neighboring cluster to a ``mp.Manager().Queue()`` used for receiving messages from that cluster.
-- ``self.admmopt``: an instance of the ``AdmmOption`` class. These include the ADMM parameters, which can be modified by the user. They will be listed below.
-- ``self.recvmsg``: an instance of the ``AdmmMessage`` class. This class is sent and received between the workers, and its attributes will be listed below.
-- ``self.primalgap``: an array which extends which each iteration, and keeps track of the primal residual of the solution
-- ``self.dualgap``: an array which extends which each iteration, and keeps track of the dual residual of the solution
-- ``self.gapAll``: a list which includes: primal residual of the subproblem, along with the primal residuals of neighboring clusters
-- ``self.rho``: a real number which represents the current value of the quadratic penalty parameter
-- ``self.lamda``: a ``pd.MultiIndex`` containing the values of the current consensus Lagrange multipliers
+    self.solver = SolverFactory('gurobi_persistent')
+    self.solver.set_instance(model, symbolic_solver_labels=False)
+    self.solver.set_gurobi_param('Method', 2)
+    self.solver.set_gurobi_param('Threads', 1)
+
+Since ADMM is an iterative method, the subproblems are expected to be solved multiple times (in the order of 10's, possibly 100's), with slightly different parameters in each iteration. The pyomo model which defines the optimization problem, first needs to be converted into a lower-level problem formulation (ultimately a set of matrices and vectors), which may take a very long time. Therefore, it is more practical that this conversion step happens only once, and the adjustments between iterations are made on the low-level problem formulation. Pyomo supports the usage of persistent solver interfaces (https://pyomo.readthedocs.io/en/stable/advanced_topics/persistent_solvers.html) for Gurobi, which exactly serves this purpose. These instances are created in the ``UrbsAdmmModel`` constructor.
+
+    self.solver = SolverFactory('gurobi_persistent')
+    self.solver.set_instance(s.model, symbolic_solver_labels=False)
+
+Afterwards, the solver parameters can be directly set on the persistent solver instance (``Method=2`` for barrier method, ``Thread=1`` for allowing the usage of a single CPU)::
+
+    self.solver.set_gurobi_param('Method', 2)
+    self.solver.set_gurobi_param('Threads', 1)
 
 .. _admmoption:
 
 Before explaining the methods of ``UrbsAdmmModel`` class, let us have a look at the two auxiliary classes ``AdmmOption`` and ``AdmmMessage``::
 
     class AdmmOption(object):
-        """ This class defines all the parameters to use in admm """
+        """
+        This class defines all the parameters to use in ADMM.
+        """
+        # TODO: docstring
 
         def __init__(self):
             self.rho_max = 10  # upper bound for penalty rho
@@ -716,289 +725,120 @@ Before explaining the methods of ``UrbsAdmmModel`` class, let us have a look at 
             self.zeta = 1  # parameter for residual balancing of rho
             self.theta = 0.99  # multiplier for determining whether to update rho
             self.mu = 10  # multiplier for determining whether to update rho
-            self.pollWaitingtime = 0.001  # waiting time of receiving from one pipe
-            self.nwaitPercent = 0.2  # waiting percentage of neighbors (0, 1]
-            self.iterMaxlocal = 20  # local maximum iteration
+            self.pollrounds = 5
+            self.poll_wait_time = 0.001  # waiting time of receiving from one pipe
+            self.wait_percent = 0.2  # waiting percentage of neighbors (0, 1]
+            self.max_iter = 20  # local maximum iteration
             self.rho_update_nu = 50 # rho is updated only for the first 50 iterations
-            self.conv_rel = 0.1 # the relative convergece tolerance, to be multiplied with (len(s.flow_global)+1)
+            self.primal_tolerance = 0.1 # the relative convergece tolerance, to be multiplied with len(s.flow_global)
 
 The ``AdmmOption`` class includes numerous parameters that specify the ADMM method, which can be set by the user:
 
-- ``self.rho_max``:  A positive real number, that sets an upper bound for the quadratic penalty parameter (see ``.update_rho`` for its usage)
-- ``self.tau_max``: A positive real number, that sets an upper bound for the per-iteration modifier of the quadratic penalty parameter (see ``.update_rho`` for its usage)
-- ``self.tau``: A positive real number, that scales the quadratic penalty parameter up or down (see ``.update_rho`` for its usage)
-- ``self.zeta``: A positive real number, that is used for the residual balancing of the quadratic penalty parameter (not in use currently)
-- ``self.theta``: A positive real number, that is used for the residual balancing of the quadratic penalty parameter (not in use currently)
-- ``self.mu``: A positive real number, that is used for the scaling of the quadratic penalty parameter (see ``.update_rho`` for its usage)
-- ``self.pollWaitingtime``: A positive real number, which represents the waiting time for receiving a message from a neighbor (see ``recv`` for its usage)
-- ``self.nwaitPercent``: A real number within (0, 1], that gives the percentage of its neighbors that a subproblem needs to receive a message in order to move onto the next iteration (see line 258 of ``runfunctions_admm.py`` for its usage)
-- ``self.iterMaxlocal``: A positive integer, that sets the maximum number of local iterations (see line 25 of ``run_Worker.py`` for its usage)
-- ``self.rho_update_nu``: A positive integer, that sets the last iteration number where the quadratic penalty parameter is updated. After this iteration number, it will not be updated anymore (see ``.update_rho`` for its usage)
-- ``self.conv_rel``: A positive real number, that is multiplied with ``(len(s.flow_global)+1)`` to set the absolute convergence tolerance of a local subproblem
+- ``rho_max``:  A positive real number, that sets an upper bound for the quadratic penalty parameter (see ``.update_rho`` for its usage)
+- ``tau_max``: A positive real number, that sets an upper bound for the per-iteration modifier of the quadratic penalty parameter (see ``.update_rho`` for its usage)
+- ``tau``: A positive real number, that scales the quadratic penalty parameter up or down (see ``.update_rho`` for its usage)
+- ``zeta``: A positive real number, that is used for the residual balancing of the quadratic penalty parameter (not in use currently)
+- ``theta``: A positive real number, that is used for the residual balancing of the quadratic penalty parameter (not in use currently)
+- ``mu``: A positive real number, that is used for the scaling of the quadratic penalty parameter (see ``.update_rho`` for its usage)
+- ``pollrounds``: The number of times a subproblem loops over all receiving queues when checking for new messages.
+- ``poll_wait_time``: The time in seconds that a subproblem waits after each pollround.
+- ``wait_percent``: A real number within (0, 1], that gives the percentage of its neighbors that a subproblem needs to receive a message in order to move onto the next iteration (see line 258 of ``runfunctions_admm.py`` for its usage)
+- ``max_iter``: A positive integer, that sets the maximum number of local iterations (see line 25 of ``run_Worker.py`` for its usage)
+- ``rho_update_nu``: A positive integer, that sets the last iteration number where the quadratic penalty parameter is updated. After this iteration number, it will not be updated anymore (see ``.update_rho`` for its usage)
+- ``primal_tolerance``: A positive real number, that is multiplied with ``(len(s.flow_global)+1)`` to set the absolute convergence tolerance of a local subproblem
 
 .. _message:
 
 Moving onto the ``AdmmMessage`` class::
 
     class AdmmMessage(object):
-        """ This class defines the message region i sends to/receives from j """
+        """
+        This class defines the message region i sends to/receives from j.
+        """
+        # TODO: docstring
 
-        def __init__(self):
-            self.fID = 0  # source region ID
-            self.tID = 0  # destination region ID
-            self.fields = {
-                'flow': None,
-                'rho': None,
-                'lambda': None,
-                'convergeTable': None}
+        def __init__(self, source, target, flow, rho, lamda, primalgap, terminated):
+            self.source = source  # source region ID
+            self.target = target  # destination region ID
+            self.flow = flow
+            self.rho = rho
+            self.lamda = lamda
+            self.primalgap = primalgap
+            self.terminated = terminated
 
-        def config(self, f, t, var_flow, var_rho, var_lambda, gapall):  # AVall and var are local variables of f region
-            self.fID = f
-            self.tID = t
-
-            self.fields['flow'] = var_flow
-            self.fields['rho'] = var_rho
-            self.fields['lambda'] = var_lambda
-            self.fields['convergeTable'] = gapall
-
-Instances of this class are the packets that are communicated between the workers and contain the following attributes:
-
-- ``fID``: the index of the sending subproblem
-- ``tID``: the index of the receiving subproblem
-- ``fields``: a dictionary which consists of the exchanged message (the local optimizing values of coupling variables ``flow``, the local quadratic parameter value ``rho``, the local consensus Lagrange multiplier ``lambda`` and the local primal residual ``gapall``)
+Instances of this class are the packets that are communicated between the workers.
 
 Now let us return to the class ``UrbsAdmmModel`` and go through its methods.
 
-.. _solve-problem:
+.. _solve_problem:
 
-``.solve_problem`` takes the persistent solver interface and solves it with the options ``save_results`` and ``load_solutions`` as ``False`` to save runtime. ``warmstart`` is set as ``True``, even though the barrier solver does not support this feature yet.::
+``solve_problem`` takes the persistent solver interface and solves it with the options ``save_results`` and ``load_solutions`` as ``False`` to save runtime. ``warmstart`` is set as ``True``, even though the barrier solver does not support this feature yet.::
 
-    def solve_problem(self):
-        self.sub_persistent.solve(save_results=False, load_solutions=False, warmstart=True)
+.. _retrieve_boundary_flows:
 
-.. _fix:
+``retrieve_boundary_flows``: Retrieve optimized flow values for shared lines from the solver and store them in ``self.flows_all`` and ``self.flows_with_neighbor``.
 
-Three following methods (``.fix_flow_global``, ``.fix_lamda`` and ``.set_quad_cost``) interface with the pyomo object and persistent solver interface of the subproblem, and modify the cost function with the updated global values of the coupling variable, consensus Lagrange multiplier and the quadratic penalty parameter. Observe that in the model, ``lamda`` (consensus Lagrange multiplier) and ``flow_global`` (global value of the coupling variable) are defined as ``Variables`` whose values are then fixed in the model with the ``.fix`` method, whereas the quadratic penalty parameter ``rho`` is a real number.::
+.. _active_neighbors:
 
-    def fix_flow_global(self):
-        """
-        Fix the `flow_global` variables in the solver to the values in `self.flow_global`.
-        """
-        for key in self.flow_global.index:
-            self.sub_pyomo.flow_global[key].fix(self.flow_global.loc[key, 0])
-            self.sub_persistent.update_var(self.sub_pyomo.flow_global[key])
-
-
-    def fix_lamda(self):
-        """
-        Fix the `lamda` variables in the solver to the values in `self.lamda`.
-        """
-        for key in self.lamda.index:
-            if not isinstance(self.lamda.loc[key], pd.core.series.Series):
-                self.sub_pyomo.lamda[key].fix(self.lamda.loc[key])
-                self.sub_persistent.update_var(self.sub_pyomo.lamda[key])
-            else:
-                self.sub_pyomo.lamda[key].fix(self.lamda.loc[key, 0])
-                self.sub_persistent.update_var(self.sub_pyomo.lamda[key])
-
-
-    def set_quad_cost(self, rho_old):
-        """
-        Update the objective function to reflect the difference between `self.rho` and
-        `rho_old`.
-
-        Call this method *after* `fix_flow_global`.
-        """
-        quadratic_penalty_change = 0
-        # Hard coded transmission name: 'hvac', commodity 'Elec' for performance.
-        # Caution, as these need to be adjusted if the transmission of other commodities exists!
-        for key in self.flow_global.index:
-            if (key[2] == 'Carbon_site') or (key[3] == 'Carbon_site'):
-                quadratic_penalty_change += 0.5 * (self.rho - rho_old) * \
-                    (self.sub_pyomo.e_tra_in[key, 'CO2_line', 'Carbon'] -
-                     self.sub_pyomo.flow_global[key]) ** 2
-            else:
-                quadratic_penalty_change += 0.5 * (self.rho - rho_old) * \
-                    (self.sub_pyomo.e_tra_in[key, 'hvac', 'Elec'] -
-                     self.sub_pyomo.flow_global[key]) ** 2
-
-        old_expression = self.sub_pyomo.objective_function.expr
-        self.sub_pyomo.del_component('objective_function')
-        self.sub_pyomo.add_component(
-            'objective_function',
-            pyomo.Objective(
-                expr = old_expression + quadratic_penalty_change, sense=pyomo.minimize
-            )
-        )
-        self.sub_persistent.set_objective(self.sub_pyomo.objective_function)
-
-.. _send:
-
-With the methods ``send`` and ``recv``, the message transfer bwetween subproblems take place. Let us start with ``send``::
-
-    def send(self):
-        for k, que in self.sending_queues.items():
-            # prepare the message to be sent to neighbor k
-            msg = AdmmMessage()
-            msg.config(self.ID, k, self.flows_with_neighbor[k], self.rho,
-                       self.lamda[self.lamda.index.isin(self.flows_with_neighbor[k].index)],
-                       self.gapAll)
-            que.put(msg)
-
-The ``send`` method prepares a ``AdmmMessage`` for each neighbor ``k``, where only the subset of the coupling variable and Lagrange multiplier values which are relevant to this neighbor are sent (``self.flows_with_neighbor[k]`` and ``self.lamda[self.lamda.index.isin(self.flows_with_neighbor[k].index)]``). Additionally, the quadratic penalty parameter ``self.rho`` and the local residual gap ``self.gapAll`` is also communicated.
-These values are inserted into the message with the ``.config`` method, and the message is sent (put into the ``Queue``) using the ``.put`` method.
+``active_neighbors`` returns a list of IDs of those neighbors who have not terminated yet. A subproblem only waits for messages from active neighbors.
 
 .. _recv:
 
-Next, the ``.recv`` method::
+``recv``: Check for new messages from active neighbors and store them in `self.recvmsg`.
 
-    def recv(self, pollrounds=5):
-        self.recvmsg = {}
-        twait = self.admmopt.pollWaitingtime
-        recv_flag = [0] * self.nneighbors
+If `block` is true, wait for messages from at least `self.n_wait` neighbors
+(or fewer if not enough neighbors remain active).
+If `block` is false, perform at most `self.admmopt.pollrounds` pollrounds.
 
-        for _ in range(pollrounds):
-            # read accumulated messages from all neighbors
-            for i, (k, que) in zip(range(self.nneighbors), self.receiving_queues.items()):
-                while not que.empty():
-                    self.recvmsg[k] = que.get(block=False) # don't wait
-                    recv_flag[i] = 1
+Return the number of updated neighbors and append that number to
+`self.received_neighbors`.
 
-            # break if enough neighbors have been received
-            if sum(recv_flag) >= self.nwait:
-                break
+.. _send:
 
-            # otherwise, wait for a message from the last neighbor
-            k, que = list(self.receiving_queues.items())[-1]
-            try:
-                self.recvmsg[k] = que.get(timeout=twait)
-                recv_flag[-1] = 1
+``send``: Send an `AdmmMessage` with the current status to each neighbor.
 
-            except queue.Empty:
-                pass
-
-The ``recv`` method attempts to receive the ``AdmmMessage`` from at least ``self.nwait`` neighbors. Within the loop ``for i, (k, que) in zip(range(self.nneighbors), self.receiving_queues.items())``, the message-reception queue from each neighbor is queried (with the ``.get`` method) until the queue is empty (hence ``while not que.empty()``). The method terminates When messages from enough neighbors have arrived or a certain number of pollrounds have been performed.
-
-Then we come to the three methods that update the global values of the coupling variable (``.update_flow_global``), consensus Lagrange multiplier (``.update_lamda``) and the quadratic penalty parameter (``.update_rho``). Note that these methods are used to obtain new values for these variables, and their application to the problem takes place afterwards with the methods  ``.fix_flow_global``, ``.fix_lamda`` and ``.set_quad_cost`` as explained earlier.
+The ``update`` methods are called after each solver iteration to update the global flow variables, Lagrange multipliers and penalty parameter. Additionally, the primal and dual gaps are calculated within these methods.
 
 .. _update_flow_global:
 
-Starting with ``update_flow_global``::
-
-    def update_flow_global(self):
-        """
-        Update `self.flow_global` for all neighbors who sent messages. Calculate the new
-        dual gap and append it to `self.dualgap`.
-        """
-        flow_global_old = deepcopy(self.flow_global)
-        for k, msg in self.recvmsg.items():
-            nborvar = msg.fields  # nborvar['flow'], nborvar['convergeTable']
-            self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = \
-                (self.lamda.loc[self.lamda.index.isin(self.flows_with_neighbor[k].index)] +
-                    nborvar['lambda'] + self.flows_with_neighbor[k] * self.rho + nborvar['flow'] * nborvar['rho']) \
-                / (self.rho + nborvar['rho'])
-        self.dualgap.append(self.rho * (np.sqrt(np.square(self.flow_global - flow_global_old).sum(axis=0)[0])))
-
-For updating the global variable, a loop is made, checking for each source (neighboring cluster) whether a new message is present, and if yes, the global variable is updated using the equation provided in the theoretical section of the documentation. After the global value is updated using information from all sending neighbors, the new value for the dual residual is also calculated.
+``update_flow_global``:: Update ``self.flow_global`` for ALL neighbors, using the values from the most recent messages. If a neighbor hasn't sent any messages yet, the ``initial_values`` are used. Also calculate the new dual gap and append it to ``self.dualgap``.
 
 .. _update_lamda:
 
-After updating the global flow value, the Lagrange multiplier update can be made by the ``update_lamda`` method using the equation provided in the theoretical section of the documentation::
+``update_lamda``: Update ``self.lamda`` using the updated values of ``self.flows_all`` and ``self.flow_global``.
 
-    def update_lamda(self):
-        self.lamda = self.lamda + self.rho * (self.flows_all.loc[:, [0]] - self.flow_global)
+.. _update_rho:
 
-.. _update-rho:
+``update_rho``: Calculate the new primal gap, append it to ``self.primalgap``. Update ``self.rho`` according to the new primal and dual gaps unless the current iteration is above ``self.admmopt.rho_update_nu``.
 
-Then the quadratic penalty parameter is updated by the ``.update_rho`` method and then replaced by the maximum quadratic penalty parameter across all neighbors by the ``.choose_max_rho`` method::
+.. _update_cost_rule:
 
-    def update_rho(self, nu):
-        """
-        Calculate the new primal gap, append it to `self.primalgap` and store it in
-        `self.gapAll`.
-        Update `self.rho` according to the current primal and dual gaps unless the
-        current iteration is above `self.admmopt.rho_update_nu`.
+``update_cost_rule``: Update those components of ``self.model`` that use ``cost_rule_sub`` to reflect changes to ``self.flow_global``, ``self.lamda`` and ``self.rho``. Currently only supports models with ``cost`` objective, i.e. only the objective function is updated.
 
-        ### Arguments
-        * `nu`: The current iteration.
-        """
-        self.primalgap.append(np.sqrt(np.square(self.flows_all - self.flow_global).sum(axis=0)[0]))
-        # update rho (only in the first rho_iter_nu iterations)
-        if nu <= self.admmopt.rho_update_nu:
-            if self.primalgap[-1] > self.admmopt.mu * self.dualgap[-1]:
-                self.rho = min(self.admmopt.rho_max, self.rho * self.admmopt.tau)
-            elif self.dualgap[-1] > self.admmopt.mu * self.primalgap[-1]:
-                self.rho = min(self.rho / self.admmopt.tau, self.admmopt.rho_max)
-        # update local converge table
-        self.gapAll[self.ID] = self.primalgap[-1]
+``choose_max_rho``: Set ``self.rho`` to the maximum rho value among self and neighbors. (Currently unused.)
 
+.. _is_converged:
 
-    def choose_max_rho(self):
-        """
-        Set `self.rho` to the maximum rho value among self and neighbors.
-        """
-        self.rho = max(self.rho, *[msg.fields['rho'] for msg in self.recvmsg.values()])
-
-Whether the quadratic penalty parameter has to increase or decrease depends on the relation between ``primalgap`` and ``dualgap``, ``admmopt.tau``,  ``admmopt.tau_max`` ``admmopt.rho_max`` and ``admmopt.tau_max``. Therefore, before updating ``rho``, the primal residual ``primalgap`` is also calculated within this method. For a mathematical description of the ``rho`` update, please refer to page 20 of https://stanford.edu/class/ee367/reading/admm_distr_stats.pdf.
-
-.. _converge:
-
-The convergence is checked with the method ``.converge``::
-
-    def is_converged(self):
-        # first update local convergence table using received convergence tables
-        for msg in self.recvmsg.values():
-            table = msg.fields['convergeTable']
-            self.gapAll = list(map(min, zip(self.gapAll, table))) # TODO: is min adequate? Should we get the most recent value instead?
-        # check if all local primal gaps < tolerance
-        if max(self.gapAll) < self.convergetol:
-            return True
-        else:
-            return False
-
-Here, a convergence table is updated (or created, in case the first iteration) which consists of the primal residuals of all the neighboring subproblems and the subproblem in question itself (``self.gapAll = list(map(min, zip(self.gapAll, table)))``). If all of these local primal residuals are smaller than the absolute tolerance (``max(self.gapAll) < self.convergetol``), the method returns a ``True``, and ``False`` otherwise.
-
-.. _retrieve-boundary-flows:
-
-The last method defined for ``UrbsAdmmModel`` is ``retrieve_boundary_flows``::
-
-    def retrieve_boundary_flows(self):
-        """
-        Retrieve optimized flow values for shared lines from the solver and store them in
-        `self.flows_all` and `self.flows_with_neighbor`.
-        """
-        e_tra_in_per_neighbor = {}
-
-        self.sub_persistent.load_vars(self.sub_pyomo.e_tra_in[:, :, :, :, :, :])
-        boundary_lines_pairs = self.shared_lines.reset_index().set_index(['Site In', 'Site Out']).index
-        e_tra_in_dict = {(tm, stf, sit_in, sit_out): v.value for (tm, stf, sit_in, sit_out, tra, com), v in
-                         self.sub_pyomo.e_tra_in.items() if ((sit_in, sit_out) in boundary_lines_pairs)}
-
-        e_tra_in_dict = pd.DataFrame(list(e_tra_in_dict.values()),
-                                     index=pd.MultiIndex.from_tuples(e_tra_in_dict.keys())).rename_axis(
-            ['t', 'stf', 'sit', 'sit_'])
-
-        for (tm, stf, sit_in, sit_out) in e_tra_in_dict.index:
-            e_tra_in_dict.loc[(tm, stf, sit_in, sit_out), 'neighbor_cluster'] = self.shared_lines.reset_index(). \
-                set_index(['support_timeframe', 'Site In', 'Site Out']).loc[(stf, sit_in, sit_out), 'neighbor_cluster']
-
-        for neighbor in self.neighbors:
-            e_tra_in_per_neighbor[neighbor] = e_tra_in_dict.loc[e_tra_in_dict['neighbor_cluster'] == neighbor]
-            e_tra_in_per_neighbor[neighbor].reset_index().set_index(['t', 'stf', 'sit', 'sit_'], inplace=True)
-            e_tra_in_per_neighbor[neighbor].drop('neighbor_cluster', axis=1, inplace=True)
-
-        self.flows_all = e_tra_in_dict
-        self.flows_with_neighbor = e_tra_in_per_neighbor
-
-This method loads the optimized flow variables from the model solution (``self.sub_persistent.load_vars(self.sub_pyomo.e_tra_in[:, :, :, :, :, :])``), and then applies to it a series of ``pd.DataFrame`` operations to produce the necessary data structures.
+``is_converged``: Return whether the current primal gap is below the tolerance threshold.
 
 Changes made in the ``create_model`` function (model.py)
 --------------------------------------------------------
 In the ADMM implementation, several adjustments were made in the model creation, for the specific case of creating the subproblems. Therefore, the ``create_model`` function now takes several additional optional input arguments::
 
-    def create_model(data_all, timesteps=None, dt=1, objective='cost', dual=False, type='normal', sites = None, coup_vars=None, data_transmission_boun=None, data_transmission_int=None, cluster=None):
+    def create_model(data_all,
+                     timesteps=None,
+                     dt=1,
+                     objective='cost',
+                     dual=False,
+                     type='normal',
+                     sites = None,
+                     data_transmission_boun=None,
+                     data_transmission_int=None,
+                     flow_global=None,
+                     lamda=None,
+                     rho=None):
 
-Here, the ``type=='sub'`` specifies the case of creating a subproblem, ``sites`` are the model regions contained by the given cluster, ``coup_vars`` are the initialized values of the global flow values, ``data_transmission_boun`` and ``data_transmission_int`` are the data sets of transmission lines which include the intercluster and internal lines that are present for the considered subproblem, ``cluster`` is the index of the considered subproblem.
+Here, the ``type=='sub'`` specifies the case of creating a subproblem, ``sites`` are the model regions contained by the given cluster, ``data_transmission_boun`` and ``data_transmission_int`` are the data sets of transmission lines which include the intercluster and internal lines that are present for the considered subproblem. ``flow_global`` and ``lamda`` are ``pd.Series`` and ``rho`` a scalar value, holding the initial values for the corresponding variables/parameters.
 
 In the following, only the changes made on the ``create_model`` function for the ADMM implementation are mentioned.
 
@@ -1030,12 +870,7 @@ The model preperation function ``pyomo_model_prep`` takes the model ``type`` as 
                 data['supim'] = pd.DataFrame()
             data['transmission'] = data_transmission
 
-Returning to ``create_model``, in case the model type is ``sub``, the quadratic penalty parameter ``rho`` is specified as the value that corresponds to the cluster in question: ::
-
-    if m.type =='sub':
-        rho = dict((key[1:],value) for key, value in coup_vars.rhos.items() if key[0] == cluster)
-
-which is then set as a  ``pyomo.environ.Parameter``, along with ``flow_global`` (global values of coupling variables) and ``lamda`` (consensus Lagrange multipliers) as ``pyomo.environ.Variable``s: ::
+``flow_global``, ``lamda`` and ``rho`` are set as variables/parameters::
 
     if type=='sub':
         m.flow_global = pyomo.Var(
@@ -1047,24 +882,43 @@ which is then set as a  ``pyomo.environ.Parameter``, along with ``flow_global`` 
             within=pyomo.Reals,
             doc='lambda in')
         m.rho = pyomo.Param(
-            m.tm,m.stf,m.sit,m.sit,
-            initialize=rho,
+            within=pyomo.Reals,
+            initialize=5,
             doc='rho in')
 
 In ADMM, the objective function is adjusted by the linear and quadratic penalty terms. This is implemented via the following lines: ::
 
-    def cost_rule(m):
-        if m.type =='sub':
-            return (pyomo.summation(m.costs) + sum(0.5 * m.rho[(tm, stf, sit_in, sit_out)] *
-                            (m.e_tra_in[(tm, stf, sit_in,sit_out, tra, com)]
-                            -m.flow_global[(tm, stf, sit_in,sit_out)])**2
-                            for tm in m.tm
-                            for stf, sit_in, sit_out, tra, com in m.tra_tuples_boun) + sum(m.lamda[(tm, stf, sit_in, sit_out)] *
-                            (m.e_tra_in[(tm,stf, sit_in,sit_out,tra,com)]
-                            -m.flow_global[(tm, stf, sit_in,sit_out)])
-                            for tm in m.tm
-                            for stf, sit_in, sit_out, tra, com in m.tra_tuples_boun)      )
+    if m.type == 'normal':
+        m.objective_function = pyomo.Objective(
+            rule=cost_rule,
+            sense=pyomo.minimize,
+            doc='minimize(cost = sum of all cost types)')
+    elif m.type == 'sub':
+        m.objective_function = pyomo.Objective(
+            rule=cost_rule_sub(flow_global=flow_global,
+                                lamda=lamda,
+                                rho=rho),
+            sense=pyomo.minimize,
+            doc='minimize(cost = sum of all cost types)')
 
+    ...
+
+    def cost_rule_sub(flow_global, lamda, rho):
+        def cost_rule(m):
+                return (pyomo.summation(m.costs) + 0.5 * rho *
+                            sum((m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] -
+                                flow_global[(tm, stf, sit_in, sit_out)])**2
+                                for tm in m.tm
+                                for stf, sit_in, sit_out, tra, com in m.tra_tuples_boun) +
+                            sum(lamda[(tm, stf, sit_in, sit_out)] *
+                                (m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] -
+                                flow_global[(tm, stf, sit_in, sit_out)])
+                                for tm in m.tm
+                                for stf, sit_in, sit_out, tra, com in m.tra_tuples_boun))
+
+        return cost_rule
+
+``cost_rule_sub`` is a function returning a function. You have to call it with the current values for ``flow_global``, ``lamda`` and ``rho`` to retrieve the correct rule for the pyomo objective.
 
 In urbs, the transmission line capacities are built twice (once in both directions). Therefore, a halving of the investment and fixed costs has to be made in the pre-processing part of the data input. However, when the subsystems are decomposed, we have to introduce a further halving of the intercluster transmission lines, so that we avoid both clusters having to pay for this line twice as this would disrupt the costs of the whole system  Therefore, the system costs ``m.costs`` are also defined with a slight difference: ::
 

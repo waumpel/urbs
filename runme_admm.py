@@ -1,4 +1,5 @@
-﻿from multiprocessing import freeze_support
+﻿import argparse
+from multiprocessing import freeze_support
 import os
 import shutil
 
@@ -6,6 +7,11 @@ from urbs.admm_async import run_regional
 from urbs.colorcodes import COLORS
 from urbs.runfunctions import prepare_result_directory
 from urbs.scenarios import scenario_base
+
+options = argparse.ArgumentParser()
+options.add_argument('-c', '--centralized', action='store_true',
+                     help='Additionally compute the centralized solution for comparison.')
+args = options.parse_args()
 
 # input_files = 'mimo-example_internal.xlsx'  # for single year file name, for intertemporal folder name
 input_files = 'germany.xlsx'  # for single year file name, for intertemporal folder name
@@ -55,16 +61,14 @@ scenarios = [
     scenario_base
 ]
 
-# test, ignore
-# list_timesteps = [7000, 8000, 8760]
-
 if __name__ == '__main__':
     freeze_support()
-    # test, ignore
     for scenario in scenarios:
-        # for test_length in list_timesteps:
-        #    (offset, length) = (0, test_length)  # time step selection
-        # timesteps = range(offset, offset + length + 1)
-        prob = run_regional(input_path, timesteps,
-                            scenario, result_dir, dt, objective,
-                            clusters=clusters)
+        run_regional(input_file=input_path,
+                     timesteps=timesteps,
+                     scenario=scenario,
+                     result_dir=result_dir,
+                     dt=dt,
+                     objective=objective,
+                     clusters=clusters,
+                     centralized = args.centralized)

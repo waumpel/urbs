@@ -1,5 +1,4 @@
 from datetime import date, datetime
-from math import ceil
 import multiprocessing as mp
 import os
 import queue
@@ -14,18 +13,27 @@ from urbs.model import create_model
 from urbs.input import read_input, add_carbon_supplier
 from urbs.validation import validate_dc_objective, validate_input
 from .run_worker import run_worker
-from .urbs_admm_model import UrbsAdmmModel
+from .urbs_admm_model import AdmmOption, UrbsAdmmModel
 
 
-class CouplingVars:
+class InitialValues:
+    """
+    Holds the initial values for several variables and parameters.
+    Intended use: Each member holds a scalar value that is used for all values in a
+    `pd.Series` or `pd.DataFrame`.
 
-    def __init__(self):
-        self.flow_global = {}
-        self.rhos = {}
-        self.lamdas = {}
-        self.cap_global = {}
-        self.residdual = {}
-        self.residprim = {}
+    ### Members:
+    * `flow`
+    * `flow_global`
+    * `rho`
+    * `lamda`
+    """
+
+    def __init__(self, flow, flow_global, rho, lamda):
+        self.flow = flow
+        self.flow_global = flow_global
+        self.rho = rho
+        self.lamda = lamda
 
 
 def prepare_result_directory(result_name):
@@ -73,8 +81,14 @@ def setup_solver(optim, logfile='solver.log'):
 
 
 # @profile
-def run_regional(input_file, timesteps, scenario, result_dir,
-                 dt, objective, clusters=None):
+def run_regional(input_file,
+                 timesteps,
+                 scenario,
+                 result_dir,
+                 dt,
+                 objective,
+                 clusters,
+                 centralized=False):
     """ run an urbs model for given input, time steps and scenario with regional decomposition using ADMM
 
     Args:
@@ -93,7 +107,7 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     year = date.today().year
 
     # scenario name, read and modify data for scenario
-    sce = scenario.__name__
+    scenario_name = scenario.__name__
     data_all = read_input(input_file, year)
     data_all = scenario(data_all)
     validate_input(data_all)
@@ -106,11 +120,6 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     # if 'test_timesteps' is stored in data dict, replace the timesteps parameter with that value
     timesteps = data_all.pop('test_timesteps', timesteps)
 
-    # initiate a coupling-variables Class
-    coup_vars = CouplingVars()
-
-    # identify the shared and internal lines
-
     nclusters = len(clusters)
 
     # map site -> cluster_idx
@@ -118,6 +127,12 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     for cluster, cluster_idx in zip(clusters, range(nclusters)):
         for site in cluster:
             site_cluster_map[site] = cluster_idx
+
+    # Note:
+    # data_all['transmission'].index:
+    # ['support_timeframe', 'Site In', 'Site Out', 'Transmission', 'Commodity']
+
+    # identify the shared and internal lines
 
     # used as indices for creating `shared_lines` and `internal_lines`
     shared_lines_logic = np.zeros((nclusters, data_all['transmission'].shape[0]), dtype=bool)
@@ -150,12 +165,12 @@ def run_regional(input_file, timesteps, scenario, result_dir,
             internal_lines_logic[from_cluster_idx, row] = True
             internal_lines_logic[to_cluster_idx, row] = True
 
-    # map cluster_idx -> slice of data_all['transmission']
+    # map cluster_idx -> slice of data_all['transmission'] (copies)
     shared_lines = [
         data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]]
         for cluster_idx in range(0, nclusters)
     ]
-    # map cluster_idx -> slice of data_all['transmission']
+    # map cluster_idx -> slice of data_all['transmission'] (copies)
     internal_lines = [
         data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]]
         for cluster_idx in range(0, nclusters)
@@ -166,78 +181,17 @@ def run_regional(input_file, timesteps, scenario, result_dir,
         for cluster_idx in range(0, nclusters)
     ]
 
-    # initialize coupling variables
-    for cluster_idx in range(0, nclusters):
-        for i in range(0, shared_lines[cluster_idx].shape[0]):
-            sit_from = shared_lines[cluster_idx].iloc[i].name[1]
-            sit_to = shared_lines[cluster_idx].iloc[i].name[2]
-
-            for j in timesteps[1:]:
-                coup_vars.lamdas[cluster_idx, j, year, sit_from, sit_to] = 0
-                coup_vars.rhos[cluster_idx, j, year, sit_from, sit_to] = 5
-                coup_vars.flow_global[cluster_idx, j, year, sit_from, sit_to] = 0
-
-
-    # (optional) create the central problem to compare results
-    prob = create_model(data_all, timesteps, dt, type='normal')
-
-    # refresh time stamp string and create filename for logfile
-    log_filename = os.path.join(result_dir, '{}.log').format(sce)
-
-    # setup solver
-    solver_name = 'gurobi'
-    optim = SolverFactory(solver_name)  # cplex, glpk, gurobi, ...
-    optim = setup_solver(optim, logfile=log_filename)
-
-    # original problem solution (not necessary for ADMM, to compare results)
-    orig_time_before_solve = time.time()
-    results_prob = optim.solve(prob, tee=False)
-    orig_time_after_solve = time.time()
-    orig_duration = orig_time_after_solve - orig_time_before_solve
-    flows_from_original_problem = dict((name, entity.value) for (name, entity) in prob.e_tra_in.items())
-    flows_from_original_problem = pd.DataFrame.from_dict(flows_from_original_problem, orient='index',
-                                                         columns=['Original'])
-
     pd.options.display.max_rows = 999
     pd.options.display.max_columns = 999
 
-    problems = []
-    sub = {}
+    admmopt = AdmmOption()
 
-    # initiate urbs_admm_model Classes for each subproblem
-    for cluster_idx in range(0, nclusters):
-        problem = UrbsAdmmModel()
-        sub[cluster_idx] = create_model(data_all, timesteps, type='sub',
-                                             sites=clusters[cluster_idx],
-                                             coup_vars=coup_vars,
-                                             data_transmission_boun=shared_lines[cluster_idx],
-                                             data_transmission_int=internal_lines[cluster_idx],
-                                             cluster=cluster_idx)
-        problem.sub_pyomo = sub[cluster_idx]
-        problem.flow_global = {(key[1], key[2], key[3], key[4]): value
-                               for (key, value) in coup_vars.flow_global.items() if key[0] == cluster_idx}
-        problem.flow_global = pd.Series(problem.flow_global)
-        problem.flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-        problem.flow_global = problem.flow_global.to_frame()
-
-        problem.lamda = {(key[1], key[2], key[3], key[4]): value
-                         for (key, value) in coup_vars.lamdas.items() if key[0] == cluster_idx}
-        problem.lamda = pd.Series(problem.lamda)
-        problem.lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-        problem.lamda = problem.lamda.to_frame()
-
-        problem.rho = 5
-
-        problem.ID = cluster_idx
-        problem.result_dir = result_dir
-        problem.sce = sce
-        # enlarge shared_lines (copies of slices of data_all['transmission'])
-        shared_lines[cluster_idx]['cluster_from'] = cluster_from[cluster_idx]
-        shared_lines[cluster_idx]['cluster_to'] = cluster_to[cluster_idx]
-        shared_lines[cluster_idx]['neighbor_cluster'] = neighbor_cluster[cluster_idx]
-        problem.shared_lines = shared_lines[cluster_idx]
-        problem.na = nclusters
-        problems.append(problem)
+    initial_values = InitialValues(
+        flow=0,
+        flow_global=0,
+        lamda=0,
+        rho=5
+    )
 
     # create Queues for each communication channel
     queues = {
@@ -248,21 +202,65 @@ def run_regional(input_file, timesteps, scenario, result_dir,
         for source in range(nclusters)
     }
 
-    # define further necessary fields for the subproblems
+    problems = []
+    sub = {}
+
+    # initialize pyomo models and `UrbsAdmmModel`s
     for cluster_idx in range(0, nclusters):
-        problem = problems[cluster_idx]
-        problem.neighbors = neighbors[cluster_idx]
+        index = shared_lines[cluster_idx].index.to_frame()
 
-        problem.nneighbors = len(problem.neighbors)
+        flow_global = pd.Series({
+            (t, year, source, target): initial_values.flow_global
+            for t in timesteps[1:]
+            for source, target in zip(index['Site In'], index['Site Out'])
+        })
+        flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
 
-        problem.sending_queues = queues[cluster_idx]
-        problem.receiving_queues = {
+        lamda = pd.Series({
+            (t, year, source, target): initial_values.lamda
+            for t in timesteps[1:]
+            for source, target in zip(index['Site In'], index['Site Out'])
+        })
+        lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+
+        model = create_model(data_all, timesteps, type='sub',
+                             sites=clusters[cluster_idx],
+                             data_transmission_boun=shared_lines[cluster_idx],
+                             data_transmission_int=internal_lines[cluster_idx],
+                             flow_global=flow_global,
+                             lamda=lamda,
+                             rho=initial_values.rho)
+
+        sub[cluster_idx] = model
+
+        receiving_queues = {
             target: queues[target][cluster_idx]
             for target in neighbors[cluster_idx]
         }
 
-        problem.nwait = ceil(
-            problem.nneighbors * problem.admmopt.nwaitPercent)
+        # enlarge shared_lines (copies of slices of data_all['transmission'])
+        shared_lines[cluster_idx]['cluster_from'] = cluster_from[cluster_idx]
+        shared_lines[cluster_idx]['cluster_to'] = cluster_to[cluster_idx]
+        shared_lines[cluster_idx]['neighbor_cluster'] = neighbor_cluster[cluster_idx]
+
+        problem = UrbsAdmmModel(
+            admmopt = admmopt,
+            flow_global = flow_global,
+            ID = cluster_idx,
+            initial_values = initial_values,
+            lamda = lamda,
+            model = model,
+            neighbors = neighbors[cluster_idx],
+            receiving_queues = receiving_queues,
+            result_dir = result_dir,
+            scenario_name = scenario_name,
+            sending_queues = queues[cluster_idx],
+            shared_lines = shared_lines[cluster_idx],
+            shared_lines_index = index,
+        )
+
+        problems.append(problem)
+
 
     # define a Queue class for collecting the results from each subproblem after convergence
     output = mp.Manager().Queue()
@@ -288,7 +286,7 @@ def run_regional(input_file, timesteps, scenario, result_dir,
         except queue.Empty:
             pass
 
-        time.sleep(0.5)
+        time.sleep(0.5) # TODO
         if not output.empty():
             continue
 
@@ -297,22 +295,44 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     for proc in procs:
         proc.join()
 
-    # ------------get results ---------------------------
     ttime = time.time()
     tclock = time.clock()
     totaltime = ttime - start_time
     clocktime = tclock - start_clock
 
+    # get results
     results = sorted(results, key=lambda x: x[0])
 
     obj_total = 0
-    obj_cent = results_prob['Problem'][0]['Lower bound']
 
     for cluster_idx in range(0, nclusters):
         if cluster_idx != results[cluster_idx][0]:
             print('Error: Result of worker %d not returned!' % (cluster_idx + 1,))
             break
         obj_total += results[cluster_idx][1]['cost'][-1]
+
+    # (optinal) solve the centralized problem
+    if centralized:
+        prob = create_model(data_all, timesteps, dt, type='normal')
+
+        # refresh time stamp string and create filename for logfile
+        log_filename = os.path.join(result_dir, '{}.log').format(scenario_name)
+
+        # setup solver
+        solver_name = 'gurobi'
+        optim = SolverFactory(solver_name)  # cplex, glpk, gurobi, ...
+        optim = setup_solver(optim, logfile=log_filename)
+
+        # original problem solution (not necessary for ADMM, to compare results)
+        orig_time_before_solve = time.time()
+        results_prob = optim.solve(prob, tee=False)
+        orig_time_after_solve = time.time()
+        orig_duration = orig_time_after_solve - orig_time_before_solve
+        flows_from_original_problem = dict((name, entity.value) for (name, entity) in prob.e_tra_in.items())
+        flows_from_original_problem = pd.DataFrame.from_dict(flows_from_original_problem, orient='index',
+                                                         columns=['Original'])
+
+        obj_cent = results_prob['Problem'][0]['Lower bound']
 
     # debug
     for cluster_idx in range(0, nclusters):
@@ -323,34 +343,41 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     for cluster_idx in range(0, nclusters):
         print('cluster', cluster_idx, 'cost:', results[cluster_idx][1]['cost'])
 
-    gap = (obj_total - obj_cent) / obj_cent * 100
-    print('The convergence time for original problem is %f' % (orig_duration,))
+    # print results
     print('The convergence time for ADMM is %f' % (totaltime,))
     print('The convergence clock time is %f' % (clocktime,))
     print('The objective function value is %f' % (obj_total,))
-    print('The central objective function value is %f' % (obj_cent,))
-    print('The gap in objective function is %f %%' % (gap,))
 
-    #testlog
+    if centralized:
+        gap = (obj_total - obj_cent) / obj_cent * 100
+        print('The convergence time for original problem is %f' % (orig_duration,))
+        print('The central objective function value is %f' % (obj_cent,))
+        print('The gap in objective function is %f %%' % (gap,))
+
+    # testlog
     file_object = open('log_for_test.txt', 'a')
     file_object.write('Timesteps for this test is %f' % (len(timesteps),))
-    file_object.write('The convergence time for original problem is %f' % (orig_duration,))
     file_object.write('The convergence time for ADMM is %f' % (totaltime,))
-    file_object.write('The gap in objective function is %f %%' % (gap,))
+
+    if centralized:
+        file_object.write('The convergence time for original problem is %f' % (orig_duration,))
+        file_object.write('The gap in objective function is %f %%' % (gap,))
+
     file_object.close()
+
     # ------------ plots of convergence -----------------
-    fig = plt.figure()
-    for cluster_idx in range(0, nclusters):
-        if cluster_idx != results[cluster_idx][0]:
-            print('Error: Result of worker %d not returned!' % (cluster_idx + 1,))
-            break
-        pgap = results[cluster_idx][1]['primal_residual']
-        dgap = results[cluster_idx][1]['dual_residual']
-        curfig = fig.add_subplot(1, nclusters, cluster_idx + 1)
-        curfig.plot(pgap, color='red', linewidth=2.5, label='primal residual')
-        curfig.plot(dgap, color='blue', linewidth=2.5, label='dual residual')
-        curfig.set_yscale('log')
-        curfig.legend(loc='upper right')
+    # fig = plt.figure()
+    # for cluster_idx in range(0, nclusters):
+    #     if cluster_idx != results[cluster_idx][0]:
+    #         print('Error: Result of worker %d not returned!' % (cluster_idx + 1,))
+    #         break
+    #     pgap = results[cluster_idx][1]['primal_residual']
+    #     dgap = results[cluster_idx][1]['dual_residual']
+    #     curfig = fig.add_subplot(1, nclusters, cluster_idx + 1)
+    #     curfig.plot(pgap, color='red', linewidth=2.5, label='primal residual')
+    #     curfig.plot(dgap, color='blue', linewidth=2.5, label='dual residual')
+    #     curfig.set_yscale('log')
+    #     curfig.legend(loc='upper right')
 
     #plt.show()
 

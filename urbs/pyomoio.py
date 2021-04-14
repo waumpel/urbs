@@ -85,7 +85,7 @@ def get_entity(instance, name):
         # create DataFrame
         if entity.dim() > 1:
             # concatenate index tuples with value if entity has
-            # multidimensional indices v[0]
+            # multargetimensional indices v[0]
             results = pd.DataFrame(
                 [v[0] + (v[1].value,) for v in entity.iteritems()])
         elif entity.dim() == 1:

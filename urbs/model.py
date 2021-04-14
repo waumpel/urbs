@@ -4,7 +4,18 @@ from .features import *
 from .input import *
 import pyomo.environ as pyomo
 
-def create_model(data_all, timesteps=None, dt=1, objective='cost', dual=False, type='normal', sites = None, coup_vars=None, data_transmission_boun=None, data_transmission_int=None, cluster=None):
+def create_model(data_all,
+                 timesteps=None,
+                 dt=1,
+                 objective='cost',
+                 dual=False,
+                 type='normal',
+                 sites = None,
+                 data_transmission_boun=None,
+                 data_transmission_int=None,
+                 flow_global=None,
+                 lamda=None,
+                 rho=None):
     """Create a pyomo ConcreteModel urbs object from given input data.
 
     Args:
@@ -19,11 +30,11 @@ def create_model(data_all, timesteps=None, dt=1, objective='cost', dual=False, t
     Returns:
         a pyomo ConcreteModel object
     """
-    
+
     # Optional
     if not timesteps:
         timesteps = data_all['demand'].index.tolist()
-        
+
     if type == 'sub':
         m, data = pyomo_model_prep(data_all, timesteps, sites, type, pd.concat([data_transmission_boun,data_transmission_int]))  # preparing pyomo model
     elif type =='normal':
@@ -32,14 +43,12 @@ def create_model(data_all, timesteps=None, dt=1, objective='cost', dual=False, t
     m.created = datetime.now().strftime('%Y%m%dT%H%M')
     m._data = data
 
-    m.type = type   
-    m.coup_vars = coup_vars
+    m.type = type
     if m.type =='sub':
-        rho = dict((key[1:],value) for key, value in coup_vars.rhos.items() if key[0] == cluster)
         print("urbs Regional-" + str(sites) + " is created.")
     elif m.type =='normal':
         print("urbs Original is created.")
-        
+
     # Parameters
     # weight = length of year (hours) / length of simulation (hours)
     # weight scales costs and emissions from length of simulation to a full
@@ -62,7 +71,7 @@ def create_model(data_all, timesteps=None, dt=1, objective='cost', dual=False, t
         initialize=objective,
         within=pyomo.Any,
         doc='Specification of minimized quantity, default: "cost"')
-      
+
     # Sets
     # ====
     # Syntax: m.{name} = Set({domain}, initialize={values})
@@ -96,11 +105,11 @@ def create_model(data_all, timesteps=None, dt=1, objective='cost', dual=False, t
     m.sit = pyomo.Set(
         initialize = [s for (y,s) in data['site_all'].index.values],
         doc='Set of all sites')
-    
+
     m.sit_inside = pyomo.Set(
         initialize=m._data['commodity'].index.get_level_values('Site').unique(),
         doc='Set of sites belonging to the cluster')
-    
+
     # commodity (e.g. solar, wind, coal...)
     indexlist = set()
     for key in m.commodity_dict["price"]:
@@ -138,7 +147,7 @@ def create_model(data_all, timesteps=None, dt=1, objective='cost', dual=False, t
             within=pyomo.Reals,
             doc='lambda in')
         m.rho = pyomo.Param(
-            m.tm,m.stf,m.sit,m.sit,
+            within=pyomo.Reals,
             initialize=rho,
             doc='rho in')
 
@@ -166,7 +175,7 @@ def create_model(data_all, timesteps=None, dt=1, objective='cost', dual=False, t
         ordered=False,
         doc='Commodities that can be purchased at some site(s)')
 
-    
+
     if m.mode['int']:
         # tuples for operational status of technologies
         m.operational_pro_tuples = pyomo.Set(
@@ -448,7 +457,7 @@ def create_model(data_all, timesteps=None, dt=1, objective='cost', dual=False, t
         m.def_costs = pyomo.Constraint(
                 m.cost_type,
                 rule=def_costs_rule_sub,
-                doc='main cost function by cost type') 
+                doc='main cost function by cost type')
 
     # objective and global constraints
     if m.obj.value == 'cost':
@@ -463,10 +472,18 @@ def create_model(data_all, timesteps=None, dt=1, objective='cost', dual=False, t
 #                rule=res_global_co2_limit_rule,
 #                doc='total co2 commodity output <= Global CO2 limit')
 
-        m.objective_function = pyomo.Objective(
-            rule=cost_rule,
-            sense=pyomo.minimize,
-            doc='minimize(cost = sum of all cost types)')
+        if m.type == 'normal':
+            m.objective_function = pyomo.Objective(
+                rule=cost_rule,
+                sense=pyomo.minimize,
+                doc='minimize(cost = sum of all cost types)')
+        elif m.type == 'sub':
+            m.objective_function = pyomo.Objective(
+                rule=cost_rule_sub(flow_global=flow_global,
+                                   lamda=lamda,
+                                   rho=rho),
+                sense=pyomo.minimize,
+                doc='minimize(cost = sum of all cost types)')
 
 #    elif m.obj.value == 'CO2':
 #        m.res_global_cost_limit = pyomo.Constraint(
@@ -943,18 +960,23 @@ def def_costs_rule_sub(m, cost_type):
         raise NotImplementedError("Unknown cost type.")
 
 def cost_rule(m):
-    if m.type =='sub':
-        return (pyomo.summation(m.costs) + sum(0.5 * m.rho[(tm, stf, sit_in, sit_out)] *
-                        (m.e_tra_in[(tm, stf, sit_in,sit_out, tra, com)]
-                        -m.flow_global[(tm, stf, sit_in,sit_out)])**2
-                        for tm in m.tm
-                        for stf, sit_in, sit_out, tra, com in m.tra_tuples_boun) + sum(m.lamda[(tm, stf, sit_in, sit_out)] *
-                        (m.e_tra_in[(tm,stf, sit_in,sit_out,tra,com)]
-                        -m.flow_global[(tm, stf, sit_in,sit_out)])
-                        for tm in m.tm
-                        for stf, sit_in, sit_out, tra, com in m.tra_tuples_boun)      )
-    else:
-        return pyomo.summation(m.costs)
+    return pyomo.summation(m.costs)
+
+
+def cost_rule_sub(flow_global, lamda, rho):
+    def cost_rule(m):
+            return (pyomo.summation(m.costs) + 0.5 * rho *
+                        sum((m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] -
+                            flow_global[(tm, stf, sit_in, sit_out)])**2
+                            for tm in m.tm
+                            for stf, sit_in, sit_out, tra, com in m.tra_tuples_boun) +
+                        sum(lamda[(tm, stf, sit_in, sit_out)] *
+                            (m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] -
+                            flow_global[(tm, stf, sit_in, sit_out)])
+                            for tm in m.tm
+                            for stf, sit_in, sit_out, tra, com in m.tra_tuples_boun))
+
+    return cost_rule
 
 
 # CO2 output in entire period <= Global CO2 budget
