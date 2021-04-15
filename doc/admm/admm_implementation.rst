@@ -358,12 +358,12 @@ In the following code section, the ``Transmission`` DataFrame is sliced for each
 
     # map cluster_idx -> slice of data_all['transmission'] (copies)
     shared_lines = [
-        data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]]
+        data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]].copy(deep=True)
         for cluster_idx in range(0, nclusters)
     ]
     # map cluster_idx -> slice of data_all['transmission'] (copies)
     internal_lines = [
-        data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]]
+        data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]].copy(deep=True)
         for cluster_idx in range(0, nclusters)
     ]
     # neighbouring cluster of each shared line for each cluster
@@ -382,6 +382,10 @@ Before the individual subproblems are created, an ``InitialValues`` object and s
         lamda=0,
         rho=5
     )
+
+    # Manager object for creating Queues, Locks and other objects that can be shared
+    # between processes.
+    manager = mp.Manager()
 
     # create Queues for each communication channel
     queues = {
@@ -464,16 +468,21 @@ In the next code section, an ``UrbsAdmmModel`` is initialized for each cluster a
 
         problems.append(problem)
 
-Then, another Queue is created, which is used by each subproblem after they converge to send their solutions::
+Then, another Queue is created, which is used by each subproblem after they converge to send their solutions. Furthermore, a Lock is created to ensure that only one process prints to stdout at any time.::
 
-    # define a Queue class for collecting the results from each subproblem after convergence
-    output = mp.Manager().Queue()
+    # Queue for collecting the results from each subproblem after convergence
+    output = manager.Queue()
 
-Afterwards, a list (``proc``) is initialized, and populated by ``mp.Process`` which take the function ``run_worker``, to be run for each cluster. The arguments here are:
+    # This Lock ensures that only one process prints to stdout at any time.
+    printlock = manager.Lock()
 
-- ``cluster_idx + 1``: ordinality of the cluster,
-- ``problems[cluster_idx]``: the ``UrbsAdmmModel`` instance corresponding to the cluster,
-- ``output``: the Queue to be used for sending the subproblem solution
+Now, a child process is created for each subproblem. It receives the corresponding ``UrbsAdmmModel``, the ouput queue and the print lock as arguments.
+
+    # Child processes for the ADMM subproblems
+    procs = [
+        mp.Process(target=run_worker, args=(problem, output, printlock))
+        for problem in problems
+    ]
 
 The processes are then launched using the ``.start()`` method.::
 
@@ -487,25 +496,12 @@ The processes are then launched using the ``.start()`` method.::
     for proc in procs:
         proc.start()
 
-While the processes are running, attempts to fetch results from ``output`` is made in constant intervals (0.5 seconds by default), until all child processes are finished (``while liveprocs:``). A soon as this is the case, we return to the parent thread (``proc.join()``)::
+The results of the child processes are collected in the ``results`` array. The method ``output.get()`` waits for messages sent by the subproblems to the output queue.
 
     # collect results as the subproblems converge
-    results = []
-    while liveprocs:
-        try:
-            while 1:
-                results.append(output.get(False))
-        except queue.Empty:
-            pass
-
-        time.sleep(0.5)
-        if not output.empty():
-            continue
-
-        liveprocs = [p for p in liveprocs if p.is_alive()]
-
-    for proc in procs:
-        proc.join()
+    results = [
+        output.get() for _ in range(nclusters)
+    ]
 
 .. _test-section:
 
@@ -585,9 +581,25 @@ In this section, the steps followed by the function ``run_worker`` is explained.
 
 The function takes three input arguments:
 
-- ``ID``: ordinality of the cluster (1 for the first subproblem, 2 for the second etc.),
 - ``s``: the ``UrbsAdmmModel`` instance corresponding to the cluster,
-- ``output``: the Queue to be used for sending the subproblem solution
+- ``output``: the Queue to be used for sending the subproblem solution,
+- ``printlock``: the Lock for synchronized printing.
+
+The ``printlock`` is passed to the auxiliary method ``safe_print``::
+
+    def safe_print(lock, *args):
+        """
+        Print to `stdout` in a synchronized fashion.
+
+        ### Arguments
+        * `lock`: `threading.Lock` that controls the synchronized printing.
+        * `*args`: What to print. Same as the `*values` argument of `print`.
+        """
+        lock.acquire()
+        try:
+            print(*args)
+        finally:
+            lock.release()
 
 ``cost_history`` keeps track  of the objective function value of the solutions. ``max_iter`` is the maximal number of iterations::
 

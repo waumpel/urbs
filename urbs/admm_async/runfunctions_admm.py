@@ -269,7 +269,7 @@ def run_regional(input_file,
     # Queue for collecting the results from each subproblem after convergence
     output = manager.Queue()
 
-
+    # This Lock ensures that only one process prints to stdout at any time.
     printlock = manager.Lock()
 
     # Child processes for the ADMM subproblems
