@@ -193,10 +193,14 @@ def run_regional(input_file,
         rho=5
     )
 
+    # Manager object for creating Queues, Locks and other objects that can be shared
+    # between processes.
+    manager = mp.Manager()
+
     # create Queues for each communication channel
     queues = {
         source: {
-            target: mp.Manager().Queue() # TODO: is creation of multiple managers intended?
+            target: manager.Queue()
             for target in neighbors[source]
         }
         for source in range(nclusters)
@@ -262,13 +266,17 @@ def run_regional(input_file,
         problems.append(problem)
 
 
-    # define a Queue class for collecting the results from each subproblem after convergence
-    output = mp.Manager().Queue()
+    # Queue for collecting the results from each subproblem after convergence
+    output = manager.Queue()
 
-    # define the asynchronous jobs for ADMM routines
-    procs = []
-    for cluster_idx in range(0, nclusters):
-        procs += [mp.Process(target=run_worker, args=(cluster_idx + 1, problems[cluster_idx], output))]
+
+    printlock = manager.Lock()
+
+    # Child processes for the ADMM subproblems
+    procs = [
+        mp.Process(target=run_worker, args=(problem, output, printlock))
+        for problem in problems
+    ]
 
     start_time = time.time()
     start_clock = time.clock()
@@ -325,11 +333,12 @@ def run_regional(input_file,
     # debug
     for cluster_idx in range(0, nclusters):
         received_neighbors = results[cluster_idx][1]['received_neighbors']
-        print('cluster', cluster_idx, 'received neighbors:', received_neighbors, 'avg:', sum(received_neighbors)/len(received_neighbors))
+        print('cluster', cluster_idx + 1, 'received neighbors:', received_neighbors,
+              'avg:', sum(received_neighbors)/len(received_neighbors))
 
     # debug
     for cluster_idx in range(0, nclusters):
-        print('cluster', cluster_idx, 'cost:', results[cluster_idx][1]['cost'])
+        print('cluster', cluster_idx + 1, 'cost:', results[cluster_idx][1]['cost'])
 
     # print results
     print('The convergence time for ADMM is %f' % (totaltime,))

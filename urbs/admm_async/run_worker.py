@@ -1,20 +1,38 @@
 from time import time
 
 
-def run_worker(ID, s, output):
+def safe_print(lock, *args):
     """
+    Print to `stdout` in a synchronized fashion.
+
+    ### Arguments
+    * `lock`: `threading.Lock` that controls the synchronized printing.
+    * `*args`: What to print. Same as the `*values` argument of `print`.
+    """
+    lock.acquire()
+    try:
+        print(*args)
+    finally:
+        lock.release()
+
+
+def run_worker(s, output, printlock):
+    """
+    Main function for child processes of ADMM. Iteratively solves one subproblem of ADMM.
+
     ### Args:
-    * `ID`: the ordinality of the subproblem
-    * `s`: the UrbsAdmmModel instance corresponding to the subproblem
-    * `output`: the Queue() object where the results are delivered to
+    * `s`: `UrbsAdmmModel` representing the subproblem.
+    * `output`: `multiprocessing.Queue` for sending results.
+    * `printlock`: `threading.Lock` for synchronized printing.
     """
 
-    print("Worker %d initialized successfully!" % (ID,))
+    ID = s.ID + 1 # one-based integer for printing
+    safe_print(printlock, "Worker %d initialized successfully!" % (ID,))
     cost_history = []
     max_iter = s.admmopt.max_iter
 
     for nu in range(max_iter):
-        print('Subproblem %d is at iteration %d right now.' % (ID, nu))
+        safe_print(printlock, 'Subproblem %d is at iteration %d right now.' % (ID, nu))
 
         start_time = time()
         s.solve_problem()
@@ -38,17 +56,17 @@ def run_worker(ID, s, output):
         s.send()
 
         if nu % 1 == 0:
-            print('Subproblem %d at iteration %d solved!. Local cost at %d is: %d. Residprim is: %d'
-                  % (ID, nu, ID, cost_history[-1], s.primalgap[-1]))
-        print("Time for solving subproblem %d: %ssecs to %ssecs" % (ID, start_time, end_time))
+            safe_print(printlock, 'Subproblem %d at iteration %d solved!. Local cost at %d is: %d. Residprim is: %d'
+                % (ID, nu, ID, cost_history[-1], s.primalgap[-1]))
+        safe_print(printlock, "Time for solving subproblem %d: %ssecs to %ssecs" % (ID, start_time, end_time))
 
         if converged:
-            print("Worker %d converged!" % (ID,))
+            safe_print(printlock, "Worker %d converged!" % (ID,))
             break
 
         s.update_cost_rule()
 
-    print("Local iteration of worker %d is %d" % (ID, nu))
+    safe_print(printlock, "Local iteration of worker %d is %d" % (ID, nu))
     # save(s.model, os.path.join(s.result_dir, '_{}_'.format(ID),'{}.h5'.format(s.sce)))
     output_package = {
         'cost': cost_history,
