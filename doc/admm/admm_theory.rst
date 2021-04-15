@@ -65,67 +65,90 @@ The steps 1, 2, and 3 and 4 are followed until convergence, which corresponds to
 
 Theoretical background of the asynchronous consensus ADMM
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-The consensus ADMM, whose steps were described above, is a synchronous algorithm. This means, each subproblem needs to be solved (step 1), in order for the updates (steps 2, 3) to take place before moving onto the next iteration. When the subproblems are solved in parallel for runtime benefits, this may lead to a so-called "straggler effect", where the performance of the algorithm is constrained by its slowest subproblem. This is often the case when the subproblems differ in sizes considerables (leading the small subproblems to have to wait for a larger problem to be solved).
+The consensus ADMM, whose steps were described above, is a synchronous algorithm. This means, each subproblem needs to be solved (step 1), in order for the updates (steps 2, 3) to take place before moving onto the next iteration. When the subproblems are solved in parallel for runtime benefits, this may lead to a so-called "straggler effect", where the performance of the algorithm is constrained by its slowest subproblem. This is often the case when the subproblems differ in sizes considerably (leading the small subproblems to have to wait for a larger problem to be solved).
 
 In order to tackle this issue, an asynchronous variant of ADMM is formulated, where:
 
-i) partial information from neighbours (a certain percentage :math:`\eta` of the neighbors) is sufficient for each subproblem to move onto the next iteration, and
+i) partial information from neighbors (a certain percentage :math:`\eta` of the neighbors) is sufficient for each subproblem to move on to the next iteration, and
 ii) the updating steps (2, 3) and the convergence checks take place locally rather than globally.
 
 The specific algorithm is partially based on https://arxiv.org/abs/1710.08938. Here, a brief explanation of the algorithm will be made. For a more detailed description, please refer to this material.
 
-Let us assume that our problem consists of the subsystems :math:`k\in \{1,\dots,\mathcal N\}`, with each subsystem :math:`k` sharing some variable(s) with its neighbors :math:`\mathcal N_k`. Asynchronicity takes places by each subproblem receiving the solutions from only up to :math:`\left \lceil{\eta \lVert \mathcal N_k \rVert}\right \rceil` neighbors before moving on to the next iteration. Since it takes different time for each of these subproblems to receive these information, each subproblem has their own iteration counters :math:`\nu_k`. A generalized notation of the problem variables are as follows:
+Let us assume that our problem consists of the subsystems :math:`k\in \{1,\dots, n\}`, with each subsystem :math:`k` sharing some variable(s) with its neighbors :math:`\mathcal N_k`. Asynchronicity takes places by each subproblem receiving the solutions from only up to :math:`\left \lceil{\eta | \mathcal N_k |}\right \rceil` neighbors before moving on to the next iteration. Since it takes different time for each of these subproblems to receive these information, each subproblem has their own iteration counters :math:`\nu_k`. A generalized notation of the problem variables are as follows:
 
 +------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
 | Variable                           | Description                                                                                                                               |
 +====================================+===========================================================================================================================================+
 | :math:`\boldsymbol x_k`            | Internal variables of subsystem :math:`k`                                                                                                 |
 +------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
-| :math:`\boldsymbol y_{kl}`         | Set of the coupling variables between subsystems :math:`k` and :math:`l` in subproblem :math:`k`                                          |
+| :math:`\boldsymbol y_{kl}`         | Coupling variables between subsystems :math:`k` and :math:`l` in subproblem :math:`k`                                                     |
 +------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
-| :math:`\boldsymbol y_{k}`          | Set of the coupling variables between subsystems :math:`k` and all its neighbors :math:`\mathcal N_k` in subproblem :math:`k`             |
+| :math:`\boldsymbol y_{k}`          | Coupling variables between subsystems :math:`k` and all its neighbors :math:`\mathcal N_k` in subproblem :math:`k`                        |
 +------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
-| :math:`\boldsymbol y_{g,kl}`       | Set of the (now locally defined) global value of :math:`\boldsymbol y_{kl}` in subproblem :math:`k`                                       |
+| :math:`\boldsymbol y_{g,kl}`       | Now locally defined global value of :math:`\boldsymbol y_{kl}` in subproblem :math:`k`                                                    |
 +------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
-| :math:`\boldsymbol y_{g,k}`        | Set of the (now locally defined) global value of all coupling variables :math:`\boldsymbol y_{k}` in subproblem :math:`k`                 |
+| :math:`\boldsymbol y_{g,k}`        | Now locally defined global value of all coupling variables :math:`\boldsymbol y_{k}` in subproblem :math:`k`                              |
 +------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
-| :math:`\boldsymbol \lambda_{kl}`   | Set of the Lagrange multipliers for the consensus constraint :math:`\boldsymbol y_{kl} =\boldsymbol y_{g,kl}` in the subproblem :math:`k` |
+| :math:`\boldsymbol \lambda_{kl}`   | Lagrange multipliers for the consensus constraint :math:`\boldsymbol y_{kl} =\boldsymbol y_{g,kl}` in the subproblem :math:`k`            |
 +------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
-| :math:`\boldsymbol \lambda_{k}`    | Set of the Lagrange multipliers for all consensus constraints :math:`\boldsymbol y_{k} =\boldsymbol y_{g,k}` in the subproblem :math:`k`  |
+| :math:`\boldsymbol \lambda_{k}`    | Lagrange multipliers for all consensus constraints :math:`\boldsymbol y_{k} =\boldsymbol y_{g,k}` in the subproblem :math:`k`             |
 +------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
-| :math:`\rho_{k}`                   | Quadratic penalty parameter of the subproblem :math:`k`                                                                                   |
+| :math:`\rho_{k}`                   | Quadratic penalty parameter of subproblem :math:`k`                                                                                       |
 +------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
 
-The asynchronous ADMM algorithm for each subsystem :math:`k` operates as follows:
+To explain the aynchronous ADMM algorithm, let us focus on the perspective of subproblem :math:`k`.
+To ease notation, the index :math:`k` is omitted for the variables and parameters of :math:`k`.
+Superscripts indicate the local iteration counter: :math:`v^i` denotes the value of variable :math:`v` at the start of iteration :math:`i`,
+:math:`v^{i+1}` is the value calculated during iteration :math:`i`.
 
-1) Through the fixing (or initialization, in case of the first step) of the global values and the Lagrangian multipliers, the decoupled model can be solved independently in parallel to the others:
+The first step of the algorithm is to initialize the global values :math:`\boldsymbol y^0_g`, Lagrange multipliers :math:`\boldsymbol \lambda^0_k` and penalty parameter :math:`\rho_k`.
+
+Now, in each iteration :math:`nu_k = i`, perform the following steps:
+
+1) Compute internal and coupling variables :math:`x^{i+1}` and :math:`y^{i+1}`:
 
 .. math::
 
- (\boldsymbol x^{\nu_k+1}_k, \boldsymbol y^{\nu_k+1}_{k})=\text{arg}\min_{\boldsymbol x_k,\boldsymbol y_k}   f_k(\boldsymbol x_k,\boldsymbol y_k)+(\boldsymbol \lambda^{\nu_k}_k)^T(\boldsymbol y_k-{\boldsymbol y^{\nu_k}_{g,k}})+\dfrac{\rho_k}{2}\left\lVert \boldsymbol y_k - \boldsymbol y_{g,k}^{\nu_k}\right\rVert_2^2 \text{s.t.} \ \  \boldsymbol x_k \in \chi_k
+ (\boldsymbol x^{k+1}_k, \boldsymbol y^{k+1}_{k}) = \text{arg}\min_{\boldsymbol x,\boldsymbol y} f(\boldsymbol x, \boldsymbol y) + (\boldsymbol \lambda^i)^T (\boldsymbol y - \boldsymbol y^i_g)+\dfrac{\rho_k}{2}\left\lVert \boldsymbol y - \boldsymbol y^i_g \right\rVert^2_2 \text{s.t.} \ \  \boldsymbol x \in \chi
 
-2) Check if at least :math:`\left \lceil{\eta \lVert \mathcal N_k \rVert}\right \rceil` neighbors have new information to provide. If not, wait for it. If a problem :math:`l` had already been solved multiple times since the last time information was received from it, pick the most recent information (corresponding to its current local iteration :math:`\nu_l`). (:func:`recv` is where this step is implemented):
+2) Wait until at least :math:`\left \lceil{\eta \lVert \mathcal N \rVert}\right \rceil` neighbors have provided updated information.
+If a problem :math:`l` had already been solved multiple times since the last time information was received from it, pick the most recent information (corresponding to its current local iteration :math:`\nu_l`).
 
-3) For each neighbor :math:`l` that provided new information, apply a modified averaging step (:func:`update_flow_global` is where this step is implemented).
-
-.. math::
-
- \forall l \in \mathcal N_k \text{ with new information: } \ {\boldsymbol y^{\nu+1}_{g,kl}}:=\dfrac{\boldsymbol \lambda_{kl} + \boldsymbol \lambda_{lk} + \rho_k\ \boldsymbol y_{kl}^{\nu_k+1}+\rho_l\ \boldsymbol y^{\nu_l}_{lk}}{\rho_k + \rho_l}
-
-This update step looks differently than that of synchronous ADMM, as it factors for the inaccuricies which arise from asynchronicity.
-
-3) Update (all) consensus Lagrangian multipliers of subproblem :math:`k` as usual:
+3) Compute the (local copies of) global variables from both locally computed variables and those received from neighbors. For neighbors who have not sent new information in this iteration, simply use the most recent values available.
 
 .. math::
 
- \boldsymbol \lambda_{k}^{\nu_k+1}:=\boldsymbol \lambda_{k}^{\nu_k}+\rho \left(\boldsymbol y_{k}^{\nu_k+1}-{\boldsymbol y_{g,k}^{\nu_k+1}}\right)
+ \forall l \in \mathcal N_k: \ {\boldsymbol y^{i+1}_{g,kl}}:=\dfrac{\boldsymbol \lambda_{kl} + \boldsymbol \lambda_{lk} + \rho_k\ \boldsymbol y_{kl}^{i+1} + \rho_l \ \boldsymbol y^{\nu_l}_{lk}}{\rho_k + \rho_l}
 
-4) To check the convergence of a subproblem, collect all primal and dual residuals from the neighbors. If the maximum of these residuals is smaller than the convergence tolerance set for this subproblem, the subproblem converges:
+This update step looks different from that of synchronous ADMM, as it factors for the inaccuricies which arise from asynchronicity.
+
+4) Compute Lagrangian multipliers as usual:
 
 .. math::
 
- r_{k,l}^{\nu+1} = \left\lVert \boldsymbol y^\nu_{kl} - {\boldsymbol y_{g,kl}}^\nu \right\rVert_2^2 \\
- d_{k,l}^{\nu+1} = \rho \  \left\lVert {\boldsymbol y_g}^{\nu+1} - {\boldsymbol y_g}^\nu \right\rVert_2^2
+ \boldsymbol \lambda^{i+1} = \boldsymbol \lambda^i + \rho \left(\boldsymbol y^{i+1} - {\boldsymbol y^{i+1}_g}\right)
+
+5) For each neighbor :math:`l`, send them the updated variables :math:`\boldsymbol y^{i+1}_{kl}` and :math:`\boldsymbol \lambda^{i+1}_{kl}`, as well as the penalty parameter :math:`\rho`.
+
+6) Check for convergence by comparing the primal and dual gaps :math:`r^{i+1}` and :math:`d^{i+1}` to the tolerance thresholds :math:`\epsilon_r` and :math:`\epsilon_d`:
+
+.. math::
+
+ r^{i+1} = \dfrac{1}{\text{dim}(y^{i+1})} \left\lVert \boldsymbol y^{i+1} - \boldsymbol y^{i+1}_g \right\rVert_2^2 < \epsilon_r \\
+ d^{i+1} = \dfrac{rho}{\text{dim}(y^{i+1})} \ \left\lVert \boldsymbol y^{i+1}_g} - \boldsymbol y^i_g \right\rVert_2^2 < \epsilon_d
+
+:math:`\text{dim}(y^{i+1})` denotes the dimensionality of vector :math:`y^{i+1}` and is used as a normalization term.
+
+An additional, optional step is to update the penalty parameter :math:`\rho`. There are several strategies for this update step; the one implemented here takes place after step 4:
+
+4.5) Compute the penalty parameter:
+
+If :math:`r^{i+1} > \mu d^{i+1}`, :math:`\rho^{i+1} = \tau \rho^i`.
+If :math:`d^{i+1} > \mu r^{i+1}`, :math:`\rho^{i+1} = \dfrac{1}{\tau} \rho^i`.
+Otherwise, :math:`\rho^{i+1} = \rho^i`.
+
+This update requires additional parameters :math:`\mu` and :math:`\tau`.
+Additionally, :math:`\rho` should only be updated in the first :math:`\nu_\rho` iterations to ensure convergence.
 
 Interpretation of regional decomposition in urbs
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
