@@ -167,12 +167,12 @@ def run_regional(input_file,
 
     # map cluster_idx -> slice of data_all['transmission'] (copies)
     shared_lines = [
-        data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]]
+        data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]].copy(deep=True)
         for cluster_idx in range(0, nclusters)
     ]
     # map cluster_idx -> slice of data_all['transmission'] (copies)
     internal_lines = [
-        data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]]
+        data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]].copy(deep=True)
         for cluster_idx in range(0, nclusters)
     ]
     # neighbouring cluster of each shared line for each cluster
