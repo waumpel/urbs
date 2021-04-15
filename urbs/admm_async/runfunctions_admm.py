@@ -270,6 +270,8 @@ def run_regional(input_file,
     for cluster_idx in range(0, nclusters):
         procs += [mp.Process(target=run_worker, args=(cluster_idx + 1, problems[cluster_idx], output))]
 
+    livecount = len(procs)
+
     start_time = time.time()
     start_clock = time.clock()
     for proc in procs:
@@ -278,19 +280,13 @@ def run_regional(input_file,
     liveprocs = list(procs)
 
     # collect results as the subproblems converge
-    results = []
-    while liveprocs:
-        try:
-            while 1:
-                results.append(output.get(False))
-        except queue.Empty:
-            pass
+    results = [
+        output.get() for _ in range(nclusters)
+    ]
 
-        time.sleep(0.5) # TODO
-        if not output.empty():
-            continue
+    # for _ in range(nclusters):
+    #     results.append(output.get())
 
-        liveprocs = [p for p in liveprocs if p.is_alive()]
 
     for proc in procs:
         proc.join()
