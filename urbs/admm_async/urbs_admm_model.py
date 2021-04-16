@@ -45,6 +45,7 @@ class UrbsAdmmModel(object):
     `receiving_queues`: Dict mapping each neighbor ID to a `mp.Queue` for receiving messages
         from that neighbor.
     `recvmsg`: Dict mapping each neighbor ID to the most recent message from that neighbor.
+    `regions`: List of region names in this subproblem.
     `result_dir`: Result directory.
     `rho`: Quadratic penalty coefficient. Initial value taken from `initial_values`.
     `scenario_name`: Scenario name.
@@ -69,6 +70,7 @@ class UrbsAdmmModel(object):
         lamda,
         neighbors,
         receiving_queues,
+        regions,
         result_dir,
         scenario_name,
         sending_queues,
@@ -92,6 +94,7 @@ class UrbsAdmmModel(object):
         self.received_neighbors = []
         self.receiving_queues = receiving_queues
         self.recvmsg = {}
+        self.regions = regions
         self.result_dir = result_dir
         self.rho = initial_values.rho
         self.scenario_name = scenario_name

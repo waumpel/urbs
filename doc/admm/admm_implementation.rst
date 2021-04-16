@@ -166,7 +166,7 @@ Imports::
     import multiprocessing as mp
     import os
     import queue
-    import time
+    from time import time, clock
 
     import matplotlib.pyplot as plt
     import numpy as np
@@ -187,7 +187,7 @@ Besides the usual imports of ``runfunctions.py``, additional imports are necessa
 
 - The function ``run_worker`` contains all the ADMM steps that are followed by the submodel classes ``UrbsAdmmModel``.
 
-- ``time`` is used as a runtime-profiling (for test purposes).
+- ``time``and ``clock`` are used for runtime-profiling (for test purposes).
 
 - ``numpy`` and ``math.ceil`` are required for array operations and a ceiling function respectively.
 
@@ -238,27 +238,27 @@ Functions ``prepare_result_directory`` and ``setup_solver`` are unchanged except
         return result_dir
 
 
-    def setup_solver(optim, logfile='solver.log'):
+    def setup_solver(solver, logfile='solver.log'):
         """ """
-        if optim.name == 'gurobi':
+        if solver.name == 'gurobi':
             # reference with list of option names
             # http://www.gurobi.com/documentation/5.6/reference-manual/parameters
-            optim.set_options("logfile={}".format(logfile))
-            optim.set_options("method=2")
-            # optim.set_options("timelimit=7200")  # seconds
-            # optim.set_options("mipgap=5e-4")  # default = 1e-4
-        elif optim.name == 'glpk':
+            solver.set_options("logfile={}".format(logfile))
+            solver.set_options("method=2")
+            # solver.set_options("timelimit=7200")  # seconds
+            # solver.set_options("mipgap=5e-4")  # default = 1e-4
+        elif solver.name == 'glpk':
             # reference with list of options
             # execute 'glpsol --help'
-            optim.set_options("log={}".format(logfile))
-            # optim.set_options("tmlim=7200")  # seconds
-            # optim.set_options("mipgap=.0005")
-        elif optim.name == 'cplex':
-            optim.set_options("log={}".format(logfile))
+            solver.set_options("log={}".format(logfile))
+            # solver.set_options("tmlim=7200")  # seconds
+            # solver.set_options("mipgap=.0005")
+        elif solver.name == 'cplex':
+            solver.set_options("log={}".format(logfile))
         else:
             print("Warning from setup_solver: no options set for solver "
-                  "'{}'!".format(optim.name))
-        return optim
+                "'{}'!".format(solver.name))
+        return solver
 
 Now that the auxiliary functions are explained, the main function of this script, ``run_regional``, will be explained step by step.
 
@@ -296,7 +296,16 @@ Then, similarly to regular urbs, the scenario is set up, the model data is read 
 
     # scenario name, read and modify data for scenario
     scenario_name = scenario.__name__
+
+    print('Reading input...')
+    start = time()
     data_all = read_input(input_file, year)
+    read_time = time() - start
+    print(f'Done. Time elapsed: {read_time:.2f} seconds')
+
+    print('Preprocessing...')
+    start = time()
+
     data_all = scenario(data_all)
     validate_input(data_all)
     validate_dc_objective(data_all, objective)
@@ -412,6 +421,12 @@ In the next code section, an ``UrbsAdmmModel`` is initialized for each cluster a
     problems = []
     sub = {}
 
+    preprocess_time = time() - start
+    print(f'Done. Time elapsed: {preprocess_time:.0f}')
+
+    print('Creating models...')
+    start = time()
+
     # initialize pyomo models and `UrbsAdmmModel`s
     for cluster_idx in range(0, nclusters):
         index = shared_lines[cluster_idx].index.to_frame()
@@ -459,6 +474,7 @@ In the next code section, an ``UrbsAdmmModel`` is initialized for each cluster a
             model = model,
             neighbors = neighbors[cluster_idx],
             receiving_queues = receiving_queues,
+            regions = clusters[cluster_idx],
             result_dir = result_dir,
             scenario_name = scenario_name,
             sending_queues = queues[cluster_idx],
@@ -467,6 +483,10 @@ In the next code section, an ``UrbsAdmmModel`` is initialized for each cluster a
         )
 
         problems.append(problem)
+
+    model_time = time() - start
+    print(f'Done. Time elapsed: {model_time:.0f}')
+
 
 Then, another Queue is created, which is used by each subproblem after they converge to send their solutions. Furthermore, a Lock is created to ensure that only one process prints to stdout at any time.::
 
@@ -491,8 +511,10 @@ The processes are then launched using the ``.start()`` method.::
     for cluster_idx in range(0, nclusters):
         procs += [mp.Process(target=run_worker, args=(cluster_idx + 1, problems[cluster_idx], output))]
 
-    start_time = time.time()
-    start_clock = time.clock()
+    print('Solving the distributed problem...')
+
+    start_time = time()
+    start_clock = clock()
     for proc in procs:
         proc.start()
 
@@ -505,12 +527,14 @@ The results of the child processes are collected in the ``results`` array. The m
 
 .. _test-section:
 
-Now the computation time is measured and the results are collected.
+Now the computation time is measured and the results are collected::
 
-    ttime = time.time()
-    tclock = time.clock()
-    totaltime = ttime - start_time
-    clocktime = tclock - start_clock
+    ttime = time()
+    tclock = clock()
+    solver_time = ttime - start_time
+    solver_clock = tclock - start_clock
+
+    print(f'Done. Time elapsed: {solver_time:.0f}')
 
     # get results
     results = sorted(results, key=lambda x: x[0])
@@ -519,7 +543,7 @@ Now the computation time is measured and the results are collected.
 
     for cluster_idx in range(0, nclusters):
         if cluster_idx != results[cluster_idx][0]:
-            print('Error: Result of worker %d not returned!' % (cluster_idx + 1,))
+            raise RuntimeError(f'Result of worker {cluster_idx + 1} was not returned')
             break
         obj_total += results[cluster_idx][1]['cost'][-1]
 
@@ -527,47 +551,60 @@ If the optional ``centralized`` is passed, the urbs model is additionally solved
 
     # (optinal) solve the centralized problem
     if centralized:
+        print('Creating the centralized model...')
+        start = time()
         prob = create_model(data_all, timesteps, dt, type='normal')
+        centralized_model_time = time() - start
+        print(f'Done. Time elapsed: {centralized_model_time:.0f}')
 
         # refresh time stamp string and create filename for logfile
         log_filename = os.path.join(result_dir, '{}.log').format(scenario_name)
 
         # setup solver
         solver_name = 'gurobi'
-        optim = SolverFactory(solver_name)  # cplex, glpk, gurobi, ...
-        optim = setup_solver(optim, logfile=log_filename)
+        solver = SolverFactory(solver_name)  # cplex, glpk, gurobi, ...
+        solver = setup_solver(solver, logfile=log_filename)
 
-        # original problem solution (not necessary for ADMM, to compare results)
-        orig_time_before_solve = time.time()
-        results_prob = optim.solve(prob, tee=False)
-        orig_time_after_solve = time.time()
-        orig_duration = orig_time_after_solve - orig_time_before_solve
-        flows_from_original_problem = dict((name, entity.value) for (name, entity) in prob.e_tra_in.items())
-        flows_from_original_problem = pd.DataFrame.from_dict(flows_from_original_problem, orient='index',
-                                                         columns=['Original'])
+        print('Solving the centralized model...')
+        start = time()
+        result = solver.solve(prob, tee=False)
+        centralized_solver_time = time() - start
+        print(f'Done. Time elapsed: {centralized_solver_time:.0f}')
+        flows_from_original_problem = pd.DataFrame.from_dict(
+            {name: entity.value for name, entity in prob.e_tra_in.items()},
+            orient='index',
+            columns=['Original']
+        )
 
-        obj_cent = results_prob['Problem'][0]['Lower bound']
+        obj_cent = result['Problem'][0]['Lower bound']
 
 Finally, some results are printed out and written to a log file::
 
     # print results
-    print('The convergence time for ADMM is %f' % (totaltime,))
-    print('The convergence clock time is %f' % (clocktime,))
-    print('The objective function value is %f' % (obj_total,))
+    print()
+    print(f'Reading input time      : {read_time:4.0f} s')
+    print(f'ADMM preprocessing time : {preprocess_time:4.0f} s')
+    print(f'ADMM model creation time: {model_time:4.0f} s')
+    print(f'ADMM solver time        : {solver_time:4.0f} s')
+    print(f'ADMM solver clock       : {solver_clock:4.0f} s')
+    print(f'ADMM objective          : {obj_total:.4e}')
 
     if centralized:
-        gap = (obj_total - obj_cent) / obj_cent * 100
-        print('The convergence time for original problem is %f' % (orig_duration,))
-        print('The central objective function value is %f' % (obj_cent,))
-        print('The gap in objective function is %f %%' % (gap,))
+        gap = (obj_total - obj_cent) / obj_cent
+        print()
+        print(f'centralized model creation time: {centralized_model_time:4.0f} s')
+        print(f'centralized solver time        : {centralized_solver_time:4.0f} s')
+        print(f'centralized objective          : {obj_cent:.4e}')
+        print()
+        print(f'Objective gap: {gap:.4%}')
 
     # testlog
     file_object = open('log_for_test.txt', 'a')
     file_object.write('Timesteps for this test is %f' % (len(timesteps),))
-    file_object.write('The convergence time for ADMM is %f' % (totaltime,))
+    file_object.write('The convergence time for ADMM is %f' % (solver_time,))
 
     if centralized:
-        file_object.write('The convergence time for original problem is %f' % (orig_duration,))
+        file_object.write('The convergence time for original problem is %f' % (centralized_solver_time,))
         file_object.write('The gap in objective function is %f %%' % (gap,))
 
     file_object.close()
@@ -575,51 +612,71 @@ Finally, some results are printed out and written to a log file::
 .. _runworker-section:
 
 
-The ``run_worker`` function (admm_async/run_worker.py)
+The ``run_worker`` script (admm_async/run_worker.py)
 ------------------------------------------------------
-In this section, the steps followed by the function ``run_worker`` is explained. This function is run in parallel by each subproblem, and it consists of some initialization steps, ADMM iterations and post-convergence steps.
+This script contains two functions, ``run_worker`` and ``safe_print``. ``run_worker`` is the main function run in parallel by all child processes and contains the ADMM iterations.
 
-The function takes three input arguments:
+``safe_print`` is an auxiliary function used for synchronized printing to ``stdout``::
 
-- ``s``: the ``UrbsAdmmModel`` instance corresponding to the cluster,
-- ``output``: the Queue to be used for sending the subproblem solution,
-- ``printlock``: the Lock for synchronized printing.
-
-The ``printlock`` is passed to the auxiliary method ``safe_print``::
-
-    def safe_print(lock, *args):
+    def safe_print(ID, lock, *args):
         """
         Print to `stdout` in a synchronized fashion.
 
         ### Arguments
+        * `ID`: ID of the printing process (one-based integer).
         * `lock`: `threading.Lock` that controls the synchronized printing.
         * `*args`: What to print. Same as the `*values` argument of `print`.
         """
         lock.acquire()
         try:
-            print(*args)
+            print(f'Process[{ID}]', *args)
         finally:
             lock.release()
 
-``cost_history`` keeps track  of the objective function value of the solutions. ``max_iter`` is the maximal number of iterations::
 
+``run_worker`` takes three arguments:
+
+- ``s``: the ``UrbsAdmmModel`` instance corresponding to the cluster,
+- ``output``: the Queue to be used for sending the subproblem solution,
+- ``printlock``: the Lock for synchronized printing (passed to ``safe_print``).
+
+First, some variables are defined:
+- ``ID`` is the one-based integer representing this child process and is used for printing purposes.
+- ``cost_history`` keeps track  of the objective function value of the solutions.
+- ``max_iter`` is the maximal number of local iterations.
+- ``received`` is the number of neighbors that have sent a message in the last iteration.
+- ``solver_times`` keeps track of the time the solver needs in each iteration.
+
+::
+
+    ID = s.ID + 1 # one-based integer for printing
     cost_history = []
     max_iter = s.admmopt.max_iter
+    received = 0
+    solver_times = []
+
+    safe_print(ID, printlock, f'Starting subproblem for regions {", ".join(s.regions)}.')
 
 Now, the local ADMM iterations take place::
 
     for nu in range(max_iter):
 
-First, the subproblem in its current state is solved. For the first iteration, initial values are set in ``run_regional`` and the ``UrbsAdmmModel`` constructor::
+First, the subproblem in its current state is solved. For the first iteration, initial values have been set in ``run_regional`` and the ``UrbsAdmmModel`` constructor::
 
-    start_time = time()
+    safe_print(ID, printlock, f'Iteration {nu}')
+    safe_print(ID, printlock, f'Starting with {received} updated neighbors')
+
+    start = time()
     s.solve_problem()
-    end_time = time()
+    solver_time = time() - start
+    solver_times.append(solver_time)
+    safe_print(ID, printlock, f'Solved in {solver_time:.2f} seconds')
 
 After solving the problem, the optimal values of the coupling variables are extracted using the :ref:`method <retrieve-boundary-flows>` ``.retrieve_boundary_flows`` and stored in ``s.flows_all`` and ``s.flows_with_neighbor``. Additionally, the objective value of the optimum is saved in ``cost_history``::
 
-    s.retrieve_boundary_flows()
     cost_history.append(s.solver._solver_model.objval) # TODO: use public method instead
+
+    s.retrieve_boundary_flows()
 
 Now the subproblem checks for messages from its neighbors. In the first iteration, it does not block until enough neighbors have sent a message, as this would result in a deadlock. After the first iteration it does block::
 
@@ -645,18 +702,25 @@ Now the subproblem can send its updated values and termination status to its nei
 
 Upon convergence, the loop is exited. Finally, before the next iteration starts, the updated values are used to update the objective function::
 
+    if nu % 1 == 0:
+        safe_print(ID, printlock, f'Primal gap: {s.primalgap[-1]:.4e}')
+
+    if converged:
+        safe_print(ID, printlock, 'Converged!')
+        break
+
     s.update_cost_rule()
 
 Once the subproblem has terminated, it sends a dictionary consisting of the final objective value, the values of coupling variables and primal/dual residuals via the ``output`` queue::
 
+    # save(s.model, os.path.join(s.result_dir, '_{}_'.format(ID),'{}.h5'.format(s.sce)))
     output_package = {
         'cost': cost_history,
         'coupling_flows': s.flow_global,
         'primal_residual': s.primalgap,
         'dual_residual': s.dualgap,
-        'received_neighbors': s.received_neighbors,
     }
-    output.put((ID - 1, output_package))
+    output.put((s.ID, output_package))
 
 
 The UrbsAdmmModel Class (admm_async/urbs_admm_model.py)
@@ -689,6 +753,7 @@ An ``UrbsAdmmModel`` has the following members::
 ``receiving_queues``: Dict mapping each neighbor ID to a ``mp.Queue`` for receiving messages
     from that neighbor.
 ``recvmsg``: Dict mapping each neighbor ID to the most recent message from that neighbor.
+``regions``: List of region names in this subproblem.
 ``result_dir``: Result directory.
 ``rho``: Quadratic penalty coefficient. Initial value taken from ``initial_values``.
 ``scenario_name``: Scenario name.

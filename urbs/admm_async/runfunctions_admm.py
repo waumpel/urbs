@@ -1,8 +1,7 @@
 from datetime import date, datetime
 import multiprocessing as mp
 import os
-import queue
-import time
+from time import time, clock
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -57,27 +56,27 @@ def prepare_result_directory(result_name):
     return result_dir
 
 
-def setup_solver(optim, logfile='solver.log'):
+def setup_solver(solver, logfile='solver.log'):
     """ """
-    if optim.name == 'gurobi':
+    if solver.name == 'gurobi':
         # reference with list of option names
         # http://www.gurobi.com/documentation/5.6/reference-manual/parameters
-        optim.set_options("logfile={}".format(logfile))
-        optim.set_options("method=2")
-        # optim.set_options("timelimit=7200")  # seconds
-        # optim.set_options("mipgap=5e-4")  # default = 1e-4
-    elif optim.name == 'glpk':
+        solver.set_options("logfile={}".format(logfile))
+        solver.set_options("method=2")
+        # solver.set_options("timelimit=7200")  # seconds
+        # solver.set_options("mipgap=5e-4")  # default = 1e-4
+    elif solver.name == 'glpk':
         # reference with list of options
         # execute 'glpsol --help'
-        optim.set_options("log={}".format(logfile))
-        # optim.set_options("tmlim=7200")  # seconds
-        # optim.set_options("mipgap=.0005")
-    elif optim.name == 'cplex':
-        optim.set_options("log={}".format(logfile))
+        solver.set_options("log={}".format(logfile))
+        # solver.set_options("tmlim=7200")  # seconds
+        # solver.set_options("mipgap=.0005")
+    elif solver.name == 'cplex':
+        solver.set_options("log={}".format(logfile))
     else:
         print("Warning from setup_solver: no options set for solver "
-              "'{}'!".format(optim.name))
-    return optim
+              "'{}'!".format(solver.name))
+    return solver
 
 
 # @profile
@@ -103,12 +102,22 @@ def run_regional(input_file,
     Returns:
         the urbs model instances
     """
+
     # hard-coded year. ADMM doesn't work with intertemporal models (yet)
     year = date.today().year
 
     # scenario name, read and modify data for scenario
     scenario_name = scenario.__name__
+
+    print('Reading input...')
+    start = time()
     data_all = read_input(input_file, year)
+    read_time = time() - start
+    print(f'Done. Time elapsed: {read_time:.2f} seconds')
+
+    print('Preprocessing...')
+    start = time()
+
     data_all = scenario(data_all)
     validate_input(data_all)
     validate_dc_objective(data_all, objective)
@@ -209,6 +218,12 @@ def run_regional(input_file,
     problems = []
     sub = {}
 
+    preprocess_time = time() - start
+    print(f'Done. Time elapsed: {preprocess_time:.0f}')
+
+    print('Creating models...')
+    start = time()
+
     # initialize pyomo models and `UrbsAdmmModel`s
     for cluster_idx in range(0, nclusters):
         index = shared_lines[cluster_idx].index.to_frame()
@@ -256,6 +271,7 @@ def run_regional(input_file,
             model = model,
             neighbors = neighbors[cluster_idx],
             receiving_queues = receiving_queues,
+            regions = clusters[cluster_idx],
             result_dir = result_dir,
             scenario_name = scenario_name,
             sending_queues = queues[cluster_idx],
@@ -264,6 +280,9 @@ def run_regional(input_file,
         )
 
         problems.append(problem)
+
+    model_time = time() - start
+    print(f'Done. Time elapsed: {model_time:.0f}')
 
 
     # Queue for collecting the results from each subproblem after convergence
@@ -278,8 +297,10 @@ def run_regional(input_file,
         for problem in problems
     ]
 
-    start_time = time.time()
-    start_clock = time.clock()
+    print('Solving the distributed problem...')
+
+    start_time = time()
+    start_clock = clock()
     for proc in procs:
         proc.start()
 
@@ -291,10 +312,12 @@ def run_regional(input_file,
     for proc in procs:
         proc.join()
 
-    ttime = time.time()
-    tclock = time.clock()
-    totaltime = ttime - start_time
-    clocktime = tclock - start_clock
+    ttime = time()
+    tclock = clock()
+    solver_time = ttime - start_time
+    solver_clock = tclock - start_clock
+
+    print(f'Done. Time elapsed: {solver_time:.0f}')
 
     # get results
     results = sorted(results, key=lambda x: x[0])
@@ -303,61 +326,63 @@ def run_regional(input_file,
 
     for cluster_idx in range(0, nclusters):
         if cluster_idx != results[cluster_idx][0]:
-            print('Error: Result of worker %d not returned!' % (cluster_idx + 1,))
-            break
+            raise RuntimeError(f'Result of worker {cluster_idx + 1} was not returned')
         obj_total += results[cluster_idx][1]['cost'][-1]
 
     # (optinal) solve the centralized problem
     if centralized:
+        print('Creating the centralized model...')
+        start = time()
         prob = create_model(data_all, timesteps, dt, type='normal')
+        centralized_model_time = time() - start
+        print(f'Done. Time elapsed: {centralized_model_time:.0f}')
 
         # refresh time stamp string and create filename for logfile
         log_filename = os.path.join(result_dir, '{}.log').format(scenario_name)
 
         # setup solver
         solver_name = 'gurobi'
-        optim = SolverFactory(solver_name)  # cplex, glpk, gurobi, ...
-        optim = setup_solver(optim, logfile=log_filename)
+        solver = SolverFactory(solver_name)  # cplex, glpk, gurobi, ...
+        solver = setup_solver(solver, logfile=log_filename)
 
-        # original problem solution (not necessary for ADMM, to compare results)
-        orig_time_before_solve = time.time()
-        results_prob = optim.solve(prob, tee=False)
-        orig_time_after_solve = time.time()
-        orig_duration = orig_time_after_solve - orig_time_before_solve
-        flows_from_original_problem = dict((name, entity.value) for (name, entity) in prob.e_tra_in.items())
-        flows_from_original_problem = pd.DataFrame.from_dict(flows_from_original_problem, orient='index',
-                                                         columns=['Original'])
+        print('Solving the centralized model...')
+        start = time()
+        result = solver.solve(prob, tee=False)
+        centralized_solver_time = time() - start
+        print(f'Done. Time elapsed: {centralized_solver_time:.0f}')
+        flows_from_original_problem = pd.DataFrame.from_dict(
+            {name: entity.value for name, entity in prob.e_tra_in.items()},
+            orient='index',
+            columns=['Original']
+        )
 
-        obj_cent = results_prob['Problem'][0]['Lower bound']
-
-    # debug
-    for cluster_idx in range(0, nclusters):
-        received_neighbors = results[cluster_idx][1]['received_neighbors']
-        print('cluster', cluster_idx + 1, 'received neighbors:', received_neighbors,
-              'avg:', sum(received_neighbors)/len(received_neighbors))
-
-    # debug
-    for cluster_idx in range(0, nclusters):
-        print('cluster', cluster_idx + 1, 'cost:', results[cluster_idx][1]['cost'])
+        obj_cent = result['Problem'][0]['Lower bound']
 
     # print results
-    print('The convergence time for ADMM is %f' % (totaltime,))
-    print('The convergence clock time is %f' % (clocktime,))
-    print('The objective function value is %f' % (obj_total,))
+    print()
+    print(f'Reading input time      : {read_time:4.0f} s')
+    print(f'ADMM preprocessing time : {preprocess_time:4.0f} s')
+    print(f'ADMM model creation time: {model_time:4.0f} s')
+    print(f'ADMM solver time        : {solver_time:4.0f} s')
+    print(f'ADMM solver clock       : {solver_clock:4.0f} s')
+    print(f'ADMM objective          : {obj_total:.4e}')
 
     if centralized:
-        gap = (obj_total - obj_cent) / obj_cent * 100
-        print('The convergence time for original problem is %f' % (orig_duration,))
-        print('The central objective function value is %f' % (obj_cent,))
-        print('The gap in objective function is %f %%' % (gap,))
+        gap = (obj_total - obj_cent) / obj_cent
+        print()
+        print(f'centralized model creation time: {centralized_model_time:4.0f} s')
+        print(f'centralized solver time        : {centralized_solver_time:4.0f} s')
+        print(f'centralized objective          : {obj_cent:.4e}')
+        print()
+        print(f'Objective gap: {gap:.4%}')
 
     # testlog
     file_object = open('log_for_test.txt', 'a')
     file_object.write('Timesteps for this test is %f' % (len(timesteps),))
-    file_object.write('The convergence time for ADMM is %f' % (totaltime,))
+    file_object.write('The convergence time for ADMM is %f' % (solver_time,))
 
     if centralized:
-        file_object.write('The convergence time for original problem is %f' % (orig_duration,))
+        file_object.write('The convergence time for original problem is %f' % (centralized_solver_time,))
         file_object.write('The gap in objective function is %f %%' % (gap,))
 
     file_object.close()
