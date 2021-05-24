@@ -1,82 +1,113 @@
-from time import time
+from time import sleep, time
 
 
-def safe_print(ID, lock, *args):
+def log_generator(ID, logqueue):
     """
-    Print to `stdout` in a synchronized fashion.
-
-    ### Arguments
-    * `ID`: ID of the printing process (one-based integer).
-    * `lock`: `threading.Lock` that controls the synchronized printing.
-    * `*args`: What to print. Same as the `*values` argument of `print`.
+    Return a log function that prefixes messages with the process `ID`, prints them to
+    stdout, and sends them to the `logqueue`.
     """
-    lock.acquire()
-    try:
-        print(f'Process[{ID}]', *args)
-    finally:
-        lock.release()
+    prefix = f'Process[{ID}] '
+    def fun(*args):
+        msg = prefix + f'{" ".join(str(arg) for arg in args)}'
+        print(msg)
+        logqueue.put(msg)
+    return fun
 
 
-def run_worker(s, output, printlock):
+def run_worker(s, output, logqueue):
     """
     Main function for child processes of ADMM. Iteratively solves one subproblem of ADMM.
 
     ### Args:
     * `s`: `UrbsAdmmModel` representing the subproblem.
     * `output`: `multiprocessing.Queue` for sending results.
-    * `printlock`: `threading.Lock` for synchronized printing.
+    * `logqueue`: `mp.Queue` for sending log messages. These are written to a shared log
+                  file by the master process.
     """
-
-    ID = s.ID + 1 # one-based integer for printing
-    cost_history = []
     max_iter = s.admmopt.max_iter
-    received = 0
     solver_times = []
+    converged = False
 
-    safe_print(ID, printlock, f'Starting subproblem for regions {", ".join(s.regions)}.')
+    log = log_generator(s.ID, logqueue)
+    log(f'Starting subproblem for regions {", ".join(s.regions)}.')
 
     for nu in range(max_iter):
-        safe_print(ID, printlock, f'Iteration {nu}')
-        safe_print(ID, printlock, f'Starting with {received} updated neighbors')
+        celebration = False
+        if nu % 10 == 0:
+            log(f'Iteration {nu}')
 
         start = time()
         s.solve_problem()
         solver_time = time() - start
         solver_times.append(solver_time)
-        safe_print(ID, printlock, f'Solved in {solver_time:.2f} seconds')
-
-        cost_history.append(s.solver._solver_model.objval) # TODO: use public method instead
 
         s.retrieve_boundary_flows()
+        s.calc_primalgap()
+        if s.converged:
+            log(f'Converged at iteration {nu}')
+            celebration = True
 
-        # Don't block in the first iteration to avoid deadlock.
-        received = s.recv(block=nu > 0)
-
-        s.update_flow_global()
-        # s.choose_max_rho() # TODO: not needed?
-        s.update_lamda()
-        s.update_rho(nu)
-
-        converged = s.is_converged()
-        last_iteration = nu == max_iter - 1
-        s.terminated = converged or last_iteration
-
+        s.receive()
         s.send()
+        converged = s.global_convergence()
 
-        if nu % 1 == 0:
-            safe_print(ID, printlock, f'Primal gap: {s.primalgap[-1]:.4e}')
+        if not converged and not s.terminated:
+            while len(s.received[-1]) < s.n_wait or s.converged:
+
+                sleep(s.admmopt.poll_wait_time)
+                s.receive()
+
+                s.converged = s.is_converged()
+                converged = s.global_convergence()
+
+                # In case of global convergence or termination, send another msg so that
+                # other processes are notified.
+                # Having this check inside the outer if-statement avoids potentially sending
+                # two messages.
+                if converged or s.terminated:
+                    s.send()
+                    break
+
+                # In case of local convergence, send updates to the iteration table to the
+                # neighbors, so that global convergence can be detected.
+                if s.converged:
+                    if s.update_flag: # TODO: s.all_converged() instead of s.converged sufficient?
+                        if not celebration:
+                            log(f'Converged at iteration {nu}')
+                            celebration = True
+                        s.send()
+                elif celebration:
+                    log('No longer converged')
+                    celebration = False
+
+
 
         if converged:
-            safe_print(ID, printlock, 'Converged!')
+            log(f'Global convergence at iteration {nu}!')
             break
+
+        if s.terminated:
+            log('Received termination msg: Terminating.')
+            break
+
+        if nu == max_iter - 1:
+            log('Timeout: Terminating.')
+            s.terminated = True
+            s.send()
+            break
+
+        s.update_lamda()
+        s.update_flow_global()
+        # s.choose_max_rho() # TODO: not needed?
+        # s.update_rho(nu) # TODO
 
         s.update_cost_rule()
 
     # save(s.model, os.path.join(s.result_dir, '_{}_'.format(ID),'{}.h5'.format(s.sce)))
     output_package = {
-        'cost': cost_history,
+        'cost': s.objective_values,
         'coupling_flows': s.flow_global,
-        'primal_residual': s.primalgap,
-        'dual_residual': s.dualgap,
+        'primal_residual': s.primalgaps,
+        'dual_residual': s.dualgaps,
     }
     output.put((s.ID, output_package))

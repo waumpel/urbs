@@ -749,7 +749,7 @@ An ``UrbsAdmmModel`` has the following members::
 ``n_neighbors``: Number of neighbors.
 ``nwait``: Number of updated neighbors required for the next iteration.
 ``primalgap``: List of dual gaps after each iteration.
-``received_neighbors``: List holding the number of updated neighbors in each iteration.
+``n_received``: List holding the number of updated neighbors in each iteration.
 ``receiving_queues``: Dict mapping each neighbor ID to a ``mp.Queue`` for receiving messages
     from that neighbor.
 ``recvmsg``: Dict mapping each neighbor ID to the most recent message from that neighbor.
@@ -868,7 +868,7 @@ If `block` is true, wait for messages from at least `self.n_wait` neighbors
 If `block` is false, perform at most `self.admmopt.pollrounds` pollrounds.
 
 Return the number of updated neighbors and append that number to
-`self.received_neighbors`.
+`self.n_received`.
 
 .. _send:
 

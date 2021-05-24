@@ -1,6 +1,7 @@
 from datetime import date, datetime
 import multiprocessing as mp
 import os
+from os.path import join
 from time import time, clock
 
 import matplotlib.pyplot as plt
@@ -129,11 +130,11 @@ def run_regional(input_file,
     # if 'test_timesteps' is stored in data dict, replace the timesteps parameter with that value
     timesteps = data_all.pop('test_timesteps', timesteps)
 
-    nclusters = len(clusters)
+    n_clusters = len(clusters)
 
     # map site -> cluster_idx
     site_cluster_map = {}
-    for cluster, cluster_idx in zip(clusters, range(nclusters)):
+    for cluster, cluster_idx in zip(clusters, range(n_clusters)):
         for site in cluster:
             site_cluster_map[site] = cluster_idx
 
@@ -144,16 +145,16 @@ def run_regional(input_file,
     # identify the shared and internal lines
 
     # used as indices for creating `shared_lines` and `internal_lines`
-    shared_lines_logic = np.zeros((nclusters, data_all['transmission'].shape[0]), dtype=bool)
-    internal_lines_logic = np.zeros((nclusters, data_all['transmission'].shape[0]), dtype=bool)
+    shared_lines_logic = np.zeros((n_clusters, data_all['transmission'].shape[0]), dtype=bool)
+    internal_lines_logic = np.zeros((n_clusters, data_all['transmission'].shape[0]), dtype=bool)
 
     # Source/target cluster of each shared line for each cluster.
     # These are appended as additional columns to `shared_lines` along with `neighbor_cluster` (defined below).
-    cluster_from = [[] for _ in range(nclusters)]
-    cluster_to = [[] for _ in range(nclusters)]
+    cluster_from = [[] for _ in range(n_clusters)]
+    cluster_to = [[] for _ in range(n_clusters)]
 
     # Set of neighbors for each cluster
-    neighbors = [set() for _ in range(nclusters)]
+    neighbors = [set() for _ in range(n_clusters)]
 
     for row, (_, site_in, site_out, tra, com) in zip(range(0, data_all['transmission'].shape[0]), data_all['transmission'].index):
         from_cluster_idx = site_cluster_map[site_in]
@@ -177,17 +178,17 @@ def run_regional(input_file,
     # map cluster_idx -> slice of data_all['transmission'] (copies)
     shared_lines = [
         data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]].copy(deep=True)
-        for cluster_idx in range(0, nclusters)
+        for cluster_idx in range(0, n_clusters)
     ]
     # map cluster_idx -> slice of data_all['transmission'] (copies)
     internal_lines = [
         data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]].copy(deep=True)
-        for cluster_idx in range(0, nclusters)
+        for cluster_idx in range(0, n_clusters)
     ]
     # neighbouring cluster of each shared line for each cluster
     neighbor_cluster = [
         np.array(cluster_from[cluster_idx]) + np.array(cluster_to[cluster_idx]) - cluster_idx
-        for cluster_idx in range(0, nclusters)
+        for cluster_idx in range(0, n_clusters)
     ]
 
     pd.options.display.max_rows = 999
@@ -202,18 +203,11 @@ def run_regional(input_file,
         rho=5
     )
 
-    # Manager object for creating Queues, Locks and other objects that can be shared
-    # between processes.
+    # Manager object for creating Queues
     manager = mp.Manager()
 
-    # create Queues for each communication channel
-    queues = {
-        source: {
-            target: manager.Queue()
-            for target in neighbors[source]
-        }
-        for source in range(nclusters)
-    }
+    # Queues for communication between processes
+    queues = [manager.Queue() for _ in range(n_clusters)]
 
     problems = []
     sub = {}
@@ -225,7 +219,7 @@ def run_regional(input_file,
     start = time()
 
     # initialize pyomo models and `UrbsAdmmModel`s
-    for cluster_idx in range(0, nclusters):
+    for cluster_idx in range(0, n_clusters):
         index = shared_lines[cluster_idx].index.to_frame()
 
         flow_global = pd.Series({
@@ -252,9 +246,8 @@ def run_regional(input_file,
 
         sub[cluster_idx] = model
 
-        receiving_queues = {
-            target: queues[target][cluster_idx]
-            for target in neighbors[cluster_idx]
+        sending_queues = {
+            target: queues[target] for target in neighbors[cluster_idx]
         }
 
         # enlarge shared_lines (copies of slices of data_all['transmission'])
@@ -269,12 +262,13 @@ def run_regional(input_file,
             initial_values = initial_values,
             lamda = lamda,
             model = model,
+            n_clusters = n_clusters,
             neighbors = neighbors[cluster_idx],
-            receiving_queues = receiving_queues,
+            receiving_queue = queues[cluster_idx],
             regions = clusters[cluster_idx],
             result_dir = result_dir,
             scenario_name = scenario_name,
-            sending_queues = queues[cluster_idx],
+            sending_queues = sending_queues,
             shared_lines = shared_lines[cluster_idx],
             shared_lines_index = index,
         )
@@ -284,16 +278,15 @@ def run_regional(input_file,
     model_time = time() - start
     print(f'Done. Time elapsed: {model_time:.0f}')
 
-
     # Queue for collecting the results from each subproblem after convergence
     output = manager.Queue()
 
-    # This Lock ensures that only one process prints to stdout at any time.
-    printlock = manager.Lock()
+    # Queue for accumulating log messages
+    logqueue = manager.Queue()
 
     # Child processes for the ADMM subproblems
     procs = [
-        mp.Process(target=run_worker, args=(problem, output, printlock))
+        mp.Process(target=run_worker, args=(problem, output, logqueue))
         for problem in problems
     ]
 
@@ -306,7 +299,7 @@ def run_regional(input_file,
 
     # collect results as the subproblems converge
     results = [
-        output.get() for _ in range(nclusters)
+        output.get() for _ in range(n_clusters)
     ]
 
     for proc in procs:
@@ -319,12 +312,18 @@ def run_regional(input_file,
 
     print(f'Done. Time elapsed: {solver_time:.0f}')
 
+    # Write accumulated log messages to logfile
+    with open(join(result_dir, 'shared.log'), 'w', encoding='utf8') as logfile:
+        while not logqueue.empty():
+            msg = logqueue.get(block=False)
+            logfile.write(msg + '\n')
+
     # get results
     results = sorted(results, key=lambda x: x[0])
 
     obj_total = 0
 
-    for cluster_idx in range(0, nclusters):
+    for cluster_idx in range(0, n_clusters):
         if cluster_idx != results[cluster_idx][0]:
             raise RuntimeError(f'Result of worker {cluster_idx + 1} was not returned')
         obj_total += results[cluster_idx][1]['cost'][-1]
@@ -338,7 +337,7 @@ def run_regional(input_file,
         print(f'Done. Time elapsed: {centralized_model_time:.0f}')
 
         # refresh time stamp string and create filename for logfile
-        log_filename = os.path.join(result_dir, '{}.log').format(scenario_name)
+        log_filename = os.path.join(result_dir, f'{scenario_name}.log')
 
         # setup solver
         solver_name = 'gurobi'
@@ -389,13 +388,13 @@ def run_regional(input_file,
 
     # ------------ plots of convergence -----------------
     # fig = plt.figure()
-    # for cluster_idx in range(0, nclusters):
+    # for cluster_idx in range(0, n_clusters):
     #     if cluster_idx != results[cluster_idx][0]:
     #         print('Error: Result of worker %d not returned!' % (cluster_idx + 1,))
     #         break
     #     pgap = results[cluster_idx][1]['primal_residual']
     #     dgap = results[cluster_idx][1]['dual_residual']
-    #     curfig = fig.add_subplot(1, nclusters, cluster_idx + 1)
+    #     curfig = fig.add_subplot(1, n_clusters, cluster_idx + 1)
     #     curfig.plot(pgap, color='red', linewidth=2.5, label='primal residual')
     #     curfig.plot(dgap, color='blue', linewidth=2.5, label='dual residual')
     #     curfig.set_yscale('log')
