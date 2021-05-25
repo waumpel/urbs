@@ -310,8 +310,9 @@ class UrbsAdmmModel(object):
             # TODO: can the indexing be improved?
             self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = (
                 (self.lamda.loc[self.lamda.index.isin(self.flows_with_neighbor[k].index)] +
-                 lamda + self.flows_with_neighbor[k] * self.rho + flow * rho) /
-                (self.rho + rho))
+                 lamda + self.flows_with_neighbor[k] * self.rho + flow * rho +
+                 self.admmopt.async_correction * self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)]) /
+                (self.rho + rho + self.admmopt.async_correction))
 
         self.dualgaps.append(self.rho * np.square(self.flow_global - flow_global_old).sum(axis=0))
 
@@ -330,16 +331,16 @@ class UrbsAdmmModel(object):
     def update_rho(self, nu):
         """
         Update `self.rho` according to the new primal and dual gaps unless the
-        current iteration, `self.nu`, is above `self.admmopt.rho_update_nu`.
+        current iteration, `self.nu`, is above `self.admmopt.penalty_iter`.
         """
         primalgap = self.primalgaps[-1]
         dualgap = self.dualgaps[-1]
 
-        if self.nu <= self.admmopt.rho_update_nu:
-            if primalgap > self.admmopt.mu * dualgap:
-                self.rho = min(self.admmopt.rho_max, self.rho * self.admmopt.tau)
-            elif dualgap > self.admmopt.mu * primalgap:
-                self.rho = min(self.rho / self.admmopt.tau, self.admmopt.rho_max)
+        if self.nu <= self.admmopt.penalty_iter:
+            if primalgap > self.admmopt.penalty_tolerance * dualgap:
+                self.rho *= self.admmopt.penalty_mult
+            elif dualgap > self.admmopt.penalty_tolerance * primalgap:
+                self.rho /= self.admmopt.penalty_mult
 
 
     def update_cost_rule(self):
@@ -430,29 +431,29 @@ class UrbsAdmmModel(object):
         return congruence
 
 
-# ##--------ADMM parameters specification -------------------------------------
 class AdmmOption(object):
-    """
-    This class defines all the parameters to use in ADMM.
-    """
-    # TODO: docstring
-
-    def __init__(self):
-        self.rho_max = 10  # upper bound for penalty rho
-        self.tau_max = 1.5  # parameter for residual balancing of rho
-        self.tau = 1.05  # multiplier for increasing rho
-        self.zeta = 1  # parameter for residual balancing of rho
-        self.theta = 0.99  # multiplier for determining whether to update rho
-        self.mu = 10  # multiplier for determining whether to update rho
-        self.pollrounds = 5
-        self.poll_wait_time = 0.1  # waiting time of receiving from one pipe
-        self.wait_percent = 0.2  # waiting percentage of neighbors (0, 1]
-        self.max_iter = 1000  # local maximum iteration
-        self.rho_update_nu = 50 # rho is updated only for the first 50 iterations
-        # TODO
-        self.primal_tolerance = 0.1
-        self.dual_tolerance = 0.1
-        self.mismatch_tolerance = 0.1
+    def __init__(self,
+        async_correction,
+        dual_tolerance,
+        max_iter,
+        mismatch_tolerance,
+        penalty_iter,
+        penalty_mult,
+        penalty_tolerance,
+        primal_tolerance,
+        wait_percent,
+        wait_time,
+    ):
+        self.async_correction = async_correction
+        self.dual_tolerance = dual_tolerance
+        self.max_iter = max_iter
+        self.mismatch_tolerance = mismatch_tolerance
+        self.penalty_iter = penalty_iter
+        self.penalty_mult = penalty_mult
+        self.penalty_tolerance = penalty_tolerance
+        self.primal_tolerance = primal_tolerance
+        self.wait_percent = wait_percent
+        self.wait_time = wait_time
 
 
 class AdmmMessage(object):

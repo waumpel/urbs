@@ -13,7 +13,7 @@ from urbs.model import create_model
 from urbs.input import read_input, add_carbon_supplier
 from urbs.validation import validate_dc_objective, validate_input
 from .run_worker import run_worker
-from .urbs_admm_model import AdmmOption, UrbsAdmmModel
+from .urbs_admm_model import UrbsAdmmModel
 
 
 class InitialValues:
@@ -81,14 +81,17 @@ def setup_solver(solver, logfile='solver.log'):
 
 
 # @profile
-def run_regional(input_file,
-                 timesteps,
-                 scenario,
-                 result_dir,
-                 dt,
-                 objective,
-                 clusters,
-                 centralized=False):
+def run_regional(
+    input_file,
+    timesteps,
+    scenario,
+    result_dir,
+    dt,
+    objective,
+    clusters,
+    admmopt,
+    centralized=False
+    ):
     """ run an urbs model for given input, time steps and scenario with regional decomposition using ADMM
 
     Args:
@@ -193,8 +196,6 @@ def run_regional(input_file,
 
     pd.options.display.max_rows = 999
     pd.options.display.max_columns = 999
-
-    admmopt = AdmmOption()
 
     initial_values = InitialValues(
         flow=0,

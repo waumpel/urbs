@@ -54,7 +54,7 @@ def run_worker(s, output, logqueue):
         if not converged and not s.terminated:
             while len(s.received[-1]) < s.n_wait or s.converged:
 
-                sleep(s.admmopt.poll_wait_time)
+                sleep(s.admmopt.wait_time)
                 s.receive()
 
                 s.converged = s.is_converged()

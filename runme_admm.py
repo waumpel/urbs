@@ -3,7 +3,7 @@ from multiprocessing import freeze_support
 import os
 import shutil
 
-from urbs.admm_async import run_regional
+from urbs.admm_async import run_regional, AdmmOption
 from urbs.colorcodes import COLORS
 from urbs.runfunctions import prepare_result_directory
 from urbs.scenarios import scenario_base
@@ -61,14 +61,30 @@ scenarios = [
     scenario_base
 ]
 
+admmopt = AdmmOption(
+    async_correction = 10,
+    dual_tolerance = 0.1,
+    max_iter = 1000,
+    mismatch_tolerance = 0.1,
+    penalty_iter = 50,
+    penalty_mult = 1.05,
+    penalty_tolerance = 10,
+    primal_tolerance = 0.1,
+    wait_percent = 0.1,
+    wait_time = 0.1,
+)
+
 if __name__ == '__main__':
     freeze_support()
     for scenario in scenarios:
-        run_regional(input_file=input_path,
-                     timesteps=timesteps,
-                     scenario=scenario,
-                     result_dir=result_dir,
-                     dt=dt,
-                     objective=objective,
-                     clusters=clusters,
-                     centralized = args.centralized)
+        run_regional(
+            input_file = input_path,
+            timesteps = timesteps,
+            scenario = scenario,
+            result_dir = result_dir,
+            dt = dt,
+            objective = objective,
+            clusters = clusters,
+            admmopt = admmopt,
+            centralized = args.centralized,
+        )
