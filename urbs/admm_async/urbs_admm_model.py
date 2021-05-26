@@ -95,7 +95,7 @@ class UrbsAdmmModel(object):
         self.admmopt = admmopt
         self.converged = False
         self.dual_tolerance = admmopt.dual_tolerance * min(1, len(flow_global))
-        self.dualgaps = []
+        self.dualgaps = [0]
         self.flow_global = flow_global
         self.flows_all = None
         self.flows_with_neighbor = None
@@ -441,6 +441,7 @@ class AdmmOption(object):
         penalty_mult,
         penalty_tolerance,
         primal_tolerance,
+        rho,
         wait_percent,
         wait_time,
     ):
@@ -452,6 +453,7 @@ class AdmmOption(object):
         self.penalty_mult = penalty_mult
         self.penalty_tolerance = penalty_tolerance
         self.primal_tolerance = primal_tolerance
+        self.rho = rho
         self.wait_percent = wait_percent
         self.wait_time = wait_time
 

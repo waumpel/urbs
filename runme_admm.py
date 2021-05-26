@@ -62,7 +62,7 @@ scenarios = [
 ]
 
 admmopt = AdmmOption(
-    async_correction = 10,
+    async_correction = 0,
     dual_tolerance = 0.1,
     max_iter = 1000,
     mismatch_tolerance = 0.1,
@@ -70,6 +70,7 @@ admmopt = AdmmOption(
     penalty_mult = 1.05,
     penalty_tolerance = 10,
     primal_tolerance = 0.1,
+    rho = 50,
     wait_percent = 0.1,
     wait_time = 0.1,
 )

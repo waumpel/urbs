@@ -14,7 +14,7 @@ def log_generator(ID, logqueue):
     return fun
 
 
-def run_worker(s, output, logqueue):
+def run_worker(s, output, logqueue, iteration_results):
     """
     Main function for child processes of ADMM. Iteratively solves one subproblem of ADMM.
 
@@ -32,7 +32,9 @@ def run_worker(s, output, logqueue):
     log(f'Starting subproblem for regions {", ".join(s.regions)}.')
 
     for nu in range(max_iter):
+        # Flag indicating whether current convergence status has been printed
         celebration = False
+
         if nu % 10 == 0:
             log(f'Iteration {nu}')
 
@@ -43,6 +45,14 @@ def run_worker(s, output, logqueue):
 
         s.retrieve_boundary_flows()
         s.calc_primalgap()
+
+        iteration_results.put({
+            'sender': s.ID,
+            'time': time(),
+            'primalgap': s.primalgaps[-1],
+            'dualgap': s.dualgaps[-1],
+        })
+
         if s.converged:
             log(f'Converged at iteration {nu}')
             celebration = True
@@ -55,7 +65,8 @@ def run_worker(s, output, logqueue):
             while len(s.received[-1]) < s.n_wait or s.converged:
 
                 sleep(s.admmopt.wait_time)
-                s.receive()
+                if not s.receive():
+                    continue
 
                 s.converged = s.is_converged()
                 converged = s.global_convergence()
