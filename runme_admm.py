@@ -70,7 +70,7 @@ admmopt = AdmmOption(
     penalty_mult = 1.05,
     penalty_tolerance = 10,
     primal_tolerance = 0.1,
-    rho = 50,
+    rho = 5,
     wait_percent = 0.1,
     wait_time = 0.1,
 )

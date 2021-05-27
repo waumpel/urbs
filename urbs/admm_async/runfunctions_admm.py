@@ -265,7 +265,6 @@ def run_regional(
             admmopt = admmopt,
             flow_global = flow_global,
             ID = cluster_idx,
-            initial_values = initial_values,
             lamda = lamda,
             model = model,
             n_clusters = n_clusters,
@@ -388,6 +387,7 @@ def run_regional(
     while not iteration_results_queue.empty():
         iteration_results.append(iteration_results_queue.get())
 
+    save_options(admmopt)
     save_iteration_results(iteration_results, result_dir)
     plot_iteration_results(iteration_results, result_dir)
 

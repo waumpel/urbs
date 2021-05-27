@@ -70,7 +70,7 @@ class UrbsAdmmModel(object):
     `shared_lines_index`: `shared_lines.index.to_frame()`.
     `solver`: `GurobiPersistent` solver interface to `model`.
     `terminated`: Flag indicating whether the solver for this model has terminated.
-    `update_flag`: Flag indicating whether the iteration table has been changed since the
+    `status_update`: Flag indicating whether the iteration table has been changed since the
         last time a msg was sent.
     """
 
@@ -79,7 +79,6 @@ class UrbsAdmmModel(object):
         admmopt,
         flow_global,
         ID,
-        initial_values,
         lamda,
         model,
         n_clusters,
@@ -93,15 +92,16 @@ class UrbsAdmmModel(object):
         shared_lines_index,
     ):
         self.admmopt = admmopt
-        self.converged = False
+        # self.converged = False
         self.dual_tolerance = admmopt.dual_tolerance * min(1, len(flow_global))
         self.dualgaps = [0]
         self.flow_global = flow_global
         self.flows_all = None
         self.flows_with_neighbor = None
         self.ID = ID
-        self.iteration_table = [-1] * n_clusters
-        self.iteration_table[self.ID] = [-1] * n_clusters
+        self.status = [[-1, False, False]] * n_clusters
+        # self.iteration_table = [-1] * n_clusters
+        # self.iteration_table[self.ID] = [-1] * n_clusters
         self.lamda = lamda
         self.logfile = open(join(result_dir, f'process-{ID}.log'), 'w', encoding='utf8')
         self.messages = {}
@@ -115,11 +115,11 @@ class UrbsAdmmModel(object):
         self.objective_values = []
         self.primal_tolerance = admmopt.primal_tolerance * min(1, len(flow_global))
         self.primalgaps = []
-        self.received = [set()]
+        self.updated = [set()]
         self.receiving_queue = receiving_queue
         self.regions = regions
         self.result_dir = result_dir
-        self.rho = initial_values.rho
+        self.rho = admmopt.rho
         self.scenario_name = scenario_name
         self.sending_queues = sending_queues
         self.shared_lines = shared_lines
@@ -131,7 +131,7 @@ class UrbsAdmmModel(object):
         self.solver.set_gurobi_param('Threads', 1)
 
         self.terminated = False
-        self.update_flag = False
+        self.status_update = False
 
 
     def __del__(self):
@@ -148,9 +148,11 @@ class UrbsAdmmModel(object):
         self.log('---------------')
         self.log(f'Iteration {self.nu}')
         self.log('---------------')
-        self.log(f'Starting with {len(self.received[-1])} updated neighbors: {self.received[-1]}')
-        self.iteration_table[self.ID][self.ID] = self.nu
-        self.received.append(set())
+        self.log(f'Starting with {len(self.updated[-1])} updated neighbors: {self.updated[-1]}')
+        # self.iteration_table[self.ID][self.ID] = self.nu
+        self.status[self.ID] = [self.nu, False, False]
+        self.updated.append(set()) # TODO: self.updated, only store those who send updated variables
+        self.mismatch_convergence = {k: False for k in self.neighbors}
 
         self.solver.solve(save_results=False, load_solutions=False, warmstart=True)
         self.objective_values.append(self.solver._solver_model.objval) # TODO: use public method instead
@@ -190,34 +192,43 @@ class UrbsAdmmModel(object):
 
     def send(self):
         """
-        Send an `AdmmMessage` with the current status to each neighbor.
+        Send an `AdmmMessage` with the current variables and status to each neighbor.
         """
-        if self.terminated:
-            status = 'terminated'
-            self.log(f"Sending msg with status 'terminated'")
-        elif self.converged:
-            status = self.iteration_table
-            self.log(f'Sending msg with iteration table')
-        else:
-            status = self.nu
-            self.log(f'Sending msg with iteration counter')
-
+        self.log('Sending full update')
         for k, que in self.sending_queues.items():
-
             msg = AdmmMessage(
                 sender = self.ID,
                 flow = self.flows_with_neighbor[k],
                 lamda = self.lamda[self.lamda.index.isin(self.flows_with_neighbor[k].index)],
                 rho = self.rho,
                 flow_global = self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)],
-                status = status,
+                status = self.status,
+                terminated = self.terminated
             )
             que.put(msg)
 
-        # Reset `update_flag` as all previous updates have now been sent.
-        self.update_flag = False
+        # Reset `status_update` as all previous updates have now been sent.
+        self.status_update = False
 
 
+    def send_status(self):
+        """
+        Send an `AdmmStatusMessage` with the current status to each neighbor.
+        """
+        self.log('Sending status update')
+        msg = AdmmStatusMessage(
+            sender = self.ID,
+            status = self.status,
+            terminated = self.terminated
+        )
+        for que in self.sending_queues.values():
+            que.put(msg)
+
+        # Reset `status_update` as all previous updates have now been sent.
+        self.status_update = False
+
+
+    # TODO: docstring
     def receive(self):
         """
         Check for new messages from neighbors and update the iteration table if necessary.
@@ -225,66 +236,89 @@ class UrbsAdmmModel(object):
         Return a dictionary of newly received messages with the neighbor IDs as keys.
         """
         self.log('Checking for new messages...')
-        self.update_flag = False
-        new_msgs = {}
+        full = set()
+        status = set()
 
         # read accumulated messages from active neighbors
         while not self.receiving_queue.empty():
             msg = self.receiving_queue.get(block=False)
-            new_msgs[msg.sender] = msg
+            if isinstance(msg, AdmmMessage):
+                self.messages[msg.sender] = msg
+                full.add(msg.sender)
+            elif isinstance(msg, AdmmStatusMessage):
+                self.messages[msg.sender].update(msg)
+                status.add(msg.sender)
+            else:
+                raise RuntimeError(f'Received a msg of unrecognized type: {type(msg)}')
 
-        for msg in new_msgs.values():
-            if msg.is_terminated():
+            if msg.terminated:
                 self.log('Received msg from a terminated process')
                 self.terminated = True
 
-        # store new messages
-        self.messages.update(new_msgs)
+        senders = full.union(status)
+        self.updated[-1] = self.updated[-1].union(full)
 
-        if new_msgs:
-            self.log(f'New messages from {len(new_msgs)} neighbors: {list(new_msgs.keys())}')
-            self.merge_tables({k: msg for k, msg in new_msgs.items() if not msg.is_terminated()})
+        if senders:
+            self.log(f'New messages from {len(senders)} neighbors: {senders}')
+            self.log(f'Thereof full updates: {full}')
+        else:
+            self.log('No new messages.')
 
-        self.received[-1] = self.received[-1].union(new_msgs.keys())
-        return new_msgs
+        if full:
+            self.update_mismatch(full)
+
+        if senders:
+            self.update_status(senders)
+
+        return full, status
 
 
-    def merge_tables(self, msgs):
+    # TODO: docstring
+    def update_status(self, senders):
         """
         Merge the iteration tables/counters of the received `msgs` with
-        `self.iteration_table`. Set the `self.update_flag` if any updates were carried out.
+        `self.iteration_table`. Set the `self.status_update` if any updates were carried out.
         """
-        self.log('Merging iteration tables...')
-        for sender, msg in msgs.items():
-            # In case of local convergence, `msg.status` is a list.
-            if msg.is_converged():
-                for k in range(self.n_clusters):
-                    m = self.iteration_table[k]
-                    n = msg.status[k]
-                    if isinstance(m, list) and isinstance(n, list):
-                        for l in range(self.n_clusters):
-                            if n[l] > m[l]:
-                                m[l] = n[l]
-                                self.update_flag = True
-                    else:
-                        nu = m[k] if isinstance(m, list) else m
-                        nu_other = n[k] if isinstance(n, list) else n
-                        if nu_other > nu:
-                            self.iteration_table[k] = n
-                            self.iteration_table[self.ID][k] = nu_other
-                            self.update_flag = True
+        self.log('Updating status...')
+        for sender in senders:
+            msg = self.messages[sender]
 
-            # Otherwise, `msg.status` is the iteration counter of the sender, so it is
-            # always more recent than the locally stored value.
-            else:
-                self.iteration_table[sender] = msg.status
-                self.iteration_table[self.ID][sender] = msg.status
-                self.update_flag = True
+            self.log(f'Status from {sender}:')
+            self.log('\n'.join(str(s) for s in msg.status))
 
-        if self.update_flag:
-            self.log('Table was updated')
+            for k in range((self.n_clusters)):
+                theirs = msg.status[k]
+                ours = self.status[k]
+                # compare iteration counters
+                if theirs[0] > ours[0]:
+                    self.status[k] = theirs
+                    self.status_update = True
+                # If the iteration counters are equal, then the received status may stem
+                # from a more recent message of the same iteration.
+                # In that case, local convergence and status can only have been rendered
+                # True, not False.
+                elif theirs[0] == ours[0]:
+                    if theirs[1] and not ours[1]:
+                        ours[1] = True
+                        self.status_update = True
+                    if theirs[2] and not ours[2]:
+                        ours[2] = True
+                        self.status_update = True
 
-        return self.update_flag
+            # always update status of the sender
+            if self.status[sender] != msg.status[sender]:
+                self.status[sender] = msg.status[sender]
+                self.status_update = True
+
+        if self.status_update:
+            self.log('New status:')
+            self.log('\n'.join(str(s) for s in self.status))
+            self.update_consensus()
+
+        else:
+            self.log('Nothing to update.')
+
+        return self.status_update
 
 
     def update_lamda(self):
@@ -300,7 +334,7 @@ class UrbsAdmmModel(object):
         the new dual gap and append it to `self.dualgaps`.
         """
         flow_global_old = deepcopy(self.flow_global)
-        for k in self.received[-1]:
+        for k in self.updated[-1]:
             msg = self.messages[k]
             lamda = msg.lamda
             flow = msg.flow
@@ -315,17 +349,18 @@ class UrbsAdmmModel(object):
                 (self.rho + rho + self.admmopt.async_correction))
 
         self.dualgaps.append(self.rho * np.square(self.flow_global - flow_global_old).sum(axis=0))
+        # No need to call `update_convergence` here; this is done in the next call to
+        # `update_primalgap`.
 
 
-    def calc_primalgap(self):
+    def update_primalgap(self):
         """
-        Calculate the new primal gap, append it to `self.primalgaps` and check local
-        convergence and store the status in `self.converged`.
+        Calculate the new primal gap and append it to `self.primalgaps`.
         """
         primalgap = np.square(self.flows_all - self.flow_global).sum(axis=0)
         self.log(f'Primal gap: {primalgap}')
         self.primalgaps.append(primalgap)
-        self.converged = self.is_converged()
+        self.update_convergence()
 
 
     def update_rho(self, nu):
@@ -372,32 +407,11 @@ class UrbsAdmmModel(object):
         self.rho = max(self.rho, *[msg.rho for msg in self.messages.values()])
 
 
-    def is_converged(self):
-        """
-        Check whether primal gap, dual gap and constraint mismatch are below their
-        respective tolerance thresholds.
-        """
-        # primal gap
-        self.log('Checking convergence...')
-        if self.primalgaps[-1] > self.primal_tolerance:
-            self.log('No primal convergence:')
-            self.log(f'{self.primalgaps[-1]} > {self.primal_tolerance}')
-            return False
-
-        # dual gap
-        if self.dualgaps[-1] > self.dual_tolerance:
-            self.log('No dual convergence:')
-            self.log(f'{self.dualgaps[-1]} > {self.dual_tolerance}')
-            return False
-
-        # constraint mismatch
-        # TODO: update this as msgs are received, keep track of violators
-        if len(self.messages) < self.n_neighbors:
-            self.log('No mismatch convergence:')
-            self.log('Not all neighbors have sent a msg')
-            return False
-
-        for k, msg in self.messages.items():
+    # TODO: docstring
+    def update_mismatch(self, senders):
+        self.log('Updating mismatch convergence...')
+        for k in senders:
+            msg = self.messages[k]
             mismatch_gap = np.square(
                 self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)]
                 - msg.flow_global
@@ -405,30 +419,108 @@ class UrbsAdmmModel(object):
             if mismatch_gap > self.mismatch_tolerance:
                 self.log(f'No mismatch convergence with neighbor {k}:')
                 self.log(f'{mismatch_gap} > {self.mismatch_tolerance}')
-                return False
+                self.mismatch_convergence[k] = False
+            else:
+                self.log(f'Reached mismatch convergence with neighbor {k}:')
+                self.log(f'{mismatch_gap} <= {self.mismatch_tolerance}')
+                self.mismatch_convergence[k] = True
+
+        self.log(f'Current mismatch status: {self.mismatch_convergence}')
+        self.update_convergence()
+
+
+    # TODO: docstring
+    def update_convergence(self):
+        """
+        Check whether primal gap, dual gap and constraint mismatch are below their
+        respective tolerance thresholds.
+        """
+        # primal gap
+        self.log('Checking local convergence...')
+        if self.primalgaps[-1] > self.primal_tolerance:
+            self.log('No primal convergence:')
+            self.log(f'{self.primalgaps[-1]} > {self.primal_tolerance}')
+            self.set_local_convergence(False)
+            return False
+
+        # dual gap
+        if self.dualgaps[-1] > self.dual_tolerance:
+            self.log('No dual convergence:')
+            self.log(f'{self.dualgaps[-1]} > {self.dual_tolerance}')
+            self.set_local_convergence(False)
+            return False
+
+        # constraint mismatch
+        if not all(self.mismatch_convergence.values()):
+            self.log('No mismatch convergence')
+            self.set_local_convergence(False)
+            return False
 
         self.log('Local convergence!')
+        self.set_local_convergence(True)
         return True
 
 
+    def local_convergence(self):
+        return self.status[self.ID][1]
+
+
+    def set_local_convergence(self, value):
+        old_value = self.local_convergence()
+        self.status[self.ID][1] = value
+        if value != old_value:
+            self.status_update = True
+        if value:
+            self.update_consensus()
+
+
+    def update_consensus(self):
+        self.log('Checking consensus...')
+        result = self.local_convergence() and all(
+            k in self.messages and
+            msg.local_convergence() and
+            msg.status[self.ID][0] == self.nu
+            for k, msg in self.messages.items()
+        )
+
+        if result:
+            self.log('Reached consensus!')
+        else:
+            self.log('No consensus.')
+
+        self.set_consensus(result)
+
+
+    def consensus(self):
+        return self.status[self.ID][2]
+
+
+    def set_consensus(self, value):
+        old_value = self.consensus()
+        self.status[self.ID][2] = value
+        if value != old_value:
+            self.status_update = True
+
+
+    def all_converged(self):
+        return self.local_convergence() and all(
+            self.messages[k].local_convergence() for k in self.updated[-1]
+        )
+
+
+    # TODO: docstring
     def global_convergence(self):
         """
         Check global convergence, i.e. local convergence + congruence. Congruence is
         achieved when all entries of `self.iteration_table` are identical lists.
         """
-        if not self.converged:
-            return False
-        if not all(isinstance(l, list) for l in self.iteration_table):
-            return False
-
-        self.log('\n'.join(' '.join(str(x) for x in l) for l in self.iteration_table))
-
-        congruence = all(
-            l == self.iteration_table[0]
-            for l in self.iteration_table[1:]
-        )
-        self.log(f'Congruence: {congruence}')
-        return congruence
+        self.log('Checking global convergence...')
+        result = all(s[2] for s in self.status)
+        if result:
+            self.log('Global convergence!')
+        else:
+            self.log('No global convergence.')
+        return result
 
 
 class AdmmOption(object):
@@ -458,6 +550,13 @@ class AdmmOption(object):
         self.wait_time = wait_time
 
 
+    def as_dict(self):
+        return {
+            attr: getattr(self, attr)
+            for attr in dir(self) if not attr.startswith('__')
+        }
+
+
 class AdmmMessage(object):
     def __init__(
         self,
@@ -466,7 +565,8 @@ class AdmmMessage(object):
         lamda,
         rho,
         flow_global,
-        status
+        status,
+        terminated,
         ):
 
         self.sender = sender
@@ -475,11 +575,23 @@ class AdmmMessage(object):
         self.rho = rho
         self.flow_global = flow_global
         self.status = status
+        self.terminated = terminated
 
 
-    def is_terminated(self):
-        return self.status == 'terminated'
+    def update(self, msg):
+        if isinstance(msg, AdmmStatusMessage):
+            self.status = msg.status
+            self.terminated = msg.terminated
+        else:
+            raise TypeError(f'msg has unexpected type {type(msg)}, should be AdmmStatusMessage')
 
 
-    def is_converged(self):
-        return isinstance(self.status, list)
+    def local_convergence(self):
+        return self.status[self.sender][1]
+
+
+class AdmmStatusMessage:
+    def __init__(self, sender, status, terminated):
+        self.sender = sender
+        self.status = status
+        self.terminated = terminated

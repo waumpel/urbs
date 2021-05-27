@@ -26,7 +26,6 @@ def run_worker(s, output, logqueue, iteration_results):
     """
     max_iter = s.admmopt.max_iter
     solver_times = []
-    converged = False
 
     log = log_generator(s.ID, logqueue)
     log(f'Starting subproblem for regions {", ".join(s.regions)}.')
@@ -44,7 +43,7 @@ def run_worker(s, output, logqueue, iteration_results):
         solver_times.append(solver_time)
 
         s.retrieve_boundary_flows()
-        s.calc_primalgap()
+        s.update_primalgap()
 
         iteration_results.put({
             'sender': s.ID,
@@ -53,47 +52,45 @@ def run_worker(s, output, logqueue, iteration_results):
             'dualgap': s.dualgaps[-1],
         })
 
-        if s.converged:
+        if s.local_convergence():
             log(f'Converged at iteration {nu}')
             celebration = True
 
         s.receive()
         s.send()
-        converged = s.global_convergence()
 
-        if not converged and not s.terminated:
-            while len(s.received[-1]) < s.n_wait or s.converged:
+        if not s.global_convergence() and not s.terminated:
+            while len(s.updated[-1]) < s.n_wait or (s.all_converged()):
 
                 sleep(s.admmopt.wait_time)
-                if not s.receive():
+                full, status = s.receive()
+                if not (full or status):
                     continue
-
-                s.converged = s.is_converged()
-                converged = s.global_convergence()
 
                 # In case of global convergence or termination, send another msg so that
                 # other processes are notified.
                 # Having this check inside the outer if-statement avoids potentially sending
                 # two messages.
-                if converged or s.terminated:
-                    s.send()
+                if s.global_convergence() or s.terminated:
+                    s.send_status()
                     break
 
-                # In case of local convergence, send updates to the iteration table to the
-                # neighbors, so that global convergence can be detected.
-                if s.converged:
-                    if s.update_flag: # TODO: s.all_converged() instead of s.converged sufficient?
+                # If `s.all_converged() == True`, this cluster may not reiterate, so any
+                # updates to `s.status` must be sent to the neighbors.
+                # (Otherwise, global convergence may not be detected.)
+                if s.all_converged():
+                    if s.status_update:
                         if not celebration:
                             log(f'Converged at iteration {nu}')
                             celebration = True
-                        s.send()
+                        s.send_status()
+                # No need to send another msg; this cluster will either reiterate or
+                # reach convergence once again.
                 elif celebration:
                     log('No longer converged')
                     celebration = False
 
-
-
-        if converged:
+        if s.global_convergence():
             log(f'Global convergence at iteration {nu}!')
             break
 
@@ -104,7 +101,7 @@ def run_worker(s, output, logqueue, iteration_results):
         if nu == max_iter - 1:
             log('Timeout: Terminating.')
             s.terminated = True
-            s.send()
+            s.send_status()
             break
 
         s.update_lamda()
