@@ -102,4 +102,3 @@ if __name__ == '__main__':
 
         input_output.save_results(admm_results, result_dir)
         plot.plot_results(admm_results, result_dir)
-

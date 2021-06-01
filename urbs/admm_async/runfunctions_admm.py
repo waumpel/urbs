@@ -11,7 +11,6 @@ from pyomo.environ import SolverFactory
 from urbs.model import create_model
 from urbs.input import read_input, add_carbon_supplier
 from urbs.validation import validate_dc_objective, validate_input
-from . import input_output
 from .run_worker import run_worker
 from .urbs_admm_model import UrbsAdmmModel
 
@@ -244,65 +243,6 @@ def run_regional(
     # Queues for communication between processes
     queues = [manager.Queue() for _ in range(n_clusters)]
 
-    problems = []
-    sub = {}
-
-    # initialize pyomo models and `UrbsAdmmModel`s
-    for cluster_idx in range(0, n_clusters):
-        index = shared_lines[cluster_idx].index.to_frame()
-
-        flow_global = pd.Series({
-            (t, year, source, target): initial_values.flow_global
-            for t in timesteps[1:]
-            for source, target in zip(index['Site In'], index['Site Out'])
-        })
-        flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-
-        lamda = pd.Series({
-            (t, year, source, target): initial_values.lamda
-            for t in timesteps[1:]
-            for source, target in zip(index['Site In'], index['Site Out'])
-        })
-        lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-
-        model = create_model(data_all, timesteps, type='sub',
-                             sites=clusters[cluster_idx],
-                             data_transmission_boun=shared_lines[cluster_idx],
-                             data_transmission_int=internal_lines[cluster_idx],
-                             flow_global=flow_global,
-                             lamda=lamda,
-                             rho=admmopt.rho)
-
-        sub[cluster_idx] = model
-
-        sending_queues = {
-            target: queues[target] for target in neighbors[cluster_idx]
-        }
-
-        # enlarge shared_lines (copies of slices of data_all['transmission'])
-        shared_lines[cluster_idx]['cluster_from'] = cluster_from[cluster_idx]
-        shared_lines[cluster_idx]['cluster_to'] = cluster_to[cluster_idx]
-        shared_lines[cluster_idx]['neighbor_cluster'] = neighbor_cluster[cluster_idx]
-
-        problem = UrbsAdmmModel(
-            admmopt = admmopt,
-            flow_global = flow_global,
-            ID = cluster_idx,
-            lamda = lamda,
-            model = model,
-            n_clusters = n_clusters,
-            neighbors = neighbors[cluster_idx],
-            receiving_queue = queues[cluster_idx],
-            regions = clusters[cluster_idx],
-            result_dir = result_dir,
-            scenario_name = scenario_name,
-            sending_queues = sending_queues,
-            shared_lines = shared_lines[cluster_idx],
-            shared_lines_index = index,
-        )
-
-        problems.append(problem)
-
     # Queue for collecting the results from each subproblem after convergence
     output = manager.Queue()
 
@@ -311,8 +251,28 @@ def run_regional(
 
     # Child processes for the ADMM subproblems
     procs = [
-        mp.Process(target=run_worker, args=(problem, output, logqueue))
-        for problem in problems
+        mp.Process(target=run_worker, args=(
+            ID,
+            data_all,
+            scenario_name,
+            timesteps,
+            year,
+            initial_values,
+            admmopt,
+            n_clusters,
+            clusters[ID],
+            neighbors[ID],
+            shared_lines[ID],
+            internal_lines[ID],
+            cluster_from[ID],
+            cluster_to[ID],
+            neighbor_cluster[ID],
+            queues,
+            result_dir,
+            output,
+            logqueue,
+        ))
+        for ID in range(n_clusters)
     ]
 
     solver_start = time()
@@ -378,5 +338,3 @@ def run_regional(
         'objective_values': objective_values,
         'results': results,
     }
-
-    return results_dict

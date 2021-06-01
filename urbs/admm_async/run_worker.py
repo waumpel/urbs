@@ -1,5 +1,9 @@
 from time import sleep, time
 
+import pandas as pd
+
+from urbs.model import create_model
+from .urbs_admm_model import UrbsAdmmModel
 
 def log_generator(ID, logqueue):
     """
@@ -14,7 +18,27 @@ def log_generator(ID, logqueue):
     return fun
 
 
-def run_worker(s, output, logqueue):
+def run_worker(
+    ID,
+    data_all,
+    scenario_name,
+    timesteps,
+    year,
+    initial_values,
+    admmopt,
+    n_clusters,
+    sites,
+    neighbors,
+    shared_lines,
+    internal_lines,
+    cluster_from,
+    cluster_to,
+    neighbor_cluster,
+    queues,
+    result_dir,
+    output,
+    logqueue
+    ):
     """
     Main function for child processes of ADMM. Iteratively solves one subproblem of ADMM.
 
@@ -24,6 +48,57 @@ def run_worker(s, output, logqueue):
     * `logqueue`: `mp.Queue` for sending log messages. These are written to a shared log
                   file by the master process.
     """
+
+    index = shared_lines.index.to_frame()
+
+    flow_global = pd.Series({
+        (t, year, source, target): initial_values.flow_global
+        for t in timesteps[1:]
+        for source, target in zip(index['Site In'], index['Site Out'])
+    })
+    flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+
+    lamda = pd.Series({
+        (t, year, source, target): initial_values.lamda
+        for t in timesteps[1:]
+        for source, target in zip(index['Site In'], index['Site Out'])
+    })
+    lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+
+    model = create_model(data_all, timesteps, type='sub',
+                        sites=sites,
+                        data_transmission_boun=shared_lines,
+                        data_transmission_int=internal_lines,
+                        flow_global=flow_global,
+                        lamda=lamda,
+                        rho=admmopt.rho)
+
+    sending_queues = {
+        target: queues[target] for target in neighbors
+    }
+
+    # enlarge shared_lines (copies of slices of data_all['transmission'])
+    shared_lines['cluster_from'] = cluster_from
+    shared_lines['cluster_to'] = cluster_to
+    shared_lines['neighbor_cluster'] = neighbor_cluster
+
+    s = UrbsAdmmModel(
+        admmopt = admmopt,
+        flow_global = flow_global,
+        ID = ID,
+        lamda = lamda,
+        model = model,
+        n_clusters = n_clusters,
+        neighbors = neighbors,
+        receiving_queue = queues[ID],
+        regions = sites,
+        result_dir = result_dir,
+        scenario_name = scenario_name,
+        sending_queues = sending_queues,
+        shared_lines = shared_lines,
+        shared_lines_index = index,
+    )
+
     max_iter = s.admmopt.max_iter
     solver_times = [] # Stores the duration of each solver iteration
     timestamps = [] # Stores the times after each solver iteration
