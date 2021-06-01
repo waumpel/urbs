@@ -12,8 +12,8 @@ from pyomo.environ import SolverFactory
 from urbs.model import create_model
 from urbs.input import read_input, add_carbon_supplier
 from urbs.validation import validate_dc_objective, validate_input
-from .input_output import save_iteration_results
-from .plot import plot_iteration_results
+from . import plot
+from . import input_output
 from .run_worker import run_worker
 from .urbs_admm_model import UrbsAdmmModel
 
@@ -92,7 +92,9 @@ def run_regional(
     admmopt,
     centralized=False
     ):
-    """ run an urbs model for given input, time steps and scenario with regional decomposition using ADMM
+    """
+    Run an urbs model for given input, time steps and scenario with regional decomposition
+    using ADMM.
 
     Args:
         input_file: filename to an Excel spreadsheet for urbs.read_excel
@@ -100,7 +102,7 @@ def run_regional(
         scenario: a scenario function that modifies the input data dict
         result_dir: directory name for result spreadsheet and plots
         dt: width of a time step in hours(default: 1)
-        objective: the entity which is optimized ('cost' of 'co2')
+        objective: the entity which is optimized ('cost' or 'co2')
         clusters: user-defined region clusters for regional decomposition (list of lists)
 
     Returns:
@@ -119,11 +121,14 @@ def run_regional(
     # scenario name, read and modify data for scenario
     scenario_name = scenario.__name__
 
+    # dict for recording running times
+    times = {}
+
     log('Reading input...')
     start = time()
     data_all = read_input(input_file, year)
-    read_time = time() - start
-    log(f'Done. Time elapsed: {read_time:.2f} seconds')
+    times["read"] = time() - start
+    log(f'Done. Time elapsed: {times["read"]:.2f} seconds')
 
     log('Preprocessing...')
     start = time()
@@ -218,8 +223,8 @@ def run_regional(
     problems = []
     sub = {}
 
-    preprocess_time = time() - start
-    log(f'Done. Time elapsed: {preprocess_time:.0f}')
+    times["preprocess"] = time() - start
+    log(f'Done. Time elapsed: {times["preprocess"]:.0f}')
 
     log('Creating models...')
     start = time()
@@ -280,8 +285,8 @@ def run_regional(
 
         problems.append(problem)
 
-    model_time = time() - start
-    log(f'Done. Time elapsed: {model_time:.0f}')
+    times["model"] = time() - start
+    log(f'Done. Time elapsed: {times["model"]:.0f}')
 
     # Queue for collecting the results from each subproblem after convergence
     output = manager.Queue()
@@ -289,18 +294,15 @@ def run_regional(
     # Queue for accumulating log messages
     logqueue = manager.Queue()
 
-    iteration_results_queue = manager.Queue()
-
     # Child processes for the ADMM subproblems
     procs = [
-        mp.Process(target=run_worker, args=(problem, output, logqueue, iteration_results_queue))
+        mp.Process(target=run_worker, args=(problem, output, logqueue))
         for problem in problems
     ]
 
     log('Solving the distributed problem...')
 
-    start_time = time()
-    start_clock = clock()
+    solver_start = time()
     for proc in procs:
         proc.start()
 
@@ -313,34 +315,32 @@ def run_regional(
         proc.join()
 
     ttime = time()
-    tclock = clock()
-    solver_time = ttime - start_time
-    solver_clock = tclock - start_clock
+    times["solver"] = ttime - solver_start
 
     # Write accumulated log messages to logfile
     while not logqueue.empty():
         msg = logqueue.get(block=False)
         logfile.write(msg + '\n')
 
-    log(f'Done. Time elapsed: {solver_time:.0f}')
+    log(f'Done. Time elapsed: {times["solver"]:.0f}')
 
     # get results
-    results = sorted(results, key=lambda x: x[0])
+    results = sorted(results, key=lambda x: x['ID'])
 
     obj_total = 0
 
     for cluster_idx in range(0, n_clusters):
-        if cluster_idx != results[cluster_idx][0]:
+        if cluster_idx != results[cluster_idx]['ID']:
             raise RuntimeError(f'Result of worker {cluster_idx + 1} was not returned')
-        obj_total += results[cluster_idx][1]['cost'][-1]
+        obj_total += results[cluster_idx]['objective'][-1]
 
     # (optinal) solve the centralized problem
     if centralized:
         log('Creating the centralized model...')
         start = time()
         prob = create_model(data_all, timesteps, dt, type='normal')
-        centralized_model_time = time() - start
-        log(f'Done. Time elapsed: {centralized_model_time:.0f}')
+        times["centralized_model"] = time() - start
+        log(f'Done. Time elapsed: {times["centralized_model"]:.0f}')
 
         # refresh time stamp string and create filename for logfile
         log_filename = os.path.join(result_dir, f'{scenario_name}.log')
@@ -353,8 +353,8 @@ def run_regional(
         log('Solving the centralized model...')
         start = time()
         result = solver.solve(prob, tee=False)
-        centralized_solver_time = time() - start
-        log(f'Done. Time elapsed: {centralized_solver_time:.0f}')
+        times["centralized_solver"] = time() - start
+        log(f'Done. Time elapsed: {times["centralized_solver"]:.0f}')
         flows_from_original_problem = pd.DataFrame.from_dict(
             {name: entity.value for name, entity in prob.e_tra_in.items()},
             orient='index',
@@ -365,31 +365,50 @@ def run_regional(
 
     # print results
     log()
-    log(f'Reading input time      : {read_time:4.0f} s')
-    log(f'ADMM preprocessing time : {preprocess_time:4.0f} s')
-    log(f'ADMM model creation time: {model_time:4.0f} s')
-    log(f'ADMM solver time        : {solver_time:4.0f} s')
-    log(f'ADMM solver clock       : {solver_clock:4.0f} s')
+    log(f'Reading input time      : {times["read"]:4.0f} s')
+    log(f'ADMM preprocessing time : {times["preprocess"]:4.0f} s')
+    log(f'ADMM model creation time: {times["model"]:4.0f} s')
+    log(f'ADMM solver time        : {times["solver"]:4.0f} s')
     log(f'ADMM objective          : {obj_total:.4e}')
 
     if centralized:
         gap = (obj_total - obj_cent) / obj_cent
         log()
-        log(f'centralized model creation time: {centralized_model_time:4.0f} s')
-        log(f'centralized solver time        : {centralized_solver_time:4.0f} s')
+        log(f'centralized model creation time: {times["centralized_model"]:4.0f} s')
+        log(f'centralized solver time        : {times["centralized_solver"]:4.0f} s')
         log(f'centralized objective          : {obj_cent:.4e}')
         log()
         log(f'Objective gap: {gap:.4%}')
 
     logfile.close()
 
-    iteration_results = []
-    while not iteration_results_queue.empty():
-        iteration_results.append(iteration_results_queue.get())
+    objective_values = {
+        'admm': obj_total
+    }
+    if centralized:
+        objective_values['centralized'] = obj_cent
+        objective_values['gap'] = gap
 
-    save_options(admmopt)
-    save_iteration_results(iteration_results, result_dir)
-    plot_iteration_results(iteration_results, result_dir)
+    for r in results:
+        timestamps = r['timestamps']
+        for i in range(len(timestamps)):
+            timestamps[i] -= solver_start
+
+    results_dict = input_output.make_results_dict(
+        input_file,
+        timesteps,
+        scenario,
+        dt,
+        objective,
+        clusters,
+        admmopt,
+        times,
+        objective_values,
+        results,
+    )
+
+    input_output.save_results(results_dict, result_dir)
+    plot.plot_results(results_dict, result_dir)
 
     # ------------ plots of convergence -----------------
     # fig = plt.figure()

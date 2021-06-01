@@ -550,13 +550,6 @@ class AdmmOption(object):
         self.wait_time = wait_time
 
 
-    def as_dict(self):
-        return {
-            attr: getattr(self, attr)
-            for attr in dir(self) if not attr.startswith('__')
-        }
-
-
 class AdmmMessage(object):
     def __init__(
         self,

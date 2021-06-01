@@ -14,7 +14,7 @@ def log_generator(ID, logqueue):
     return fun
 
 
-def run_worker(s, output, logqueue, iteration_results):
+def run_worker(s, output, logqueue):
     """
     Main function for child processes of ADMM. Iteratively solves one subproblem of ADMM.
 
@@ -26,6 +26,7 @@ def run_worker(s, output, logqueue, iteration_results):
     """
     max_iter = s.admmopt.max_iter
     solver_times = []
+    timestamps = []
 
     log = log_generator(s.ID, logqueue)
     log(f'Starting subproblem for regions {", ".join(s.regions)}.')
@@ -45,12 +46,8 @@ def run_worker(s, output, logqueue, iteration_results):
         s.retrieve_boundary_flows()
         s.update_primalgap()
 
-        iteration_results.put({
-            'sender': s.ID,
-            'time': time(),
-            'primalgap': s.primalgaps[-1],
-            'dualgap': s.dualgaps[-1],
-        })
+        # Take the timestamp now, when objective and primal gap are known for this iteration.
+        timestamps.append(time())
 
         if s.local_convergence():
             log(f'Converged at iteration {nu}')
@@ -112,10 +109,12 @@ def run_worker(s, output, logqueue, iteration_results):
         s.update_cost_rule()
 
     # save(s.model, os.path.join(s.result_dir, '_{}_'.format(ID),'{}.h5'.format(s.sce)))
-    output_package = {
-        'cost': s.objective_values,
-        'coupling_flows': s.flow_global,
+    output.put({
+        'ID': s.ID,
+        'regions': s.regions,
+        'timestamps': timestamps,
+        'objective': s.objective_values,
         'primal_residual': s.primalgaps,
         'dual_residual': s.dualgaps,
-    }
-    output.put((s.ID, output_package))
+        'coupling_flows': s.flow_global.tolist(),
+    })
