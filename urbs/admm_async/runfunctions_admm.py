@@ -382,6 +382,8 @@ def run_regional(
 
     logfile.close()
 
+    # Save results and plots
+
     objective_values = {
         'admm': obj_total
     }
@@ -409,21 +411,5 @@ def run_regional(
 
     input_output.save_results(results_dict, result_dir)
     plot.plot_results(results_dict, result_dir)
-
-    # ------------ plots of convergence -----------------
-    # fig = plt.figure()
-    # for cluster_idx in range(0, n_clusters):
-    #     if cluster_idx != results[cluster_idx][0]:
-    #         print('Error: Result of worker %d not returned!' % (cluster_idx + 1,))
-    #         break
-    #     pgap = results[cluster_idx][1]['primal_residual']
-    #     dgap = results[cluster_idx][1]['dual_residual']
-    #     curfig = fig.add_subplot(1, n_clusters, cluster_idx + 1)
-    #     curfig.plot(pgap, color='red', linewidth=2.5, label='primal residual')
-    #     curfig.plot(dgap, color='blue', linewidth=2.5, label='dual residual')
-    #     curfig.set_yscale('log')
-    #     curfig.legend(loc='upper right')
-
-    #plt.show()
 
     return sub

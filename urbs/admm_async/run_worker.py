@@ -25,8 +25,8 @@ def run_worker(s, output, logqueue):
                   file by the master process.
     """
     max_iter = s.admmopt.max_iter
-    solver_times = []
-    timestamps = []
+    solver_times = [] # Stores the duration of each solver iteration
+    timestamps = [] # Stores the times after each solver iteration
 
     log = log_generator(s.ID, logqueue)
     log(f'Starting subproblem for regions {", ".join(s.regions)}.')

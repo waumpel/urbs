@@ -5,6 +5,12 @@ import matplotlib.pyplot as plt
 
 # TODO: actual merge sort implementation
 def merge_sort_results(results):
+    """
+    Merge the results of individual clusters and sort them by timestamp.
+    Return a list of dicts.
+
+    `results` is a list of dicts, each representing all results from one cluster.
+    """
     return sorted((
         {
             'ID': r['ID'],
@@ -29,6 +35,8 @@ def recent_results(results):
     Return a list of the same length as `results`.
     The `i`th entry is a dict mapping each cluster to its most recent result in
     `results[:i+1]`.
+
+    `results` is a list of dicts, each representing a single iteration result.
     """
     first = results[0]
     recent_results = [{first['ID']: first}]
@@ -42,6 +50,11 @@ def recent_results(results):
 
 
 def plot_results(results_dict, result_dir):
+    """
+    Plot the results and save them to `result_dir`.
+
+    `results_dict` is a dict as returned by `.input_output.make_results_dict`.
+    """
     n_clusters = len(results_dict['clusters'])
     admmopt = results_dict['admmopt']
     results = merge_sort_results(results_dict['results'])
