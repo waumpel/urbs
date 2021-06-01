@@ -103,8 +103,8 @@ def run_worker(s, output, logqueue):
 
         s.update_lamda()
         s.update_flow_global()
-        # s.choose_max_rho() # TODO: not needed?
-        # s.update_rho(nu) # TODO
+        s.update_rho()
+        s.choose_max_rho()
 
         s.update_cost_rule()
 

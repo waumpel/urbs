@@ -62,17 +62,17 @@ scenarios = [
 ]
 
 admmopt = AdmmOption(
-    async_correction = 0,
-    dual_tolerance = 0.1,
-    max_iter = 1000,
-    mismatch_tolerance = 0.1,
-    penalty_iter = 50,
-    penalty_mult = 1.05,
-    penalty_tolerance = 10,
     primal_tolerance = 0.1,
+    dual_tolerance = 0.1,
+    mismatch_tolerance = 0.1,
     rho = 5,
+    max_penalty = 50,
+    penalty_mult = 1.05,
+    primal_decrease = 0.9,
+    async_correction = 0,
     wait_percent = 0.1,
     wait_time = 0.1,
+    max_iter = 1000,
 )
 
 if __name__ == '__main__':

@@ -181,7 +181,6 @@ class UrbsAdmmModel(object):
                 k = self.shared_lines.loc[(stf, sit_in, sit_out, tra, com), 'neighbor_cluster']
                 flows_with_neighbor[k][(tm, stf, sit_in, sit_out)] = v.value
 
-
         flows_all = pd.Series(flows_all)
         flows_all.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
 
@@ -373,19 +372,13 @@ class UrbsAdmmModel(object):
         self.update_convergence()
 
 
-    def update_rho(self, nu):
+    def update_rho(self):
         """
-        Update `self.rho` according to the new primal and dual gaps unless the
-        current iteration, `self.nu`, is above `self.admmopt.penalty_iter`.
+        Increase `self.rho` if the primal gap does not decrease sufficiently.
         """
-        primalgap = self.primalgaps[-1]
-        dualgap = self.dualgaps[-1]
-
-        if self.nu <= self.admmopt.penalty_iter:
-            if primalgap > self.admmopt.penalty_tolerance * dualgap:
-                self.rho *= self.admmopt.penalty_mult
-            elif dualgap > self.admmopt.penalty_tolerance * primalgap:
-                self.rho /= self.admmopt.penalty_mult
+        if (self.nu > 0 and
+            self.primalgaps[-1] > self.admmopt.primal_decrease * self.primalgaps[-2]):
+            self.rho = max(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
 
 
     def update_cost_rule(self):
@@ -562,29 +555,29 @@ class UrbsAdmmModel(object):
 
 class AdmmOption(object):
     def __init__(self,
-        async_correction,
-        dual_tolerance,
-        max_iter,
-        mismatch_tolerance,
-        penalty_iter,
-        penalty_mult,
-        penalty_tolerance,
         primal_tolerance,
+        dual_tolerance,
+        mismatch_tolerance,
         rho,
+        max_penalty,
+        penalty_mult,
+        primal_decrease,
+        async_correction,
         wait_percent,
         wait_time,
+        max_iter,
     ):
-        self.async_correction = async_correction
-        self.dual_tolerance = dual_tolerance
-        self.max_iter = max_iter
-        self.mismatch_tolerance = mismatch_tolerance
-        self.penalty_iter = penalty_iter
-        self.penalty_mult = penalty_mult
-        self.penalty_tolerance = penalty_tolerance
         self.primal_tolerance = primal_tolerance
+        self.dual_tolerance = dual_tolerance
+        self.mismatch_tolerance = mismatch_tolerance
         self.rho = rho
+        self.max_penalty = max_penalty
+        self.penalty_mult = penalty_mult
+        self.primal_decrease = primal_decrease
+        self.async_correction = async_correction
         self.wait_percent = wait_percent
         self.wait_time = wait_time
+        self.max_iter = max_iter
 
 
 class AdmmMessage(object):
