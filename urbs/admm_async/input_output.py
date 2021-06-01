@@ -10,7 +10,6 @@ def attr_dict(obj):
 
 
 def make_results_dict(
-        input_file,
         timesteps,
         scenario,
         dt,
@@ -22,7 +21,6 @@ def make_results_dict(
         results,
     ):
     return {
-        'input file' : input_file,
         'timesteps': [timesteps.start, timesteps.stop],
         'scenario': scenario.__name__,
         'dt': dt,

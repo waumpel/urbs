@@ -3,10 +3,12 @@ from multiprocessing import freeze_support
 import os
 import shutil
 
-from urbs.admm_async import run_regional, AdmmOption
+from urbs import admm_async
 from urbs.colorcodes import COLORS
 from urbs.runfunctions import prepare_result_directory
 from urbs.scenarios import scenario_base
+from urbs.admm_async import plot
+from urbs.admm_async import input_output
 
 options = argparse.ArgumentParser()
 options.add_argument('-c', '--centralized', action='store_true',
@@ -45,29 +47,25 @@ clusters = [
     ['Berlin', 'North Rhine-Westphalia', 'Baden-Württemberg', 'Hesse'],
     ['Bavaria', 'Rhineland-Palatinate', 'Saarland', 'Saxony', 'Thuringia']
 ]
-
-# clusters = [[('Mid'),('Mid_int')],[('South'),('North')]]
-
-# add or change plot colors
-my_colors = {
-    'South': (230, 200, 200),
-    'Mid': (200, 230, 200),
-    'North': (200, 200, 230)}
-for country, color in my_colors.items():
-    COLORS[country] = color
+# clusters = [
+#     ['Schleswig-Holstein'], ['Hamburg'], ['Mecklenburg-Vorpommern'], ['Offshore'],
+#     ['Lower Saxony'], ['Bremen'], ['Saxony-Anhalt'], ['Brandenburg'],
+#     ['Berlin'], ['North Rhine-Westphalia'], ['Baden-Württemberg'], ['Hesse'],
+#     ['Bavaria'], ['Rhineland-Palatinate'], ['Saarland'], ['Saxony'], ['Thuringia']
+# ]
 
 # select scenarios to be run
 scenarios = [
     scenario_base
 ]
 
-admmopt = AdmmOption(
+admmopt = admm_async.AdmmOption(
     primal_tolerance = 0.1,
     dual_tolerance = 0.1,
     mismatch_tolerance = 0.1,
     rho = 5,
     max_penalty = 50,
-    penalty_mult = 1.05,
+    penalty_mult = 1,
     primal_decrease = 0.9,
     async_correction = 0,
     wait_percent = 0.1,
@@ -78,8 +76,10 @@ admmopt = AdmmOption(
 if __name__ == '__main__':
     freeze_support()
     for scenario in scenarios:
-        run_regional(
-            input_file = input_path,
+        data_all, ttime = admm_async.read(input_path, scenario, objective)
+
+        admm_results = admm_async.run_regional(
+            data_all = data_all,
             timesteps = timesteps,
             scenario = scenario,
             result_dir = result_dir,
@@ -87,5 +87,19 @@ if __name__ == '__main__':
             objective = objective,
             clusters = clusters,
             admmopt = admmopt,
-            centralized = args.centralized,
         )
+
+        if args.centralized:
+            centralized_result = admm_async.run_centralized(
+                data_all, timesteps, dt, scenario, result_dir
+            )
+            obj_cent = centralized_result['objective']
+            obj_admm = admm_results['objective_values']['admm']
+            gap = (obj_admm - obj_cent) / obj_cent
+            admm_results['objective_values']['centralized'] = obj_cent
+            admm_results['objective_values']['gap'] = gap
+            admm_results['centralized_time'] = centralized_result['time']
+
+        input_output.save_results(admm_results, result_dir)
+        plot.plot_results(admm_results, result_dir)
+
