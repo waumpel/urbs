@@ -378,7 +378,7 @@ class UrbsAdmmModel(object):
         """
         if (self.nu > 0 and
             self.primalgaps[-1] > self.admmopt.primal_decrease * self.primalgaps[-2]):
-            self.rho = max(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
+            self.rho = min(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
 
 
     def update_cost_rule(self):
