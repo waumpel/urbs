@@ -191,5 +191,6 @@ def run_worker(
         'objective': s.objective_values,
         'primal_residual': s.primalgaps,
         'dual_residual': s.dualgaps,
+        'constraint_mismatch': s.max_mismatch_gaps,
         'coupling_flows': s.flow_global.tolist(),
     })

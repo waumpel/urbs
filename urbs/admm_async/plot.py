@@ -17,14 +17,16 @@ def merge_sort_results(results):
             'time': timestamp,
             'obj': obj,
             'primal': primal,
-            'dual': dual
+            'dual': dual,
+            'mismatch': mismatch,
         }
         for r in results
-        for timestamp, obj, primal, dual in zip(
+        for timestamp, obj, primal, dual, mismatch in zip(
             r['timestamps'],
             r['objective'],
             r['primal_residual'],
-            r['dual_residual']
+            r['dual_residual'],
+            r['constraint_mismatch'],
         )),
         key=lambda x: x['time']
     )
@@ -63,11 +65,13 @@ def plot_results(results_dict, result_dir):
 
     max_primal = [max(v['primal'] for v in d.values()) for d in recent]
     max_dual = [max(v['dual'] for v in d.values()) for d in recent]
+    max_mismatch = [max(v['mismatch'] for v in d.values()) for d in recent]
     sum_obj = [sum(v['obj'] for v in d.values()) for d in recent]
     avg_iter = [x / n_clusters for x in range(len(max_primal))]
 
     plot_primal_iter(max_primal, avg_iter, admmopt['primal_tolerance'], result_dir)
     plot_dual_iter(max_dual, avg_iter, admmopt['dual_tolerance'], result_dir)
+    plot_mismatch_iter(max_mismatch, avg_iter, admmopt['mismatch_tolerance'], result_dir)
     plot_primal_time(times, max_primal, admmopt['primal_tolerance'], result_dir)
     plot_dual_time(times, max_dual, admmopt['dual_tolerance'], result_dir)
 
@@ -100,6 +104,18 @@ def plot_dual_iter(max_dual, avg_iter, dual_tolerance, result_dir):
     ax.set_ylabel('max dual gap')
     ax.set_title('Dual Gap per Iteration')
     fig.savefig(join(result_dir, 'dual_iter.svg'))
+
+
+def plot_mismatch_iter(max_mismatch, avg_iter, mismatch_tolerance, result_dir):
+    fig, ax = plt.subplots()
+    ax.set_yscale('log')
+    ax.plot(avg_iter, max_mismatch)
+    ax.axhline(mismatch_tolerance, color='black', linestyle='dashed')
+    ax.set_xlabel('avg local iterations')
+    ax.set_ylabel('max mismatch gap')
+    ax.set_title('Mismatch Gap per Iteration')
+    fig.savefig(join(result_dir, 'mismatch_iter.svg'))
+
 
 
 def plot_primal_time(times, max_primal, primal_tolerance, result_dir):

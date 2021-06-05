@@ -39,6 +39,7 @@ class UrbsAdmmModel(object):
     `lamda`: `pd.Series` holding the Lagrange multipliers. Index is
         `['t', 'stf', 'sit', 'sit_']`.
     `logfile`: Logfile for this cluster.
+    `max_mismatch_gaps`: List holding the maximal constraint mismatch in each iteration.
     `messages`: Dict mapping each neighbor ID to the most recent message from that neighbor.
     `mismatch_convergence`: Dict mapping each neighbor ID to a flag indicating the current
         mismatch convergence status.
@@ -103,6 +104,7 @@ class UrbsAdmmModel(object):
         self.lamda = lamda
         self.logfile = open(join(result_dir, f'process-{ID}.log'), 'w', encoding='utf8')
         self.messages = {}
+        self.max_mismatch_gaps = []
         self.mismatch_tolerance = admmopt.mismatch_tolerance * min(1, len(flow_global))
         self.model = model
         self.n_clusters = n_clusters
@@ -156,6 +158,7 @@ class UrbsAdmmModel(object):
         self.status[self.ID] = [self.nu, False, False]
         self.updated.append(set())
         self.mismatch_convergence = {k: False for k in self.neighbors}
+        self.max_mismatch_gaps.append(0)
 
         self.solver.solve(save_results=False, load_solutions=False, warmstart=True)
         self.objective_values.append(self.solver._solver_model.objval) # TODO: use public method instead
@@ -417,12 +420,14 @@ class UrbsAdmmModel(object):
         Update the current convergence status.
         """
         self.log('Updating mismatch convergence...')
+        gaps = []
         for k in senders:
             msg = self.messages[k]
             mismatch_gap = np.square(
                 self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)]
                 - msg.flow_global
             ).sum(axis=0)
+            gaps.append(mismatch_gap)
             if mismatch_gap > self.mismatch_tolerance:
                 self.log(f'No mismatch convergence with neighbor {k}:')
                 self.log(f'{mismatch_gap} > {self.mismatch_tolerance}')
@@ -432,6 +437,7 @@ class UrbsAdmmModel(object):
                 self.log(f'{mismatch_gap} <= {self.mismatch_tolerance}')
                 self.mismatch_convergence[k] = True
 
+        self.max_mismatch_gaps[-1] = max(self.max_mismatch_gaps[-1], int(max(gaps)))
         self.log(f'Current mismatch status: {self.mismatch_convergence}')
         self.update_convergence()
 
