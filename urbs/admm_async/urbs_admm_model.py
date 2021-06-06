@@ -437,7 +437,7 @@ class UrbsAdmmModel(object):
                 self.log(f'{mismatch_gap} <= {self.mismatch_tolerance}')
                 self.mismatch_convergence[k] = True
 
-        self.max_mismatch_gaps[-1] = max(self.max_mismatch_gaps[-1], int(max(gaps)))
+        self.max_mismatch_gaps[-1] = max(self.max_mismatch_gaps[-1], float(max(gaps)))
         self.log(f'Current mismatch status: {self.mismatch_convergence}')
         self.update_convergence()
 
