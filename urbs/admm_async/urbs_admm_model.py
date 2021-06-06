@@ -607,6 +607,7 @@ class AdmmOption(object):
             raise ValueError("tolerance_mode must be 'absolute' or 'relative'")
         if penalty_mode not in ['fixed', 'increasing']:
             raise ValueError("tolerance_mode must be 'fixed' or 'increasing'")
+
         if penalty_mode == 'fixed':
             if max_penalty is not None:
                 warn("max_penalty will be ignored because penalty_mode == 'fixed'")
@@ -614,6 +615,7 @@ class AdmmOption(object):
                 warn("penalty_mult will be ignored because penalty_mode == 'fixed'")
             if primal_decrease is not None:
                 warn("primal_decrease will be ignored because penalty_mode == 'fixed'")
+
         elif penalty_mode == 'increasing':
             if max_penalty is None:
                 raise ValueError("max_penalty is required when using penalty_mode 'increasing'")
@@ -628,7 +630,23 @@ class AdmmOption(object):
             elif primal_decrease <= 0 or primal_decrease > 1:
                 raise ValueError("primal_decrease must be within (0, 1]")
 
-        # TODO: validate other parameters
+        if primal_tolerance <= 0:
+            raise ValueError("primal_tolerance must be larger than 0")
+        if dual_tolerance <= 0:
+            raise ValueError("dual_tolerance must be larger than 0")
+        if mismatch_tolerance <= 0:
+            raise ValueError("mismatch_tolerance must be larger than 0")
+        if rho <= 0:
+            raise ValueError("rho must be larger than 0")
+        if async_correction < 0:
+            raise ValueError("async_correction must be larger than or equal to 0")
+        if wait_percent <= 0 or wait_percent > 1:
+            raise ValueError("wait_percent must be within (0, 1]")
+        if wait_time <= 0:
+            raise ValueError("wait_time must be larger than 0")
+        if max_iter <= 0:
+            raise ValueError("max_iter must be larger than 0")
+
         self.primal_tolerance = primal_tolerance
         self.dual_tolerance = dual_tolerance
         self.mismatch_tolerance = mismatch_tolerance
