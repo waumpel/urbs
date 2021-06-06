@@ -25,7 +25,6 @@ class UrbsAdmmModel(object):
     ### Members
 
     `admmopt`: `AdmmOption` object.
-    `dual_tolerance`: Tolerance threshold for dual gap, scaled by number of constraints.
     `dualgaps`: List holding the dual gaps in each iteration (starts with a single `0`
         entry).
     `flow_global`: `pd.Series` holding the global flow values. Index is
@@ -43,8 +42,6 @@ class UrbsAdmmModel(object):
     `messages`: Dict mapping each neighbor ID to the most recent message from that neighbor.
     `mismatch_convergence`: Dict mapping each neighbor ID to a flag indicating the current
         mismatch convergence status.
-    `mismatch_tolerance`: Tolerance threshold for constraint mismatch, scaled by number of
-        constraints.
     `model`: `pyomo.ConcreteModel`.
     `n_clusters`: Total number of clusters.
     `n_neighbors`: Number of neighbors.
@@ -52,7 +49,6 @@ class UrbsAdmmModel(object):
     `neighbors`: List of neighbor IDs.
     `nu`: Current iteration.
     `objective_values`: List of objective function values after each iteration.
-    `primal_tolerance`: Tolerance threshold for primal gap, scaled by number of constraints.
     `primalgaps`: List of primal gaps after each iteration.
     `receiving_queue`: `mp.Queue` for receiving messages from neighbors.
     `regions`: List of region names in this subproblem.
@@ -95,7 +91,6 @@ class UrbsAdmmModel(object):
         shared_lines_index,
     ):
         self.admmopt = admmopt
-        self.dual_tolerance = admmopt.dual_tolerance * min(1, len(flow_global))
         self.dualgaps = [0]
         self.flow_global = flow_global
         self.flows_all = None
@@ -105,7 +100,6 @@ class UrbsAdmmModel(object):
         self.logfile = open(join(result_dir, f'process-{ID}.log'), 'w', encoding='utf8')
         self.messages = {}
         self.max_mismatch_gaps = []
-        self.mismatch_tolerance = admmopt.mismatch_tolerance * min(1, len(flow_global))
         self.model = model
         self.n_clusters = n_clusters
         self.n_neighbors = len(neighbors)
@@ -113,7 +107,6 @@ class UrbsAdmmModel(object):
         self.neighbors = neighbors
         self.nu = -1
         self.objective_values = []
-        self.primal_tolerance = admmopt.primal_tolerance * min(1, len(flow_global))
         self.primalgaps = []
         self.receiving_queue = receiving_queue
         self.regions = regions
@@ -342,8 +335,8 @@ class UrbsAdmmModel(object):
 
     def update_flow_global(self):
         """
-        Update `self.flow_global` for all neighbors from which a msg was received. Calculate
-        the new dual gap and append it to `self.dualgaps`.
+        Update `self.flow_global` for all neighbors from which a msg was received, then
+        update the dual gap.
         """
         flow_global_old = deepcopy(self.flow_global)
         for k in self.updated[-1]:
@@ -359,7 +352,20 @@ class UrbsAdmmModel(object):
                  self.admmopt.async_correction * self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)]) /
                 (self.rho + rho + self.admmopt.async_correction))
 
-        self.dualgaps.append(self.rho * np.square(self.flow_global - flow_global_old).sum(axis=0))
+        self.update_dualgap(flow_global_old)
+
+
+    def update_dualgap(self, flow_global_old):
+        """
+        Calculate the new dual gap and append it to `self.dualgaps`.
+        """
+        if self.admmopt.tolerance_mode == 'absolute':
+            dualgap = (self.rho * np.square(self.flow_global - flow_global_old).sum(axis=0) /
+                       min(1, len(self.flow_global)))
+        elif self.admmopt.tolerance_mode == 'relative':
+            dualgap = (self.rho * np.square(self.flow_global - flow_global_old).sum(axis=0) /
+                       np.square(flow_global_old).sum(axis=0))
+        self.dualgaps.append(dualgap)
         # No need to call `update_convergence` here; this is done in the next call to
         # `update_primalgap`.
 
@@ -369,6 +375,12 @@ class UrbsAdmmModel(object):
         Calculate the new primal gap and append it to `self.primalgaps`.
         Update the current convergence status.
         """
+        if self.admmopt.tolerance_mode == 'absolute':
+            primalgap = (np.square(self.flows_all - self.flow_global).sum(axis=0) /
+                         min(1, len(self.flow_global)))
+        elif self.admmopt.tolerance_mode == 'relative':
+            primalgap = (np.square(self.flows_all - self.flow_global).sum(axis=0) /
+                         np.square(self.flow_global).sum(axis=0))
         primalgap = np.square(self.flows_all - self.flow_global).sum(axis=0)
         self.log(f'Primal gap: {primalgap}')
         self.primalgaps.append(primalgap)
@@ -422,24 +434,38 @@ class UrbsAdmmModel(object):
         self.log('Updating mismatch convergence...')
         gaps = []
         for k in senders:
-            msg = self.messages[k]
-            mismatch_gap = np.square(
-                self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)]
-                - msg.flow_global
-            ).sum(axis=0)
+            mismatch_gap = self.calc_mismatch_gap(k)
             gaps.append(mismatch_gap)
-            if mismatch_gap > self.mismatch_tolerance:
+            if mismatch_gap > self.admmopt.mismatch_tolerance:
                 self.log(f'No mismatch convergence with neighbor {k}:')
-                self.log(f'{mismatch_gap} > {self.mismatch_tolerance}')
+                self.log(f'{mismatch_gap} > {self.admmopt.mismatch_tolerance}')
                 self.mismatch_convergence[k] = False
             else:
                 self.log(f'Reached mismatch convergence with neighbor {k}:')
-                self.log(f'{mismatch_gap} <= {self.mismatch_tolerance}')
+                self.log(f'{mismatch_gap} <= {self.admmopt.mismatch_tolerance}')
                 self.mismatch_convergence[k] = True
 
         self.max_mismatch_gaps[-1] = max(self.max_mismatch_gaps[-1], float(max(gaps)))
         self.log(f'Current mismatch status: {self.mismatch_convergence}')
         self.update_convergence()
+
+
+    def calc_mismatch_gap(self, k):
+        """
+        Calculate the current mismatch gap with neighbor `k`.
+        """
+        msg = self.messages[k]
+        flow_global_with_k = self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)]
+
+        if self.admmopt.tolerance_mode == 'absolute':
+            mismatch_gap = (np.square(flow_global_with_k - msg.flow_global).sum(axis=0) /
+                            min(1, len(self.flow_global)))
+        elif self.admmopt.tolerance_mode == 'relative':
+            mismatch_gap = (np.square(flow_global_with_k - msg.flow_global).sum(axis=0) /
+                            max(np.square(flow_global_with_k).sum(axis=0),
+                                np.square(msg.flow_global).sum(axis=0)))
+
+        return mismatch_gap
 
 
     def update_convergence(self):
@@ -450,16 +476,16 @@ class UrbsAdmmModel(object):
         """
         # primal gap
         self.log('Checking local convergence...')
-        if self.primalgaps[-1] > self.primal_tolerance:
+        if self.primalgaps[-1] > self.admmopt.primal_tolerance:
             self.log('No primal convergence:')
-            self.log(f'{self.primalgaps[-1]} > {self.primal_tolerance}')
+            self.log(f'{self.primalgaps[-1]} > {self.admmopt.primal_tolerance}')
             self.set_local_convergence(False)
             return False
 
         # dual gap
-        if self.dualgaps[-1] > self.dual_tolerance:
+        if self.dualgaps[-1] > self.admmopt.dual_tolerance:
             self.log('No dual convergence:')
-            self.log(f'{self.dualgaps[-1]} > {self.dual_tolerance}')
+            self.log(f'{self.dualgaps[-1]} > {self.admmopt.dual_tolerance}')
             self.set_local_convergence(False)
             return False
 
@@ -566,13 +592,18 @@ class AdmmOption(object):
         mismatch_tolerance,
         rho,
         max_penalty,
-        penalty_mult,
-        primal_decrease,
-        async_correction,
-        wait_percent,
-        wait_time,
-        max_iter,
+        penalty_mult = 1.1,
+        primal_decrease = 0.9,
+        async_correction = 0,
+        wait_percent = 0.01,
+        wait_time = 0.1,
+        max_iter = 1000,
+        tolerance_mode = 'absolute',
     ):
+        if tolerance_mode not in ['absolute', 'relative']:
+            raise ValueError(f"tolerance_mode must be 'absolute' or 'relative'.")
+        # TODO: penalty_mode
+        # TODO: validate other parameters
         self.primal_tolerance = primal_tolerance
         self.dual_tolerance = dual_tolerance
         self.mismatch_tolerance = mismatch_tolerance
@@ -584,6 +615,7 @@ class AdmmOption(object):
         self.wait_percent = wait_percent
         self.wait_time = wait_time
         self.max_iter = max_iter
+        self.tolerance_mode = tolerance_mode
 
 
 class AdmmMessage(object):

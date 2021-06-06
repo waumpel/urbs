@@ -71,6 +71,7 @@ admmopt = admm_async.AdmmOption(
     wait_percent = 0.1,
     wait_time = 0.1,
     max_iter = 1000,
+    tolerance_mode = 'absolute',
 )
 
 if __name__ == '__main__':
