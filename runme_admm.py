@@ -35,7 +35,7 @@ shutil.copy(__file__, result_dir)
 objective = 'cost'  # set either 'cost' or 'CO2' as objective
 
 # simulation timesteps
-(offset, length) = (0, 10)  # time step selection
+(offset, length) = (0, 1)  # time step selection
 timesteps = range(offset, offset + length + 1)
 dt = 1  # length of each time step (unit: hours)
 
@@ -64,14 +64,8 @@ admmopt = admm_async.AdmmOption(
     dual_tolerance = 0.1,
     mismatch_tolerance = 0.1,
     rho = 5,
-    max_penalty = 50,
-    penalty_mult = 1,
-    primal_decrease = 0.9,
-    async_correction = 0,
-    wait_percent = 0.1,
-    wait_time = 0.1,
-    max_iter = 1000,
-    tolerance_mode = 'absolute',
+    max_iter = 10,
+    tolerance_mode = 'relative',
 )
 
 if __name__ == '__main__':

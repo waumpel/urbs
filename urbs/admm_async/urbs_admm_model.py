@@ -7,6 +7,7 @@
 from copy import deepcopy
 from math import ceil
 from os.path import join
+from warnings import warn
 
 import numpy as np
 import pandas as pd
@@ -364,7 +365,7 @@ class UrbsAdmmModel(object):
                        min(1, len(self.flow_global)))
         elif self.admmopt.tolerance_mode == 'relative':
             dualgap = (self.rho * np.square(self.flow_global - flow_global_old).sum(axis=0) /
-                       np.square(flow_global_old).sum(axis=0))
+                       max(1, np.square(flow_global_old).sum(axis=0)))
         self.dualgaps.append(dualgap)
         # No need to call `update_convergence` here; this is done in the next call to
         # `update_primalgap`.
@@ -380,7 +381,7 @@ class UrbsAdmmModel(object):
                          min(1, len(self.flow_global)))
         elif self.admmopt.tolerance_mode == 'relative':
             primalgap = (np.square(self.flows_all - self.flow_global).sum(axis=0) /
-                         np.square(self.flow_global).sum(axis=0))
+                         max(1, np.square(self.flow_global).sum(axis=0)))
         primalgap = np.square(self.flows_all - self.flow_global).sum(axis=0)
         self.log(f'Primal gap: {primalgap}')
         self.primalgaps.append(primalgap)
@@ -391,9 +392,10 @@ class UrbsAdmmModel(object):
         """
         Increase `self.rho` if the primal gap does not decrease sufficiently.
         """
-        if (self.nu > 0 and
-            self.primalgaps[-1] > self.admmopt.primal_decrease * self.primalgaps[-2]):
-            self.rho = min(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
+        if self.admmopt.penalty_mode == 'increasing':
+            if (self.nu > 0 and
+                self.primalgaps[-1] > self.admmopt.primal_decrease * self.primalgaps[-2]):
+                self.rho = min(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
 
 
     def update_cost_rule(self):
@@ -462,7 +464,7 @@ class UrbsAdmmModel(object):
                             min(1, len(self.flow_global)))
         elif self.admmopt.tolerance_mode == 'relative':
             mismatch_gap = (np.square(flow_global_with_k - msg.flow_global).sum(axis=0) /
-                            max(np.square(flow_global_with_k).sum(axis=0),
+                            max(1, np.square(flow_global_with_k).sum(axis=0),
                                 np.square(msg.flow_global).sum(axis=0)))
 
         return mismatch_gap
@@ -591,18 +593,41 @@ class AdmmOption(object):
         dual_tolerance,
         mismatch_tolerance,
         rho,
-        max_penalty,
-        penalty_mult = 1.1,
-        primal_decrease = 0.9,
+        max_penalty = None,
+        penalty_mult = None,
+        primal_decrease = None,
         async_correction = 0,
         wait_percent = 0.01,
         wait_time = 0.1,
         max_iter = 1000,
         tolerance_mode = 'absolute',
+        penalty_mode = 'fixed',
     ):
         if tolerance_mode not in ['absolute', 'relative']:
-            raise ValueError(f"tolerance_mode must be 'absolute' or 'relative'.")
-        # TODO: penalty_mode
+            raise ValueError("tolerance_mode must be 'absolute' or 'relative'")
+        if penalty_mode not in ['fixed', 'increasing']:
+            raise ValueError("tolerance_mode must be 'fixed' or 'increasing'")
+        if penalty_mode == 'fixed':
+            if max_penalty is not None:
+                warn("max_penalty will be ignored because penalty_mode == 'fixed'")
+            if penalty_mult is not None:
+                warn("penalty_mult will be ignored because penalty_mode == 'fixed'")
+            if primal_decrease is not None:
+                warn("primal_decrease will be ignored because penalty_mode == 'fixed'")
+        elif penalty_mode == 'increasing':
+            if max_penalty is None:
+                raise ValueError("max_penalty is required when using penalty_mode 'increasing'")
+            elif max_penalty <= rho:
+                raise ValueError("max_penalty must be larger than rho")
+            if penalty_mult is None:
+                penalty_mult = 1.1
+            elif penalty_mult <= 1:
+                raise ValueError("penalty_mult must be larger than 1")
+            if primal_decrease is None:
+                primal_decrease = 0.9
+            elif primal_decrease <= 0 or primal_decrease > 1:
+                raise ValueError("primal_decrease must be within (0, 1]")
+
         # TODO: validate other parameters
         self.primal_tolerance = primal_tolerance
         self.dual_tolerance = dual_tolerance
@@ -616,6 +641,7 @@ class AdmmOption(object):
         self.wait_time = wait_time
         self.max_iter = max_iter
         self.tolerance_mode = tolerance_mode
+        self.penalty_mode = penalty_mode
 
 
 class AdmmMessage(object):
