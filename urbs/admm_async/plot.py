@@ -156,6 +156,7 @@ def plot_obj_rel_iter(obj_gap, avg_iter, result_dir):
     fig, ax = plt.subplots()
     ax.set_yscale('log')
     ax.plot(avg_iter, obj_gap)
+    ax.axhline(0.01, color='black', linestyle='dashed')
     ax.set_xlabel('avg local iterations')
     ax.set_ylabel('relative objective gap')
     ax.set_title('Relative Objective Gap per Iteration')
