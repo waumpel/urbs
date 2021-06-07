@@ -2,7 +2,7 @@ from time import sleep, time
 
 import pandas as pd
 
-from urbs.model import create_model
+import urbs.model
 from .urbs_admm_model import UrbsAdmmModel
 
 def log_generator(ID, logqueue):
@@ -65,17 +65,13 @@ def run_worker(
     })
     lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
 
-    model = create_model(data_all, timesteps, type='sub',
+    model = urbs.model.create_model(data_all, timesteps, type='sub',
                         sites=sites,
                         data_transmission_boun=shared_lines,
                         data_transmission_int=internal_lines,
                         flow_global=flow_global,
                         lamda=lamda,
                         rho=admmopt.rho)
-
-    sending_queues = {
-        target: queues[target] for target in neighbors
-    }
 
     # enlarge shared_lines (copies of slices of data_all['transmission'])
     shared_lines['cluster_from'] = cluster_from
@@ -90,11 +86,10 @@ def run_worker(
         model = model,
         n_clusters = n_clusters,
         neighbors = neighbors,
-        receiving_queue = queues[ID],
+        queues = queues,
         regions = sites,
         result_dir = result_dir,
         scenario_name = scenario_name,
-        sending_queues = sending_queues,
         shared_lines = shared_lines,
         shared_lines_index = index,
     )
@@ -108,7 +103,7 @@ def run_worker(
 
     for nu in range(max_iter):
         # Flag indicating whether current convergence status has been printed
-        celebration = False
+        local_convergence = False
 
         if nu % 10 == 0:
             log(f'Iteration {nu}')
@@ -126,41 +121,40 @@ def run_worker(
 
         if s.local_convergence():
             log(f'Converged at iteration {nu}')
-            celebration = True
+            local_convergence = True
 
         s.receive()
-        s.send()
+        if s.terminated:
+            log('Received termination msg: Terminating.')
+            break
 
-        if not s.global_convergence() and not s.terminated:
-            while len(s.updated[-1]) < s.n_wait or (s.all_converged()):
+        if s.status_update:
+            s.send_status()
 
-                sleep(s.admmopt.wait_time)
-                full, status = s.receive()
-                if not (full or status):
-                    continue
+        s.send_variables()
 
-                # In case of global convergence or termination, send another msg so that
-                # other processes are notified.
-                # Having this check inside the outer if-statement avoids potentially sending
-                # two messages.
-                if s.global_convergence() or s.terminated:
-                    s.send_status()
-                    break
+        if s.global_convergence():
+            log(f'Global convergence at iteration {nu}!')
+            break
 
-                # If `s.all_converged() == True`, this cluster may not reiterate, so any
-                # updates to `s.status` must be sent to the neighbors.
-                # (Otherwise, global convergence may not be detected.)
-                if s.all_converged():
-                    if s.status_update:
-                        if not celebration:
-                            log(f'Converged at iteration {nu}')
-                            celebration = True
-                        s.send_status()
-                # No need to send another msg; this cluster will either reiterate or
-                # reach convergence once again.
-                elif celebration:
-                    log('No longer converged')
-                    celebration = False
+        while len(s.updated[-1]) < s.n_wait or (s.all_converged()):
+
+            sleep(s.admmopt.wait_time)
+            senders = s.receive()
+            if s.terminated:
+                break
+            if not senders:
+                continue
+            if s.status_update:
+                s.send_status()
+            if local_convergence != s.local_convergence():
+                local_convergence = not local_convergence
+                if local_convergence:
+                    log(f'Converged at iteration {nu}')
+                else:
+                    log(f'No longer converged.')
+            if s.global_convergence():
+                break
 
         if s.global_convergence():
             log(f'Global convergence at iteration {nu}!')
