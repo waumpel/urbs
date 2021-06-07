@@ -18,6 +18,71 @@ def log_generator(ID, logqueue):
     return fun
 
 
+def create_model(
+    ID,
+    data_all,
+    scenario_name,
+    timesteps,
+    year,
+    initial_values,
+    admmopt,
+    n_clusters,
+    sites,
+    neighbors,
+    shared_lines,
+    internal_lines,
+    cluster_from,
+    cluster_to,
+    neighbor_cluster,
+    queues,
+    result_dir,
+    ):
+    index = shared_lines.index.to_frame()
+
+    flow_global = pd.Series({
+        (t, year, source, target): initial_values.flow_global
+        for t in timesteps[1:]
+        for source, target in zip(index['Site In'], index['Site Out'])
+    })
+    flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+
+    lamda = pd.Series({
+        (t, year, source, target): initial_values.lamda
+        for t in timesteps[1:]
+        for source, target in zip(index['Site In'], index['Site Out'])
+    })
+    lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+
+    model = urbs.model.create_model(data_all, timesteps, type='sub',
+                        sites=sites,
+                        data_transmission_boun=shared_lines,
+                        data_transmission_int=internal_lines,
+                        flow_global=flow_global,
+                        lamda=lamda,
+                        rho=admmopt.rho)
+
+    # enlarge shared_lines (copies of slices of data_all['transmission'])
+    shared_lines['cluster_from'] = cluster_from
+    shared_lines['cluster_to'] = cluster_to
+    shared_lines['neighbor_cluster'] = neighbor_cluster
+
+    return UrbsAdmmModel(
+        admmopt = admmopt,
+        flow_global = flow_global,
+        ID = ID,
+        lamda = lamda,
+        model = model,
+        n_clusters = n_clusters,
+        neighbors = neighbors,
+        queues = queues,
+        regions = sites,
+        result_dir = result_dir,
+        scenario_name = scenario_name,
+        shared_lines = shared_lines,
+        shared_lines_index = index,
+    )
+
+
 def run_worker(
     ID,
     data_all,
@@ -49,49 +114,24 @@ def run_worker(
                   file by the master process.
     """
 
-    index = shared_lines.index.to_frame()
-
-    flow_global = pd.Series({
-        (t, year, source, target): initial_values.flow_global
-        for t in timesteps[1:]
-        for source, target in zip(index['Site In'], index['Site Out'])
-    })
-    flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-
-    lamda = pd.Series({
-        (t, year, source, target): initial_values.lamda
-        for t in timesteps[1:]
-        for source, target in zip(index['Site In'], index['Site Out'])
-    })
-    lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-
-    model = urbs.model.create_model(data_all, timesteps, type='sub',
-                        sites=sites,
-                        data_transmission_boun=shared_lines,
-                        data_transmission_int=internal_lines,
-                        flow_global=flow_global,
-                        lamda=lamda,
-                        rho=admmopt.rho)
-
-    # enlarge shared_lines (copies of slices of data_all['transmission'])
-    shared_lines['cluster_from'] = cluster_from
-    shared_lines['cluster_to'] = cluster_to
-    shared_lines['neighbor_cluster'] = neighbor_cluster
-
-    s = UrbsAdmmModel(
-        admmopt = admmopt,
-        flow_global = flow_global,
-        ID = ID,
-        lamda = lamda,
-        model = model,
-        n_clusters = n_clusters,
-        neighbors = neighbors,
-        queues = queues,
-        regions = sites,
-        result_dir = result_dir,
-        scenario_name = scenario_name,
-        shared_lines = shared_lines,
-        shared_lines_index = index,
+    s = create_model(
+        ID,
+        data_all,
+        scenario_name,
+        timesteps,
+        year,
+        initial_values,
+        admmopt,
+        n_clusters,
+        sites,
+        neighbors,
+        shared_lines,
+        internal_lines,
+        cluster_from,
+        cluster_to,
+        neighbor_cluster,
+        queues,
+        result_dir,
     )
 
     max_iter = s.admmopt.max_iter
@@ -102,7 +142,6 @@ def run_worker(
     log(f'Starting subproblem for regions {", ".join(s.regions)}.')
 
     for nu in range(max_iter):
-        # Flag indicating whether current convergence status has been printed
         local_convergence = False
 
         if nu % 10 == 0:

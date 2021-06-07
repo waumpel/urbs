@@ -47,6 +47,8 @@ class UrbsAdmmModel(object):
     `n_clusters`: Total number of clusters.
     `n_neighbors`: Number of neighbors.
     `n_wait`: Number of updated neighbors required for the next iteration.
+    `neighbor_queues`: Dict mapping neighbor IDs to `mp.Queue`s for sending messages
+        to that neighbor.
     `neighbors`: List of neighbor IDs.
     `nu`: Current iteration.
     `objective_values`: List of objective function values after each iteration.
@@ -67,6 +69,8 @@ class UrbsAdmmModel(object):
     `status`: List of lists, each holding the currently known status of one cluster,
         as received through messages. Each list has three entries: iteration counter,
         local convergence flag, and consensus flag.
+    `status_update`: Flag indicating whether `self.status` has been updated since
+        the last time a status message has been sent.
     `terminated`: Flag indicating whether the solver for this model has terminated.
     `updated`: List of sets holding the neighbors who have sent new variables before
         the start of each iteration (starts with an empty set as the single entry).
