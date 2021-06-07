@@ -18,7 +18,7 @@ def log_generator(ID, logqueue):
     return fun
 
 
-def run_worker(
+def create_model(
     ID,
     data_all,
     scenario_name,
@@ -36,18 +36,7 @@ def run_worker(
     neighbor_cluster,
     queues,
     result_dir,
-    output,
-    logqueue
     ):
-    """
-    Main function for child processes of ADMM. Iteratively solves one subproblem of ADMM.
-
-    ### Args:
-    * `s`: `UrbsAdmmModel` representing the subproblem.
-    * `output`: `multiprocessing.Queue` for sending results.
-    * `logqueue`: `mp.Queue` for sending log messages. These are written to a shared log
-                  file by the master process.
-    """
 
     index = shared_lines.index.to_frame()
 
@@ -82,7 +71,7 @@ def run_worker(
     shared_lines['cluster_to'] = cluster_to
     shared_lines['neighbor_cluster'] = neighbor_cluster
 
-    s = UrbsAdmmModel(
+    return UrbsAdmmModel(
         admmopt = admmopt,
         flow_global = flow_global,
         ID = ID,
@@ -97,6 +86,58 @@ def run_worker(
         sending_queues = sending_queues,
         shared_lines = shared_lines,
         shared_lines_index = index,
+    )
+
+
+def run_worker(
+    ID,
+    data_all,
+    scenario_name,
+    timesteps,
+    year,
+    initial_values,
+    admmopt,
+    n_clusters,
+    sites,
+    neighbors,
+    shared_lines,
+    internal_lines,
+    cluster_from,
+    cluster_to,
+    neighbor_cluster,
+    queues,
+    result_dir,
+    output,
+    logqueue
+    ):
+    """
+    Main function for child processes of ADMM. Iteratively solves one subproblem of ADMM.
+
+    ### Args:
+    * `s`: `UrbsAdmmModel` representing the subproblem.
+    * `output`: `multiprocessing.Queue` for sending results.
+    * `logqueue`: `mp.Queue` for sending log messages. These are written to a shared log
+                  file by the master process.
+    """
+
+    s = create_model(
+        ID,
+        data_all,
+        scenario_name,
+        timesteps,
+        year,
+        initial_values,
+        admmopt,
+        n_clusters,
+        sites,
+        neighbors,
+        shared_lines,
+        internal_lines,
+        cluster_from,
+        cluster_to,
+        neighbor_cluster,
+        queues,
+        result_dir,
     )
 
     max_iter = s.admmopt.max_iter
