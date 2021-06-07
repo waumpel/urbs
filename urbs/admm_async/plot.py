@@ -53,55 +53,68 @@ def recent_results(results):
     return recent_results
 
 
-def plot_results(results_dict, result_dir, plot_rho=False):
-    """
-    Plot the results and save them to `result_dir`.
-
-    `results_dict` is a dict as returned by `.input_output.make_results_dict`.
-    """
+def data_series(results_dict):
     n_clusters = len(results_dict['clusters'])
-    admmopt = results_dict['admmopt']
     results = merge_sort_results(results_dict['results'])
     recent = recent_results(results)
 
     max_primal = [max(v['primal'] for v in d.values()) for d in recent]
     max_dual = [max(v['dual'] for v in d.values()) for d in recent]
     max_mismatch = [max(v['mismatch'] for v in d.values()) for d in recent]
+    sum_obj = [sum(v['obj'] for v in d.values()) for d in recent]
     max_rho = [max(v['rho'] for v in d.values()) for d in recent]
     avg_iter = [x / n_clusters for x in range(len(max_primal))]
 
+    return {
+        'max_primal': max_primal,
+        'max_dual': max_dual,
+        'max_mismatch': max_mismatch,
+        'sum_obj': sum_obj,
+        'max_rho': max_rho,
+        'avg_iter': avg_iter,
+    }
+
+
+def plot_results(results_dict, result_dir, plot_rho=False):
+    """
+    Plot the results and save them to `result_dir`.
+
+    `results_dict` is a dict as returned by `.input_output.make_results_dict`.
+    """
+    admmopt = results_dict['admmopt']
+    series = data_series(results_dict)
+
     fig, ax = fig_primal()
     ax.axhline(admmopt['primal_tolerance'], color='black', linestyle='dashed')
-    ax.plot(avg_iter, max_primal)
+    ax.plot(series['avg_iter'], series['max_primal'])
     if plot_rho:
-        ax.plot(avg_iter, max_rho, color='black')
+        ax.plot(series['avg_iter'], series['max_rho'], color='black')
     fig.savefig(join(result_dir, 'primal.svg'))
 
     fig, ax = fig_dual()
     ax.axhline(admmopt['dual_tolerance'], color='black', linestyle='dashed')
-    ax.plot(avg_iter, max_dual)
+    ax.plot(series['avg_iter'], series['max_dual'])
     if plot_rho:
-        ax.plot(avg_iter, max_rho, color='black')
+        ax.plot(series['avg_iter'], series['max_rho'], color='black')
     fig.savefig(join(result_dir, 'dual.svg'))
 
     fig, ax = fig_mismatch()
     ax.axhline(admmopt['mismatch_tolerance'], color='black', linestyle='dashed')
-    ax.plot(avg_iter, max_mismatch)
+    ax.plot(series['avg_iter'], series['max_mismatch'])
     if plot_rho:
-        ax.plot(avg_iter, max_rho, color='black')
+        ax.plot(series['avg_iter'], series['max_rho'], color='black')
     fig.savefig(join(result_dir, 'mismatch.svg'))
 
     objective_values = results_dict['objective_values']
     if 'centralized' in objective_values:
-        sum_obj = [sum(v['obj'] for v in d.values()) for d in recent]
         centralized_obj = objective_values['centralized'] if 'centralized' in objective_values else None
-        obj_gap = [abs(x - centralized_obj) / centralized_obj for x in sum_obj]
+        obj_gap = [abs(x - centralized_obj) / centralized_obj for x in series['sum_obj']]
 
         fig, ax = fig_objective()
         ax.axhline(0.01, color='black', linestyle='dashed')
-        ax.plot(avg_iter, obj_gap)
+        ax.plot(series['avg_iter'], obj_gap)
         if plot_rho:
-            ax.plot(avg_iter, max_rho, color='black')
+            ax.plot(series['avg_iter'], series['max_rho'], color='black')
         fig.savefig(join(result_dir, 'objective.svg'))
 
 
