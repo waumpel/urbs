@@ -99,4 +99,4 @@ if __name__ == '__main__':
             admm_results['centralized_time'] = centralized_result['time']
 
         input_output.save_results(admm_results, result_dir)
-        plot.plot_results(admm_results, result_dir)
+        plot.plot_results(admm_results, result_dir, plot_rho=True)

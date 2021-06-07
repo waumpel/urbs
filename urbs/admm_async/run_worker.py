@@ -225,5 +225,6 @@ def run_worker(
         'primal_residual': s.primalgaps,
         'dual_residual': s.dualgaps,
         'constraint_mismatch': s.max_mismatch_gaps,
+        'rho': s.rhos,
         'coupling_flows': s.flow_global.tolist(),
     })

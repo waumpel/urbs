@@ -19,14 +19,16 @@ def merge_sort_results(results):
             'primal': primal,
             'dual': dual,
             'mismatch': mismatch,
+            'rho': rho,
         }
         for r in results
-        for timestamp, obj, primal, dual, mismatch in zip(
+        for timestamp, obj, primal, dual, mismatch, rho in zip(
             r['timestamps'],
             r['objective'],
             r['primal_residual'],
             r['dual_residual'],
             r['constraint_mismatch'],
+            r['rho'],
         )),
         key=lambda x: x['time']
     )
@@ -51,7 +53,7 @@ def recent_results(results):
     return recent_results
 
 
-def plot_results(results_dict, result_dir):
+def plot_results(results_dict, result_dir, plot_rho=False):
     """
     Plot the results and save them to `result_dir`.
 
@@ -65,21 +67,28 @@ def plot_results(results_dict, result_dir):
     max_primal = [max(v['primal'] for v in d.values()) for d in recent]
     max_dual = [max(v['dual'] for v in d.values()) for d in recent]
     max_mismatch = [max(v['mismatch'] for v in d.values()) for d in recent]
+    max_rho = [max(v['rho'] for v in d.values()) for d in recent]
     avg_iter = [x / n_clusters for x in range(len(max_primal))]
 
     fig, ax = fig_primal()
     ax.axhline(admmopt['primal_tolerance'], color='black', linestyle='dashed')
     ax.plot(avg_iter, max_primal)
+    if plot_rho:
+        ax.plot(avg_iter, max_rho, color='black')
     fig.savefig(join(result_dir, 'primal.svg'))
 
     fig, ax = fig_dual()
     ax.axhline(admmopt['dual_tolerance'], color='black', linestyle='dashed')
     ax.plot(avg_iter, max_dual)
+    if plot_rho:
+        ax.plot(avg_iter, max_rho, color='black')
     fig.savefig(join(result_dir, 'dual.svg'))
 
     fig, ax = fig_mismatch()
     ax.axhline(admmopt['mismatch_tolerance'], color='black', linestyle='dashed')
     ax.plot(avg_iter, max_mismatch)
+    if plot_rho:
+        ax.plot(avg_iter, max_rho, color='black')
     fig.savefig(join(result_dir, 'mismatch.svg'))
 
     objective_values = results_dict['objective_values']
@@ -91,6 +100,8 @@ def plot_results(results_dict, result_dir):
         fig, ax = fig_objective()
         ax.axhline(0.01, color='black', linestyle='dashed')
         ax.plot(avg_iter, obj_gap)
+        if plot_rho:
+            ax.plot(avg_iter, max_rho, color='black')
         fig.savefig(join(result_dir, 'objective.svg'))
 
 

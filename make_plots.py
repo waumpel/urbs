@@ -11,4 +11,4 @@ args = options.parse_args()
 result_dir = args.dir
 
 results = io.load_results(result_dir)
-plot.plot_results(results, result_dir)
+plot.plot_results(results, result_dir, plot_rho=True)

@@ -57,6 +57,7 @@ class UrbsAdmmModel(object):
     `regions`: List of region names in this subproblem.
     `result_dir`: Result directory.
     `rho`: Quadratic penalty coefficient.
+    `rhos`: List holding the penalty parameter of each iteration.
     `scenario_name`: Scenario name.
     `sending_queues`: Dict mapping each cluster ID (except `self.ID`) to a `mp.Queue` for
         sending messages to that cluster.
@@ -116,6 +117,7 @@ class UrbsAdmmModel(object):
         self.regions = regions
         self.result_dir = result_dir
         self.rho = admmopt.rho
+        self.rhos = []
         self.scenario_name = scenario_name
         self.sending_queues = {i: queues[i] for i in range(len(queues)) if i != ID}
         self.shared_lines = shared_lines
@@ -154,6 +156,7 @@ class UrbsAdmmModel(object):
 
         self.updated.append(set())
         self.max_mismatch_gaps.append(0)
+        self.rhos.append(self.rho)
 
         self.solver.solve(save_results=False, load_solutions=False, warmstart=True)
         self.objective_values.append(self.solver._solver_model.objval) # TODO: use public method instead
