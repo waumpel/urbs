@@ -349,6 +349,14 @@ class UrbsAdmmModel(object):
                 self.primalgaps[-1] > self.admmopt.primal_decrease * self.primalgaps[-2]):
                 self.rho = min(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
 
+        elif self.admmopt.penalty_mode == 'residual_balancing':
+            if self.nu > 0:
+                if self.primalgaps[-1] > self.admmopt.residual_distance * self.dualgaps[-1]:
+                    self.rho = min(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
+                elif self.dualgaps[-1] > self.admmopt.residual_distance * self.primalgaps[-1]:
+                    self.rho = self.rho / self.admmopt.penalty_mult
+
+
 
     def update_cost_rule(self):
         """
@@ -485,6 +493,7 @@ class AdmmOption(object):
         max_penalty = None,
         penalty_mult = None,
         primal_decrease = None,
+        residual_distance = None,
         async_correction = 0,
         wait_percent = 0.01,
         wait_time = 0.1,
@@ -494,8 +503,8 @@ class AdmmOption(object):
     ):
         if tolerance_mode not in ['absolute', 'relative']:
             raise ValueError("tolerance_mode must be 'absolute' or 'relative'")
-        if penalty_mode not in ['fixed', 'increasing']:
-            raise ValueError("tolerance_mode must be 'fixed' or 'increasing'")
+        if penalty_mode not in ['fixed', 'increasing', 'residual_balancing']:
+            raise ValueError("tolerance_mode must be 'fixed', 'increasing' or 'residual_balancing'")
 
         if penalty_mode == 'fixed':
             if max_penalty is not None:
@@ -518,6 +527,21 @@ class AdmmOption(object):
                 primal_decrease = 0.9
             elif primal_decrease <= 0 or primal_decrease > 1:
                 raise ValueError("primal_decrease must be within (0, 1]")
+
+        elif penalty_mode == 'residual_balancing':
+            if max_penalty is None:
+                raise ValueError("max_penalty is required when using penalty_mode 'residual_balancing'")
+            elif max_penalty <= rho:
+                raise ValueError("max_penalty must be larger than rho")
+            if penalty_mult is None:
+                penalty_mult = 1.1
+            elif penalty_mult <= 1:
+                raise ValueError("penalty_mult must be larger than 1")
+            if residual_distance is None:
+                residual_distance = 1.1
+            elif residual_distance <= 0:
+                raise ValueError("primal_decrease must be larger than 0")
+
 
         if primal_tolerance <= 0:
             raise ValueError("primal_tolerance must be larger than 0")
@@ -543,6 +567,7 @@ class AdmmOption(object):
         self.max_penalty = max_penalty
         self.penalty_mult = penalty_mult
         self.primal_decrease = primal_decrease
+        self.residual_distance = residual_distance
         self.async_correction = async_correction
         self.wait_percent = wait_percent
         self.wait_time = wait_time
