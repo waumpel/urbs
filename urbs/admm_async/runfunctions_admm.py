@@ -12,7 +12,6 @@ from urbs.model import create_model
 from urbs.input import read_input, add_carbon_supplier
 from urbs.validation import validate_dc_objective, validate_input
 from .run_worker import run_worker
-from .urbs_admm_model import UrbsAdmmModel
 
 
 class InitialValues:

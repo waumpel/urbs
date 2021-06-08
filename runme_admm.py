@@ -4,7 +4,6 @@ import os
 import shutil
 
 from urbs import admm_async
-from urbs.colorcodes import COLORS
 from urbs.runfunctions import prepare_result_directory
 from urbs.scenarios import scenario_base
 from urbs.admm_async import plot
