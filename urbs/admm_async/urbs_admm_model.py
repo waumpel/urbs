@@ -164,36 +164,6 @@ class UrbsAdmmModel(object):
         self.log(f'Objective value: {self.objective_values[-1]}')
 
 
-    def retrieve_boundary_flows(self):
-        """
-        Retrieve optimized flow values for shared lines from the solver and store them in
-        `self.flows_all` and `self.flows_with_neighbor`.
-        """
-        index = self.shared_lines_index
-
-        self.solver.load_vars(self.model.e_tra_in[:, :, :, :, :, :])
-
-        flows_all = {}
-        flows_with_neighbor = {k: {} for k in self.neighbors}
-
-        for (tm, stf, sit_in, sit_out, tra, com), v in self.model.e_tra_in.items():
-            if (sit_in, sit_out) in zip(index['Site In'], index['Site Out']):
-                flows_all[(tm, stf, sit_in, sit_out)] = v.value
-                k = self.shared_lines.loc[(stf, sit_in, sit_out, tra, com), 'neighbor_cluster']
-                flows_with_neighbor[k][(tm, stf, sit_in, sit_out)] = v.value
-
-        flows_all = pd.Series(flows_all)
-        flows_all.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-
-        for k in flows_with_neighbor:
-            flows = pd.Series(flows_with_neighbor[k])
-            flows.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-            flows_with_neighbor[k] = flows
-
-        self.flows_all = flows_all
-        self.flows_with_neighbor = flows_with_neighbor
-
-
     def send_variables(self):
         """
         Send an `AdmmMessage` with the current variables to all neighbors.
@@ -275,37 +245,6 @@ class UrbsAdmmModel(object):
         return senders
 
 
-    def update_lamda(self):
-        """
-        Calculate the new Lagrangian multipliers.
-        """
-        self.lamda = self.lamda + self.rho * (self.flows_all - self.flow_global)
-
-
-    def update_flow_global(self):
-        """
-        Update `self.flow_global` for all neighbors from which a msg was received, then
-        update the dual gap.
-        """
-        self.log('Updating flow global')
-        flow_global_old = deepcopy(self.flow_global)
-        for k in self.updated[-1]:
-            msg = self.messages[k]
-            lamda = msg.lamda
-            flow = msg.flow
-            rho = msg.rho
-
-            # TODO: can the indexing be improved?
-            self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = (
-                (self.lamda.loc[self.lamda.index.isin(self.flows_with_neighbor[k].index)] +
-                 lamda + self.flows_with_neighbor[k] * self.rho + flow * rho +
-                 self.admmopt.async_correction * self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)]) /
-                (self.rho + rho + self.admmopt.async_correction))
-
-        self.update_dualgap(flow_global_old)
-        self.update_mismatch((k for k in self.neighbors if k in self.messages))
-
-
     def update_dualgap(self, flow_global_old):
         """
         Calculate the new dual gap.
@@ -338,53 +277,6 @@ class UrbsAdmmModel(object):
         self.log(f'Primal gap: {primalgap}')
         self.primalgaps.append(primalgap)
         self.update_convergence()
-
-
-    def update_rho(self):
-        """
-        Increase `self.rho` if the primal gap does not decrease sufficiently.
-        """
-        if self.admmopt.penalty_mode == 'increasing':
-            if (self.nu > 0 and
-                self.primalgaps[-1] > self.admmopt.primal_decrease * self.primalgaps[-2]):
-                self.rho = min(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
-
-        elif self.admmopt.penalty_mode == 'residual_balancing':
-            if self.nu > 0:
-                if self.primalgaps[-1] > self.admmopt.residual_distance * self.dualgaps[-1]:
-                    self.rho = min(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
-                elif self.dualgaps[-1] > self.admmopt.residual_distance * self.primalgaps[-1]:
-                    self.rho = self.rho / self.admmopt.penalty_mult
-
-
-
-    def update_cost_rule(self):
-        """
-        Update those components of `self.model` that use `cost_rule_sub` to reflect
-        changes to `self.flow_global`, `self.lamda` and `self.rho`.
-        Currently only supports models with `cost` objective, i.e. only the objective
-        function is updated.
-        """
-        m = self.model
-        if m.obj.value == 'cost':
-            m.del_component(m.objective_function)
-            m.objective_function = pyomo.Objective(
-                rule=cost_rule_sub(flow_global=self.flow_global,
-                                   lamda=self.lamda,
-                                   rho=self.rho),
-                sense=pyomo.minimize,
-                doc='minimize(cost = sum of all cost types)')
-
-            self.solver.set_objective(m.objective_function)
-        else:
-            raise NotImplementedError("Objectives other than 'cost' are not supported.")
-
-
-    def choose_max_rho(self):
-        """
-        Set `self.rho` to the maximum rho value among self and neighbors.
-        """
-        self.rho = max(self.rho, *[msg.rho for msg in self.messages.values()])
 
 
     def update_mismatch(self, senders):
@@ -459,6 +351,30 @@ class UrbsAdmmModel(object):
         return new_value
 
 
+    def update_rho(self):
+        """
+        Increase `self.rho` if the primal gap does not decrease sufficiently.
+        """
+        if self.admmopt.penalty_mode == 'increasing':
+            if (self.nu > 0 and
+                self.primalgaps[-1] > self.admmopt.primal_decrease * self.primalgaps[-2]):
+                self.rho = min(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
+
+        elif self.admmopt.penalty_mode == 'residual_balancing':
+            if self.nu > 0:
+                if self.primalgaps[-1] > self.admmopt.residual_distance * self.dualgaps[-1]:
+                    self.rho = min(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
+                elif self.dualgaps[-1] > self.admmopt.residual_distance * self.primalgaps[-1]:
+                    self.rho = self.rho / self.admmopt.penalty_mult
+
+
+    def choose_max_rho(self):
+        """
+        Set `self.rho` to the maximum rho value among self and neighbors.
+        """
+        self.rho = max(self.rho, *[msg.rho for msg in self.messages.values()])
+
+
     def local_convergence(self):
         """
         Return the current local convergence status.
@@ -482,6 +398,89 @@ class UrbsAdmmModel(object):
         reached local convergence.
         """
         return all(self.status)
+
+
+    def retrieve_boundary_flows(self):
+        """
+        Retrieve optimized flow values for shared lines from the solver and store them in
+        `self.flows_all` and `self.flows_with_neighbor`.
+        """
+        index = self.shared_lines_index
+
+        self.solver.load_vars(self.model.e_tra_in[:, :, :, :, :, :])
+
+        flows_all = {}
+        flows_with_neighbor = {k: {} for k in self.neighbors}
+
+        for (tm, stf, sit_in, sit_out, tra, com), v in self.model.e_tra_in.items():
+            if (sit_in, sit_out) in zip(index['Site In'], index['Site Out']):
+                flows_all[(tm, stf, sit_in, sit_out)] = v.value
+                k = self.shared_lines.loc[(stf, sit_in, sit_out, tra, com), 'neighbor_cluster']
+                flows_with_neighbor[k][(tm, stf, sit_in, sit_out)] = v.value
+
+        flows_all = pd.Series(flows_all)
+        flows_all.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+
+        for k in flows_with_neighbor:
+            flows = pd.Series(flows_with_neighbor[k])
+            flows.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+            flows_with_neighbor[k] = flows
+
+        self.flows_all = flows_all
+        self.flows_with_neighbor = flows_with_neighbor
+
+
+    def update_lamda(self):
+        """
+        Calculate the new Lagrangian multipliers.
+        """
+        self.lamda = self.lamda + self.rho * (self.flows_all - self.flow_global)
+
+
+    def update_flow_global(self):
+        """
+        Update `self.flow_global` for all neighbors from which a msg was received, then
+        update the dual gap.
+        """
+        self.log('Updating flow global')
+        flow_global_old = deepcopy(self.flow_global)
+        for k in self.updated[-1]:
+            msg = self.messages[k]
+            lamda = msg.lamda
+            flow = msg.flow
+            rho = msg.rho
+
+            # TODO: can the indexing be improved?
+            self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = (
+                (self.lamda.loc[self.lamda.index.isin(self.flows_with_neighbor[k].index)] +
+                 lamda + self.flows_with_neighbor[k] * self.rho + flow * rho +
+                 self.admmopt.async_correction * self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)]) /
+                (self.rho + rho + self.admmopt.async_correction))
+
+        self.update_dualgap(flow_global_old)
+        self.update_mismatch((k for k in self.neighbors if k in self.messages))
+
+
+    def update_cost_rule(self):
+        """
+        Update those components of `self.model` that use `cost_rule_sub` to reflect
+        changes to `self.flow_global`, `self.lamda` and `self.rho`.
+        Currently only supports models with `cost` objective, i.e. only the objective
+        function is updated.
+        """
+        m = self.model
+        if m.obj.value == 'cost':
+            m.del_component(m.objective_function)
+            m.objective_function = pyomo.Objective(
+                rule=cost_rule_sub(flow_global=self.flow_global,
+                                   lamda=self.lamda,
+                                   rho=self.rho),
+                sense=pyomo.minimize,
+                doc='minimize(cost = sum of all cost types)')
+
+            self.solver.set_objective(m.objective_function)
+        else:
+            raise NotImplementedError("Objectives other than 'cost' are not supported.")
 
 
 class AdmmOption(object):
