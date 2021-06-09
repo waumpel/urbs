@@ -240,6 +240,7 @@ class UrbsAdmmModel(object):
             self.log(f'Cluster {k} has converged' if msg.converged else
                      f'Cluster {k} is no longer converged')
             self.status[k] = msg.converged
+            self.log(f'New status: {self.status}')
 
         return senders
 
@@ -295,7 +296,7 @@ class UrbsAdmmModel(object):
             gaps.append(mismatch_gap)
             self.mismatch_convergence[k] = mismatch_gap < self.admmopt.mismatch_tolerance
 
-        self.log(f'New status: {self.mismatch_convergence}')
+        self.log(f'Current mismatch status: {self.mismatch_convergence}')
 
         self.max_mismatch_gaps[-1] = max(self.max_mismatch_gaps[-1], float(max(gaps)))
 
