@@ -75,6 +75,15 @@ def data_series(results_dict):
     }
 
 
+def series_cutoff(series, cutoff):
+    new_series = {}
+    for name, data in series.items():
+        if name == 'avg_iter':
+            new_series[name] = data
+        new_series[name] = [max(cutoff, x) for x in data]
+    return new_series
+
+
 def plot_results(results_dict, result_dir, plot_rho=False):
     """
     Plot the results and save them to `result_dir`.
@@ -82,7 +91,7 @@ def plot_results(results_dict, result_dir, plot_rho=False):
     `results_dict` is a dict as returned by `.input_output.make_results_dict`.
     """
     admmopt = results_dict['admmopt']
-    series = data_series(results_dict)
+    series = series_cutoff(data_series(results_dict), 10**(-4))
 
     fig, ax = fig_primal()
     ax.axhline(admmopt['primal_tolerance'], color='black', linestyle='dashed')
