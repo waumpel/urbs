@@ -250,12 +250,14 @@ class UrbsAdmmModel(object):
         Calculate the new dual gap.
         """
         self.log('Updating dual gap')
+        raw_gap = self.rho * np.square(self.flow_global - flow_global_old).sum(axis=0)
         if self.admmopt.tolerance_mode == 'absolute':
-            dualgap = (self.rho * np.square(self.flow_global - flow_global_old).sum(axis=0) /
-                       min(1, len(self.flow_global)))
+            dualgap = raw_gap / min(1, len(self.flow_global))
         elif self.admmopt.tolerance_mode == 'relative':
-            dualgap = (self.rho * np.square(self.flow_global - flow_global_old).sum(axis=0) /
-                       max(1, np.square(flow_global_old).sum(axis=0)))
+            norm_old = np.square(flow_global_old).sum(axis=0)
+            if norm_old == 0:
+                norm_old = 1
+            dualgap = raw_gap / norm_old
         self.dualgaps.append(dualgap)
         # No need to call `update_convergence` here; this is done in the next call to
         # `update_primalgap`.
@@ -271,8 +273,10 @@ class UrbsAdmmModel(object):
                          min(1, len(self.flow_global)))
 
         elif self.admmopt.tolerance_mode == 'relative':
-            primalgap = (np.square(self.flows_all - self.flow_global).sum(axis=0) /
-                         max(1, np.square(self.flow_global).sum(axis=0)))
+            norm = np.square(self.flow_global).sum(axis=0)
+            if norm == 0:
+                norm = 1
+            primalgap = np.square(self.flows_all - self.flow_global).sum(axis=0) / norm
 
         self.log(f'Primal gap: {primalgap}')
         self.primalgaps.append(primalgap)
@@ -316,9 +320,12 @@ class UrbsAdmmModel(object):
             mismatch_gap = (np.square(flow_global_with_k - msg.flow_global).sum(axis=0) /
                             min(1, len(self.flow_global)))
         elif self.admmopt.tolerance_mode == 'relative':
+            norm = max(np.square(flow_global_with_k).sum(axis=0),
+                       np.square(msg.flow_global).sum(axis=0))
+            if norm == 0:
+                norm = 1
             mismatch_gap = (np.square(flow_global_with_k - msg.flow_global).sum(axis=0) /
-                            max(1, np.square(flow_global_with_k).sum(axis=0),
-                                np.square(msg.flow_global).sum(axis=0)))
+                            norm)
 
         return mismatch_gap
 
