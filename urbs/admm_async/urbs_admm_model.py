@@ -132,6 +132,8 @@ class UrbsAdmmModel(object):
         self.terminated = False
         self.updated = [set()]
 
+        self.raw_dualgaps = [0]
+
 
     def __del__(self):
         self.logfile.close()
@@ -251,6 +253,8 @@ class UrbsAdmmModel(object):
         """
         self.log('Updating dual gap')
         raw_gap = self.rho * np.square(self.flow_global - flow_global_old).sum(axis=0)
+        self.raw_dualgaps.append(raw_gap)
+
         if self.admmopt.tolerance_mode == 'absolute':
             dualgap = raw_gap / min(1, len(self.flow_global))
         elif self.admmopt.tolerance_mode == 'relative':

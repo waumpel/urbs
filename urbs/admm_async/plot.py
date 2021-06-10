@@ -20,15 +20,17 @@ def merge_sort_results(results):
             'dual': dual,
             'mismatch': mismatch,
             'rho': rho,
+            'raw_dual': raw_dual,
         }
         for r in results
-        for timestamp, obj, primal, dual, mismatch, rho in zip(
+        for timestamp, obj, primal, dual, mismatch, rho, raw_dual in zip(
             r['timestamps'],
             r['objective'],
             r['primal_residual'],
             r['dual_residual'],
             r['constraint_mismatch'],
             r['rho'],
+            r['raw_dual'],
         )),
         key=lambda x: x['time']
     )
@@ -63,6 +65,7 @@ def data_series(results_dict):
     max_mismatch = [max(v['mismatch'] for v in d.values()) for d in recent]
     sum_obj = [sum(v['obj'] for v in d.values()) for d in recent]
     max_rho = [max(v['rho'] for v in d.values()) for d in recent]
+    max_raw_dual = [max(v['raw_dual'] for v in d.values()) for d in recent]
     avg_iter = [x / n_clusters for x in range(len(max_primal))]
 
     return {
@@ -71,6 +74,7 @@ def data_series(results_dict):
         'max_mismatch': max_mismatch,
         'sum_obj': sum_obj,
         'max_rho': max_rho,
+        'max_raw_dual': max_raw_dual,
         'avg_iter': avg_iter,
     }
 
@@ -113,6 +117,12 @@ def plot_results(results_dict, result_dir, plot_rho=False):
     if plot_rho:
         ax.plot(series['avg_iter'], series['max_rho'], color='black')
     fig.savefig(join(result_dir, 'mismatch.svg'))
+
+    fig, ax = fig_raw_dual()
+    ax.plot(series['avg_iter'], series['max_raw_dual'])
+    if plot_rho:
+        ax.plot(series['avg_iter'], series['max_rho'], color='black')
+    fig.savefig(join(result_dir, 'raw_dual.svg'))
 
     objective_values = results_dict['objective_values']
     if 'centralized' in objective_values:
@@ -160,4 +170,12 @@ def fig_objective():
     ax.set_xlabel('avg local iterations')
     ax.set_ylabel('objective gap')
     ax.set_title('Objective Gap per Iteration')
+    return fig, ax
+
+def fig_raw_dual():
+    fig, ax = plt.subplots()
+    ax.set_yscale('log')
+    ax.set_xlabel('avg local iterations')
+    ax.set_ylabel('raw dual gap')
+    ax.set_title('Raw Dual Gap per Iteration')
     return fig, ax
