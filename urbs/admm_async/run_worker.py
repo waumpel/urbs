@@ -171,11 +171,21 @@ def run_worker(
             log(f'Global convergence at iteration {nu}!')
             break
 
+        msg_counter = 0
+
         while len(s.updated[-1]) < s.n_wait or (s.all_converged()):
+
+            if msg_counter > 100:
+                log('Timeout while checking for messages: Terminating.')
+                s.set_status(AdmmStatus.TERMINATED)
+                s.send_status()
+                break
 
             sleep(s.admmopt.wait_time)
             senders = s.receive()
+
             if s.terminated():
+                log('Received termination msg: Terminating.')
                 break
             if not senders:
                 continue
@@ -184,12 +194,13 @@ def run_worker(
             if s.all_global_convergence():
                 break
 
+            msg_counter += 1
+
         if s.all_global_convergence():
             log(f'Global convergence at iteration {nu}!')
             break
 
         if s.terminated():
-            log('Received termination msg: Terminating.')
             break
 
         if nu == max_iter - 1:
