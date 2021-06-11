@@ -5,6 +5,7 @@
 ############################################################################
 
 from copy import deepcopy
+from enum import Enum
 from math import ceil
 from os.path import join
 
@@ -14,6 +15,13 @@ import pyomo.environ as pyomo
 from pyomo.environ import SolverFactory
 
 from urbs.model import cost_rule_sub
+
+
+class AdmmStatus(Enum):
+    NO_CONVERGENCE = 0
+    LOCAL_CONVERGENCE = 1
+    GLOBAL_CONVERGENCE = 2
+    TERMINATED = 3
 
 
 class UrbsAdmmModel(object):
@@ -66,12 +74,10 @@ class UrbsAdmmModel(object):
         `['support_timeframe', 'Site In', 'Site Out', 'Transmission', 'Commodity']`.
     `shared_lines_index`: `shared_lines.index.to_frame()`.
     `solver`: `GurobiPersistent` solver interface to `model`.
-    `status`: List of lists, each holding the currently known status of one cluster,
-        as received through messages. Each list has three entries: iteration counter,
-        local convergence flag, and consensus flag.
+    `status`: List holding the currently known `AdmmStatus` of a cluster, as received
+        through messages.
     `status_update`: Flag indicating whether `self.status` has been updated since
         the last time a status message has been sent.
-    `terminated`: Flag indicating whether the solver for this model has terminated.
     `updated`: List of sets holding the neighbors who have sent new variables before
         the start of each iteration (starts with an empty set as the single entry).
     """
@@ -127,9 +133,8 @@ class UrbsAdmmModel(object):
         self.solver.set_gurobi_param('Method', 2)
         self.solver.set_gurobi_param('Threads', 1)
 
-        self.status = [False] * n_clusters
+        self.status = [AdmmStatus.NO_CONVERGENCE] * n_clusters
         self.status_update = False
-        self.terminated = False
         self.updated = [set()]
 
         self.raw_dualgaps = [0]
@@ -142,6 +147,48 @@ class UrbsAdmmModel(object):
     def log(self, s):
         self.logfile.write(s + '\n')
         self.logfile.flush()
+
+
+    def get_status(self):
+        return self.status[self.ID]
+
+
+    def set_status(self, value):
+        old_value = self.get_status()
+        if old_value != AdmmStatus.TERMINATED and old_value != value:
+            self.status[self.ID] = value
+            self.status_update = True
+            self.log(f'New status: {value}')
+
+
+    def local_convergence(self):
+        """
+        Return the current local convergence status.
+        Local convergence is reached if primal gap, dual gap, and constraint mismatch with
+        all neighbors are below their respective tolerance thresholds.
+        """
+        return self.status[self.ID] in [AdmmStatus.LOCAL_CONVERGENCE, AdmmStatus.GLOBAL_CONVERGENCE]
+
+
+    def terminated(self):
+        return self.get_status() == AdmmStatus.TERMINATED
+
+
+    def all_converged(self):
+        """
+        Return whether this cluster and all neighbors who have sent a variable update during
+        the current iteration have converged.
+        """
+        return self.local_convergence() and all(
+            self.status[k] in [AdmmStatus.LOCAL_CONVERGENCE, AdmmStatus.GLOBAL_CONVERGENCE]
+            for k in self.updated[-1])
+
+
+    def all_global_convergence(self):
+        """
+        Return whether all clusters have reached global convergence.
+        """
+        return all(s == AdmmStatus.GLOBAL_CONVERGENCE for s in self.status)
 
 
     def solve_problem(self):
@@ -186,12 +233,11 @@ class UrbsAdmmModel(object):
         """
         Send an `AdmmStatusMessage` with the current status to all other clusters.
         """
-        self.log(f'Sending status message: converged: {self.local_convergence()} terminated: {self.terminated}')
+        self.log(f'Sending status message: {self.get_status()}')
 
         msg = AdmmStatusMessage(
             sender = self.ID,
-            converged = self.local_convergence(),
-            terminated = self.terminated
+            status = self.get_status()
         )
         for que in self.sending_queues.values():
             que.put(msg)
@@ -220,9 +266,9 @@ class UrbsAdmmModel(object):
                 variable_senders.add(msg.sender)
             elif isinstance(msg, AdmmStatusMessage):
                 status_msgs[msg.sender] = msg
-                if msg.terminated:
-                    self.log('Received msg from a terminated process')
-                    self.terminated = True
+                if msg.status == AdmmStatus.TERMINATED:
+                    self.log(f'Received msg with status {AdmmStatus.TERMINATED}')
+                    self.set_status(AdmmStatus.TERMINATED)
                     return
             else:
                 raise RuntimeError(f'Received a msg of unrecognized type: {type(msg)}')
@@ -238,11 +284,8 @@ class UrbsAdmmModel(object):
         if variable_senders:
             self.update_mismatch(variable_senders)
 
-        for k, msg in status_msgs.items():
-            self.log(f'Cluster {k} has converged' if msg.converged else
-                     f'Cluster {k} is no longer converged')
-            self.status[k] = msg.converged
-            self.log(f'New status: {self.status}')
+        if status_msgs:
+            self.update_status(status_msgs)
 
         return senders
 
@@ -285,6 +328,36 @@ class UrbsAdmmModel(object):
         self.log(f'Primal gap: {primalgap}')
         self.primalgaps.append(primalgap)
         self.update_convergence()
+
+
+    def update_status(self, status_msgs):
+        """
+        Update `self.status` according to the received `status_msgs`, then call
+        `check_global_convergence`.
+        """
+        self.log('Received status messages:')
+        for k, msg in status_msgs.items():
+            self.log(f'Cluster {k}: {msg.status}')
+            self.status[k] = msg.status
+
+        self.check_global_convergence()
+
+        self.log(f'New status: {self.status}')
+
+
+    def check_global_convergence(self):
+        """
+        Check whether global convergence has been gained or lost and update `self.status`
+        accordingly.
+        """
+        if all(s in [AdmmStatus.LOCAL_CONVERGENCE, AdmmStatus.GLOBAL_CONVERGENCE]
+               for s in self.status):
+            self.set_status(AdmmStatus.GLOBAL_CONVERGENCE)
+
+        if self.get_status() == AdmmStatus.GLOBAL_CONVERGENCE and any(
+            s not in [AdmmStatus.LOCAL_CONVERGENCE, AdmmStatus.GLOBAL_CONVERGENCE]
+            for s in self.status):
+            self.set_status(AdmmStatus.LOCAL_CONVERGENCE)
 
 
     def update_mismatch(self, senders):
@@ -339,8 +412,7 @@ class UrbsAdmmModel(object):
         Check for local convergence, i.e. if primal gap, dual gap, and constraint mismatch
         with all neighbors are below their respective tolerance thresholds.
 
-        Update the value of `self.status[self.ID]` and set `self.status_update` if the value
-        was modified.
+        Call `check_global_convergence` if necessary.
 
         Return the new value.
         """
@@ -355,9 +427,11 @@ class UrbsAdmmModel(object):
         if new_value == old_value:
             self.log('Still converged' if new_value else 'Still not converged')
         else:
-            self.log('Reached convergence' if new_value else 'No longer converged')
-            self.status[self.ID] = new_value
-            self.status_update = True
+            if new_value:
+                self.set_status(AdmmStatus.LOCAL_CONVERGENCE)
+                self.check_global_convergence()
+            else:
+                self.set_status(AdmmStatus.NO_CONVERGENCE)
 
         return new_value
 
@@ -384,31 +458,6 @@ class UrbsAdmmModel(object):
         Set `self.rho` to the maximum rho value among self and neighbors.
         """
         self.rho = max(self.rho, *[msg.rho for msg in self.messages.values()])
-
-
-    def local_convergence(self):
-        """
-        Return the current local convergence status.
-        Local convergence is reached if primal gap, dual gap, and constraint mismatch with
-        all neighbors are below their respective tolerance thresholds.
-        """
-        return self.status[self.ID]
-
-
-    def all_converged(self):
-        """
-        Return whether this cluster and all neighbors who have sent a variable update during
-        the current iteration have converged.
-        """
-        return self.local_convergence() and all(self.status[k] for k in self.updated[-1])
-
-
-    def global_convergence(self):
-        """
-        Return whether global convergence has been reached, i.e. if all clusters have
-        reached local convergence.
-        """
-        return all(self.status)
 
 
     def retrieve_boundary_flows(self):
@@ -512,7 +561,6 @@ class AdmmMessage(object):
 
 
 class AdmmStatusMessage:
-    def __init__(self, sender, converged, terminated):
+    def __init__(self, sender, status):
         self.sender = sender
-        self.converged = converged
-        self.terminated = terminated
+        self.status = status

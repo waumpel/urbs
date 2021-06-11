@@ -3,7 +3,7 @@ from time import sleep, time
 import pandas as pd
 
 import urbs.model
-from .urbs_admm_model import UrbsAdmmModel
+from .urbs_admm_model import AdmmStatus, UrbsAdmmModel
 
 def log_generator(ID, logqueue):
     """
@@ -142,7 +142,6 @@ def run_worker(
     log(f'Starting subproblem for regions {", ".join(s.regions)}.')
 
     for nu in range(max_iter):
-        local_convergence = False
 
         if nu % 10 == 0:
             log(f'Iteration {nu}')
@@ -158,12 +157,8 @@ def run_worker(
         # Take the timestamp now, when objective and primal gap are known for this iteration.
         timestamps.append(time())
 
-        if s.local_convergence():
-            log(f'Converged at iteration {nu}')
-            local_convergence = True
-
         s.receive()
-        if s.terminated:
+        if s.terminated():
             log('Received termination msg: Terminating.')
             break
 
@@ -172,7 +167,7 @@ def run_worker(
 
         s.send_variables()
 
-        if s.global_convergence():
+        if s.all_global_convergence():
             log(f'Global convergence at iteration {nu}!')
             break
 
@@ -180,32 +175,26 @@ def run_worker(
 
             sleep(s.admmopt.wait_time)
             senders = s.receive()
-            if s.terminated:
+            if s.terminated():
                 break
             if not senders:
                 continue
             if s.status_update:
                 s.send_status()
-            if local_convergence != s.local_convergence():
-                local_convergence = not local_convergence
-                if local_convergence:
-                    log(f'Converged at iteration {nu}')
-                else:
-                    log(f'No longer converged.')
-            if s.global_convergence():
+            if s.all_global_convergence():
                 break
 
-        if s.global_convergence():
+        if s.all_global_convergence():
             log(f'Global convergence at iteration {nu}!')
             break
 
-        if s.terminated:
+        if s.terminated():
             log('Received termination msg: Terminating.')
             break
 
         if nu == max_iter - 1:
             log('Timeout: Terminating.')
-            s.terminated = True
+            s.set_status(AdmmStatus.TERMINATED)
             s.send_status()
             break
 
