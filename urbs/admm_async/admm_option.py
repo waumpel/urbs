@@ -15,10 +15,30 @@ class AdmmOption(object):
         wait_time = 0.1,
         max_iter = 1000,
         tolerance_mode = 'absolute',
-        penalty_mode = 'fixed',
+        penalty_mode = None,
     ):
         if tolerance_mode not in ['absolute', 'relative']:
             raise ValueError("tolerance_mode must be 'absolute' or 'relative'")
+
+        if penalty_mode is None:
+            if (max_penalty is None and
+                penalty_mult is None and
+                primal_decrease is None and
+                residual_distance is None):
+                penalty_mode = 'fixed'
+            elif (max_penalty is not None and
+                  penalty_mult is not None and
+                  primal_decrease is not None and
+                  residual_distance is None):
+                  penalty_mode = 'increasing'
+            elif (max_penalty is not None and
+                  penalty_mult is not None and
+                  primal_decrease is None and
+                  residual_distance is not None):
+                  penalty_mode = 'residual_balancing'
+            else:
+                raise ValueError("Cannot infer penalty_mode")
+
         if penalty_mode not in ['fixed', 'increasing', 'residual_balancing']:
             raise ValueError("tolerance_mode must be 'fixed', 'increasing' or 'residual_balancing'")
 
