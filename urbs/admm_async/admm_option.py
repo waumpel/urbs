@@ -56,7 +56,7 @@ class AdmmOption(object):
             if residual_distance is None:
                 residual_distance = 1.1
             elif residual_distance <= 0:
-                raise ValueError("primal_decrease must be larger than 0")
+                raise ValueError("residual_distance must be larger than 0")
 
 
         if primal_tolerance <= 0:
