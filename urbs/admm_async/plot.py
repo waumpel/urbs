@@ -89,10 +89,16 @@ def plot_results(results_dict, result_dir, plot_rho=False):
     admmopt = results_dict['admmopt']
     series = series_cutoff(data_series(results_dict), 10**(-4))
 
+    fig_combined, ax_combined = plt.subplots()
+    ax_combined.set_yscale('log')
+    ax_combined.set_xlabel('avg local iterations')
+    ax_combined.set_title('Results per Iteration')
+
     if 'max_primal' in series:
         fig, ax = fig_primal()
         ax.axhline(admmopt['primal_tolerance'], color='black', linestyle='dashed')
         ax.plot(series['avg_iter'], series['max_primal'])
+        ax_combined.plot(series['avg_iter'], series['max_primal'], label='primal gap')
         if plot_rho:
             ax.plot(series['avg_iter'], series['max_rho'], color='black')
         fig.savefig(join(result_dir, 'primal.svg'))
@@ -102,6 +108,7 @@ def plot_results(results_dict, result_dir, plot_rho=False):
         fig, ax = fig_dual()
         ax.axhline(admmopt['dual_tolerance'], color='black', linestyle='dashed')
         ax.plot(series['avg_iter'], series['max_dual'])
+        ax_combined.plot(series['avg_iter'], series['max_dual'], label='dualgap')
         if plot_rho:
             ax.plot(series['avg_iter'], series['max_rho'], color='black')
         fig.savefig(join(result_dir, 'dual.svg'))
@@ -111,6 +118,7 @@ def plot_results(results_dict, result_dir, plot_rho=False):
         fig, ax = fig_mismatch()
         ax.axhline(admmopt['mismatch_tolerance'], color='black', linestyle='dashed')
         ax.plot(series['avg_iter'], series['max_mismatch'])
+        ax_combined.plot(series['avg_iter'], series['max_mismatch'], label='mismatch')
         if plot_rho:
             ax.plot(series['avg_iter'], series['max_rho'], color='black')
         fig.savefig(join(result_dir, 'mismatch.svg'))
@@ -132,10 +140,18 @@ def plot_results(results_dict, result_dir, plot_rho=False):
             fig, ax = fig_objective()
             ax.axhline(0.01, color='black', linestyle='dashed')
             ax.plot(series['avg_iter'], obj_gap)
+            ax_combined.plot(series['avg_iter'], obj_gap, label='objective gap')
             if plot_rho:
                 ax.plot(series['avg_iter'], series['max_rho'], color='black')
             fig.savefig(join(result_dir, 'objective.svg'))
             plt.close(fig)
+
+    if plot_rho:
+        ax_combined.plot(series['avg_iter'], series['max_rho'], label='penalty')
+
+    ax_combined.legend()
+    fig_combined.savefig(join(result_dir, 'combined.svg'))
+    plt.close(fig_combined)
 
 
 def fig_primal():
