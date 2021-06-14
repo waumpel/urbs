@@ -116,7 +116,7 @@ def plot_results(results_dict, result_dir, plot_rho=False):
         fig.savefig(join(result_dir, 'mismatch.svg'))
         plt.close(fig)
 
-    if 'max_rho' in series:
+    if 'max_raw_dual' in series:
         fig, ax = fig_raw_dual()
         ax.plot(series['avg_iter'], series['max_raw_dual'])
         if plot_rho:

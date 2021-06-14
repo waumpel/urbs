@@ -64,10 +64,9 @@ admmopt = admm_async.AdmmOption(
     mismatch_tolerance = 0.01,
     rho = 1,
     max_penalty = 10**8,
-    penalty_mult = 1.4,
-    max_iter = 1000,
+    max_iter = 500,
     tolerance_mode = 'relative',
-    penalty_mode = 'increasing',
+    penalty_mode = 'residual_balancing',
 )
 
 if __name__ == '__main__':
