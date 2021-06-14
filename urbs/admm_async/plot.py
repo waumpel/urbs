@@ -4,35 +4,18 @@ import matplotlib.pyplot as plt
 
 
 # TODO: actual merge sort implementation
-def merge_sort_results(results):
+def merge_sort_results(cluster_results):
     """
-    Merge the results of individual clusters and sort them by timestamp.
-    Return a list of dicts.
-
-    `results` is a list of dicts, each representing all results from one cluster.
+    Merge the iteration_results of individual clusters and sort them by timestamp.
+    Return a list of dicts. Each dict holds the results of one iteration from one cluster.
     """
-    return sorted((
-        {
-            'ID': r['ID'],
-            'time': timestamp,
-            'obj': obj,
-            'primal': primal,
-            'dual': dual,
-            'mismatch': mismatch,
-            'rho': rho,
-            'raw_dual': raw_dual,
-        }
-        for r in results
-        for timestamp, obj, primal, dual, mismatch, rho, raw_dual in zip(
-            r['timestamps'],
-            r['objective'],
-            r['primal_residual'],
-            r['dual_residual'],
-            r['constraint_mismatch'],
-            r['rho'],
-            r['raw_dual'],
-        )),
-        key=lambda x: x['time']
+    return sorted(
+        (
+            iteration_result
+            for cluster_results_dict in cluster_results
+            for iteration_result in cluster_results_dict['iteration_series']
+        ),
+        key=lambda d: d['time']
     )
 
 
@@ -57,26 +40,35 @@ def recent_results(results):
 
 def data_series(results_dict):
     n_clusters = len(results_dict['clusters'])
-    results = merge_sort_results(results_dict['results'])
+    results = merge_sort_results(results_dict['cluster_results'])
     recent = recent_results(results)
 
-    max_primal = [max(v['primal'] for v in d.values()) for d in recent]
-    max_dual = [max(v['dual'] for v in d.values()) for d in recent]
-    max_mismatch = [max(v['mismatch'] for v in d.values()) for d in recent]
-    sum_obj = [sum(v['obj'] for v in d.values()) for d in recent]
-    max_rho = [max(v['rho'] for v in d.values()) for d in recent]
-    max_raw_dual = [max(v['raw_dual'] for v in d.values()) for d in recent]
-    avg_iter = [x / n_clusters for x in range(len(max_primal))]
+    series = {}
+    first = list(recent[0].values())[0] # dict of the first cluster
 
-    return {
-        'max_primal': max_primal,
-        'max_dual': max_dual,
-        'max_mismatch': max_mismatch,
-        'sum_obj': sum_obj,
-        'max_rho': max_rho,
-        'max_raw_dual': max_raw_dual,
-        'avg_iter': avg_iter,
-    }
+    if 'primal' in first:
+        max_primal = [max(v['primal'] for v in d.values()) for d in recent]
+        series['max_primal'] = max_primal
+    if 'dual' in first:
+        max_dual = [max(v['dual'] for v in d.values()) for d in recent]
+        series['max_dual'] = max_dual
+    if 'mismatch' in first:
+        max_mismatch = [max(v['mismatch'] for v in d.values()) for d in recent]
+        series['max_mismatch'] = max_mismatch
+    if 'obj' in first:
+        sum_obj = [sum(v['obj'] for v in d.values()) for d in recent]
+        series['sum_obj'] = sum_obj
+    if 'rho' in first:
+        max_rho = [max(v['rho'] for v in d.values()) for d in recent]
+        series['max_rho'] = max_rho
+    if 'raw_dual' in first:
+        max_raw_dual = [max(v['raw_dual'] for v in d.values()) for d in recent]
+        series['max_raw_dual'] = max_raw_dual
+
+    avg_iter = [x / n_clusters for x in range(len(max_primal))]
+    series['avg_iter'] = avg_iter
+
+    return series
 
 
 def series_cutoff(series, cutoff):
@@ -92,49 +84,58 @@ def plot_results(results_dict, result_dir, plot_rho=False):
     """
     Plot the results and save them to `result_dir`.
 
-    `results_dict` is a dict as returned by `.input_output.make_results_dict`.
+    `results_dict` is a dict as returned by `.runfunctions_admm.run_regional`.
     """
     admmopt = results_dict['admmopt']
     series = series_cutoff(data_series(results_dict), 10**(-4))
 
-    fig, ax = fig_primal()
-    ax.axhline(admmopt['primal_tolerance'], color='black', linestyle='dashed')
-    ax.plot(series['avg_iter'], series['max_primal'])
-    if plot_rho:
-        ax.plot(series['avg_iter'], series['max_rho'], color='black')
-    fig.savefig(join(result_dir, 'primal.svg'))
-
-    fig, ax = fig_dual()
-    ax.axhline(admmopt['dual_tolerance'], color='black', linestyle='dashed')
-    ax.plot(series['avg_iter'], series['max_dual'])
-    if plot_rho:
-        ax.plot(series['avg_iter'], series['max_rho'], color='black')
-    fig.savefig(join(result_dir, 'dual.svg'))
-
-    fig, ax = fig_mismatch()
-    ax.axhline(admmopt['mismatch_tolerance'], color='black', linestyle='dashed')
-    ax.plot(series['avg_iter'], series['max_mismatch'])
-    if plot_rho:
-        ax.plot(series['avg_iter'], series['max_rho'], color='black')
-    fig.savefig(join(result_dir, 'mismatch.svg'))
-
-    fig, ax = fig_raw_dual()
-    ax.plot(series['avg_iter'], series['max_raw_dual'])
-    if plot_rho:
-        ax.plot(series['avg_iter'], series['max_rho'], color='black')
-    fig.savefig(join(result_dir, 'raw_dual.svg'))
-
-    objective_values = results_dict['objective_values']
-    if 'centralized' in objective_values:
-        centralized_obj = objective_values['centralized'] if 'centralized' in objective_values else None
-        obj_gap = [abs(x - centralized_obj) / centralized_obj for x in series['sum_obj']]
-
-        fig, ax = fig_objective()
-        ax.axhline(0.01, color='black', linestyle='dashed')
-        ax.plot(series['avg_iter'], obj_gap)
+    if 'max_primal' in series:
+        fig, ax = fig_primal()
+        ax.axhline(admmopt['primal_tolerance'], color='black', linestyle='dashed')
+        ax.plot(series['avg_iter'], series['max_primal'])
         if plot_rho:
             ax.plot(series['avg_iter'], series['max_rho'], color='black')
-        fig.savefig(join(result_dir, 'objective.svg'))
+        fig.savefig(join(result_dir, 'primal.svg'))
+        plt.close(fig)
+
+    if 'max_dual' in series:
+        fig, ax = fig_dual()
+        ax.axhline(admmopt['dual_tolerance'], color='black', linestyle='dashed')
+        ax.plot(series['avg_iter'], series['max_dual'])
+        if plot_rho:
+            ax.plot(series['avg_iter'], series['max_rho'], color='black')
+        fig.savefig(join(result_dir, 'dual.svg'))
+        plt.close(fig)
+
+    if 'max_mismatch' in series:
+        fig, ax = fig_mismatch()
+        ax.axhline(admmopt['mismatch_tolerance'], color='black', linestyle='dashed')
+        ax.plot(series['avg_iter'], series['max_mismatch'])
+        if plot_rho:
+            ax.plot(series['avg_iter'], series['max_rho'], color='black')
+        fig.savefig(join(result_dir, 'mismatch.svg'))
+        plt.close(fig)
+
+    if 'max_rho' in series:
+        fig, ax = fig_raw_dual()
+        ax.plot(series['avg_iter'], series['max_raw_dual'])
+        if plot_rho:
+            ax.plot(series['avg_iter'], series['max_rho'], color='black')
+        fig.savefig(join(result_dir, 'raw_dual.svg'))
+        plt.close(fig)
+
+    if 'sum_obj' in series:
+        if 'centralized_objective' in results_dict:
+            centralized_obj = results_dict['centralized_objective']
+            obj_gap = [abs(x - centralized_obj) / centralized_obj for x in series['sum_obj']]
+
+            fig, ax = fig_objective()
+            ax.axhline(0.01, color='black', linestyle='dashed')
+            ax.plot(series['avg_iter'], obj_gap)
+            if plot_rho:
+                ax.plot(series['avg_iter'], series['max_rho'], color='black')
+            fig.savefig(join(result_dir, 'objective.svg'))
+            plt.close(fig)
 
 
 def fig_primal():

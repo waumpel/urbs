@@ -4,6 +4,7 @@ import pandas as pd
 
 import urbs.model
 from .urbs_admm_model import AdmmStatus, UrbsAdmmModel
+from . import input_output
 
 def log_generator(ID, logqueue):
     """
@@ -217,15 +218,16 @@ def run_worker(
         s.update_cost_rule()
 
     # save(s.model, os.path.join(s.result_dir, '_{}_'.format(ID),'{}.h5'.format(s.sce)))
-    output.put({
-        'ID': s.ID,
-        'regions': s.regions,
-        'timestamps': timestamps,
-        'objective': s.objective_values,
-        'primal_residual': s.primalgaps,
-        'dual_residual': s.dualgaps,
-        'constraint_mismatch': s.max_mismatch_gaps,
-        'rho': s.rhos,
-        'coupling_flows': s.flow_global.tolist(),
-        'raw_dual': s.raw_dualgaps,
-    })
+    cluster_results = input_output.cluster_results_dict(
+        s.ID,
+        s.regions,
+        s.flow_global.tolist(),
+        timestamps,
+        s.objective_values,
+        s.primalgaps,
+        s.dualgaps,
+        s.max_mismatch_gaps,
+        s.rhos,
+        s.raw_dualgaps,
+    )
+    output.put(cluster_results)

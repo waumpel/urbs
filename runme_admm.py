@@ -91,10 +91,10 @@ if __name__ == '__main__':
                 data_all, timesteps, dt, scenario, result_dir
             )
             obj_cent = centralized_result['objective']
-            obj_admm = admm_results['objective_values']['admm']
+            obj_admm = admm_results['admm_objective']
             gap = (obj_admm - obj_cent) / obj_cent
-            admm_results['objective_values']['centralized'] = obj_cent
-            admm_results['objective_values']['gap'] = gap
+            admm_results['centralized_objective'] = obj_cent
+            admm_results['objective_gap'] = gap
             admm_results['centralized_time'] = centralized_result['time']
 
         input_output.save_results(admm_results, result_dir)
