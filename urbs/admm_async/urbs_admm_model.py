@@ -304,7 +304,7 @@ class UrbsAdmmModel(object):
             norm_old = np.square(flow_global_old).sum(axis=0)
             if norm_old == 0:
                 norm_old = 1
-            dualgap = raw_gap / norm_old
+            dualgap = (1000 * raw_gap) / norm_old
         self.dualgaps.append(dualgap)
         # No need to call `update_convergence` here; this is done in the next call to
         # `update_primalgap`.

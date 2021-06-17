@@ -96,6 +96,9 @@ class AdmmOption(object):
         if max_iter <= 0:
             raise ValueError("max_iter must be larger than 0")
 
+        if tolerance_mode == 'relative':
+            dual_tolerance *= 1000
+
         self.primal_tolerance = primal_tolerance
         self.dual_tolerance = dual_tolerance
         self.mismatch_tolerance = mismatch_tolerance
