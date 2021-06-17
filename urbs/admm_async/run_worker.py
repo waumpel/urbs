@@ -213,7 +213,6 @@ def run_worker(
         s.update_lamda()
         s.update_flow_global()
         s.update_rho()
-        s.choose_max_rho()
 
         s.update_cost_rule()
 

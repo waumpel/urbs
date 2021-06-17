@@ -445,19 +445,15 @@ class UrbsAdmmModel(object):
                 self.primalgaps[-1] > self.admmopt.primal_decrease * self.primalgaps[-2]):
                 self.rho = min(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
 
+            # choose max among neighbors
+            self.rho = max(self.rho, *[msg.rho for msg in self.messages.values()])
+
         elif self.admmopt.penalty_mode == 'residual_balancing':
             if self.nu > 0:
                 if self.primalgaps[-1] > self.admmopt.residual_distance * self.dualgaps[-1]:
                     self.rho = min(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
                 elif self.dualgaps[-1] > self.admmopt.residual_distance * self.primalgaps[-1]:
                     self.rho = self.rho / self.admmopt.penalty_mult
-
-
-    def choose_max_rho(self):
-        """
-        Set `self.rho` to the maximum rho value among self and neighbors.
-        """
-        self.rho = max(self.rho, *[msg.rho for msg in self.messages.values()])
 
 
     def retrieve_boundary_flows(self):
