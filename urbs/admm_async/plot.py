@@ -80,13 +80,38 @@ def series_cutoff(series, cutoff):
     return new_series
 
 
-def plot_results(results_dict, result_dir, plot_rho=False):
+def beginning_of_the_end(series, threshold):
+    """
+    Return the index of the first value in `series` such that the value and all subsequent
+    values are below `threshold`.
+    """
+    if series[-1] >= threshold:
+        return -1
+
+    for i, elem in zip(range(len(series)), reversed(series)):
+        if elem >= threshold:
+            return len(series) - i # not -1 because we want the index *after* the element that we found
+
+    return 0
+
+
+def plot_results(results_dict, result_dir, plot_rho=False, colors=None):
     """
     Plot the results and save them to `result_dir`.
 
     `results_dict` is a dict as returned by `.runfunctions_admm.run_regional`.
     """
+    if colors is None:
+        colors = {
+            'primal': 'blue',
+            'dual': 'orange',
+            'mismatch': 'green',
+            'obj': 'red',
+            'rho': 'black',
+        }
+
     admmopt = results_dict['admmopt']
+    n_clusters = len(results_dict['clusters'])
     series = series_cutoff(data_series(results_dict), 10**(-4))
 
     fig_combined, ax_combined = plt.subplots()
@@ -94,11 +119,23 @@ def plot_results(results_dict, result_dir, plot_rho=False):
     ax_combined.set_xlabel('avg local iterations')
     ax_combined.set_title('Results per Iteration')
 
+    primal_convergence = beginning_of_the_end(series['max_primal'], admmopt['primal_tolerance'])
+    if primal_convergence >= 0:
+        ax_combined.axvline(primal_convergence / n_clusters, color=colors['primal'])
+
+    dual_convergence = beginning_of_the_end(series['max_dual'], admmopt['dual_tolerance'])
+    if dual_convergence >= 0:
+        ax_combined.axvline(dual_convergence / n_clusters, color=colors['dual'])
+
+    mismatch_convergence = beginning_of_the_end(series['max_mismatch'], admmopt['mismatch_tolerance'])
+    if mismatch_convergence >= 0:
+        ax_combined.axvline(mismatch_convergence / n_clusters, color=colors['mismatch'])
+
     if 'max_primal' in series:
         fig, ax = fig_primal()
         ax.axhline(admmopt['primal_tolerance'], color='black', linestyle='dashed')
         ax.plot(series['avg_iter'], series['max_primal'])
-        ax_combined.plot(series['avg_iter'], series['max_primal'], label='primal gap')
+        ax_combined.plot(series['avg_iter'], series['max_primal'], label='primal gap', color=colors['primal'])
         if plot_rho:
             ax.plot(series['avg_iter'], series['max_rho'], color='black')
         fig.savefig(join(result_dir, 'primal.svg'))
@@ -108,7 +145,7 @@ def plot_results(results_dict, result_dir, plot_rho=False):
         fig, ax = fig_dual()
         ax.axhline(admmopt['dual_tolerance'], color='black', linestyle='dashed')
         ax.plot(series['avg_iter'], series['max_dual'])
-        ax_combined.plot(series['avg_iter'], series['max_dual'], label='dualgap')
+        ax_combined.plot(series['avg_iter'], series['max_dual'], label='dualgap', color=colors['dual'])
         if plot_rho:
             ax.plot(series['avg_iter'], series['max_rho'], color='black')
         fig.savefig(join(result_dir, 'dual.svg'))
@@ -118,7 +155,7 @@ def plot_results(results_dict, result_dir, plot_rho=False):
         fig, ax = fig_mismatch()
         ax.axhline(admmopt['mismatch_tolerance'], color='black', linestyle='dashed')
         ax.plot(series['avg_iter'], series['max_mismatch'])
-        ax_combined.plot(series['avg_iter'], series['max_mismatch'], label='mismatch')
+        ax_combined.plot(series['avg_iter'], series['max_mismatch'], label='mismatch', color=colors['mismatch'])
         if plot_rho:
             ax.plot(series['avg_iter'], series['max_rho'], color='black')
         fig.savefig(join(result_dir, 'mismatch.svg'))
@@ -140,14 +177,18 @@ def plot_results(results_dict, result_dir, plot_rho=False):
             fig, ax = fig_objective()
             ax.axhline(0.01, color='black', linestyle='dashed')
             ax.plot(series['avg_iter'], obj_gap)
-            ax_combined.plot(series['avg_iter'], obj_gap, label='objective gap')
+            ax_combined.plot(series['avg_iter'], obj_gap, label='objective gap', color=colors['obj'])
             if plot_rho:
                 ax.plot(series['avg_iter'], series['max_rho'], color='black')
             fig.savefig(join(result_dir, 'objective.svg'))
             plt.close(fig)
 
+            objective_convergence = beginning_of_the_end(obj_gap, 0.01)
+            if objective_convergence >= 0:
+                ax_combined.axvline(objective_convergence / n_clusters, color=colors['obj'])
+
     if plot_rho:
-        ax_combined.plot(series['avg_iter'], series['max_rho'], label='penalty')
+        ax_combined.plot(series['avg_iter'], series['max_rho'], label='penalty', color=colors['rho'])
 
     ax_combined.legend()
     fig_combined.savefig(join(result_dir, 'combined.svg'))
