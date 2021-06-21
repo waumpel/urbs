@@ -8,8 +8,8 @@ import pandas as pd
 import multiprocessing as mp
 
 import queue
-from .ADMM_async.run_Worker import run_worker
-from .ADMM_async.urbs_admm_model import urbsADMMmodel
+from .admm_async.run_worker import run_worker
+from .admm_async.urbs_admm_model import urbsADMMmodel
 import time
 import numpy as np
 from math import ceil
