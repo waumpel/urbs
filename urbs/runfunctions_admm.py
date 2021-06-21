@@ -69,8 +69,8 @@ def prepare_result_directory(result_name):
         result_name: user specified result name
 
     Returns:
-        a subfolder in the result folder 
-    
+        a subfolder in the result folder
+
     """
     # timestamp for result directory
     now = datetime.now().strftime('%Y%m%dT%H%M')
@@ -298,6 +298,7 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     clocktime = tclock - start_clock
 
     results = sorted(results, key=lambda x: x[0])
+    avg_iterations = sum(result[1]['iterations'] for result in results) / len(clusters)
 
     obj_total = 0
     obj_cent = results_prob['Problem'][0]['Lower bound']
@@ -315,6 +316,7 @@ def run_regional(input_file, timesteps, scenario, result_dir,
     print('The objective function value is %f' % (obj_total,))
     print('The central objective function value is %f' % (obj_cent,))
     print('The gap in objective function is %f %%' % (gap,))
+    print(f'Average iterations: {avg_iterations}')
 
     #testlog
     file_object = open('log_for_test.txt', 'a')
