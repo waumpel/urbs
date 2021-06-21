@@ -1,5 +1,5 @@
 ############################################################################
-# This file builds the opf_admm_model class that represents a subproblem 
+# This file builds the opf_admm_model class that represents a subproblem
 # ADMM algorithm parameters should be defined in admmoption
 # Package Pypower 5.1.3 is used in this application
 #############################################################################
@@ -202,8 +202,8 @@ class admmoption(object):
         self.theta = 0.99  # multiplier for determining whether to update rho
         self.mu = 10  # multiplier for determining whether to update rho
         self.pollWaitingtime = 0.001  # waiting time of receiving from one pipe
-        self.nwaitPercent = 0.2  # waiting percentage of neighbors (0, 1]
-        self.iterMaxlocal = 20  # local maximum iteration
+        self.nwaitPercent = 0.01  # waiting percentage of neighbors (0, 1]
+        self.iterMaxlocal = 500  # local maximum iteration
         #self.convergetol = 365 * 10 ** 1#  convergence criteria for maximum primal gap
         self.rho_update_nu = 50 # rho is updated only for the first 50 iterations
         self.conv_rel = 0.1 # the relative convergece tolerance, to be multiplied with len(s.flow_global)
