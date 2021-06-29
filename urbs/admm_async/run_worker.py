@@ -176,7 +176,7 @@ def run_worker(
 
         while len(s.updated[-1]) < s.n_wait or (s.all_converged()):
 
-            if msg_counter > 100:
+            if msg_counter > 1000:
                 log('Timeout while checking for messages: Terminating.')
                 s.set_status(AdmmStatus.TERMINATED)
                 s.send_status()
