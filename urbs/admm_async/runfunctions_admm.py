@@ -12,8 +12,7 @@ from urbs.model import create_model
 from urbs.input import read_input, add_carbon_supplier
 from urbs.validation import validate_dc_objective, validate_input
 from .run_worker import run_worker
-from .urbs_admm_model import UrbsAdmmModel
-
+from . import input_output
 
 class InitialValues:
     """
@@ -304,7 +303,7 @@ def run_regional(
     for cluster_idx in range(0, n_clusters):
         if cluster_idx != results[cluster_idx]['ID']:
             raise RuntimeError(f'Result of worker {cluster_idx + 1} was not returned')
-        obj_total += results[cluster_idx]['objective'][-1]
+        obj_total += results[cluster_idx]['iteration_series'][-1]['obj']
 
     # print results
     print(f'ADMM solver time: {solver_time:4.0f} s')
@@ -312,29 +311,24 @@ def run_regional(
 
     logfile.close()
 
-    # Save results and plots
+    # === Save results and plots ===
 
-    objective_values = {
-        'admm': obj_total
-    }
+    # subtract the solver start from all timestamps
     for r in results:
-        timestamps = r['timestamps']
-        for i in range(len(timestamps)):
-            timestamps[i] -= solver_start
+        iteration_series = r['iteration_series']
+        for i in range(len(iteration_series)):
+            iteration_series[i]['time'] -= solver_start
 
-    admmopt_dict = {
-        attr: getattr(admmopt, attr)
-        for attr in dir(admmopt) if not attr.startswith('__')
-    }
+    results_dict = input_output.results_dict(
+        timesteps,
+        scenario_name,
+        dt,
+        objective,
+        clusters,
+        admmopt,
+        solver_time,
+        obj_total,
+        results,
+    )
 
-    return {
-        'timesteps': [timesteps.start, timesteps.stop],
-        'scenario': scenario.__name__,
-        'dt': dt,
-        'objective': objective,
-        'clusters': clusters,
-        'admmopt': admmopt_dict,
-        'admm_time': solver_time,
-        'objective_values': objective_values,
-        'results': results,
-    }
+    return results_dict

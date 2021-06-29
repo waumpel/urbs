@@ -4,7 +4,6 @@ import os
 import shutil
 
 from urbs import admm_async
-from urbs.colorcodes import COLORS
 from urbs.runfunctions import prepare_result_directory
 from urbs.scenarios import scenario_base
 from urbs.admm_async import plot
@@ -35,7 +34,7 @@ shutil.copy(__file__, result_dir)
 objective = 'cost'  # set either 'cost' or 'CO2' as objective
 
 # simulation timesteps
-(offset, length) = (0, 1)  # time step selection
+(offset, length) = (0, 10)  # time step selection
 timesteps = range(offset, offset + length + 1)
 dt = 1  # length of each time step (unit: hours)
 
@@ -60,11 +59,15 @@ scenarios = [
 ]
 
 admmopt = admm_async.AdmmOption(
-    primal_tolerance = 0.1,
-    dual_tolerance = 0.1,
-    mismatch_tolerance = 0.1,
-    rho = 5,
-    max_iter = 10,
+    primal_tolerance = 0.01,
+    dual_tolerance = 0.01,
+    mismatch_tolerance = 0.01,
+    rho = 1,
+    max_penalty = 10**8,
+    penalty_mult = 1.1,
+    primal_decrease = 0.9,
+    # residual_distance = 1.1,
+    max_iter = 500,
     tolerance_mode = 'relative',
 )
 
@@ -89,11 +92,11 @@ if __name__ == '__main__':
                 data_all, timesteps, dt, scenario, result_dir
             )
             obj_cent = centralized_result['objective']
-            obj_admm = admm_results['objective_values']['admm']
+            obj_admm = admm_results['admm_objective']
             gap = (obj_admm - obj_cent) / obj_cent
-            admm_results['objective_values']['centralized'] = obj_cent
-            admm_results['objective_values']['gap'] = gap
+            admm_results['centralized_objective'] = obj_cent
+            admm_results['objective_gap'] = gap
             admm_results['centralized_time'] = centralized_result['time']
 
         input_output.save_results(admm_results, result_dir)
-        plot.plot_results(admm_results, result_dir)
+        plot.plot_results(admm_results, result_dir, plot_rho=True)

@@ -2,34 +2,72 @@ import json
 from os.path import join
 
 
-def attr_dict(obj):
+def cluster_results_dict(
+        ID,
+        regions,
+        coupling_flows,
+        timestamps,
+        objective_values,
+        primalgaps,
+        dualgaps,
+        max_mismatch_gaps,
+        rhos,
+        raw_dualgaps,
+    ):
     return {
-        attr: getattr(obj, attr)
-        for attr in dir(obj) if not attr.startswith('__')
+        'ID': ID,
+        'regions': regions,
+        'coupling_flows': coupling_flows,
+        'iteration_series': [
+            {
+                'ID': ID,
+                'time': timestamp,
+                'obj': objective,
+                'primal': primal,
+                'dual': dual,
+                'mismatch': mismatch,
+                'rho': rho,
+                'raw_dual': raw_dual,
+            }
+            for timestamp, objective, primal, dual, mismatch, rho, raw_dual in zip(
+                timestamps,
+                objective_values,
+                primalgaps,
+                dualgaps,
+                max_mismatch_gaps,
+                rhos,
+                raw_dualgaps,
+            )
+        ]
     }
 
 
-def make_results_dict(
-        timesteps,
-        scenario,
-        dt,
-        objective,
-        clusters,
-        admmopt,
-        times,
-        objective_values,
-        results,
-    ):
+def results_dict(
+    timesteps,
+    scenario_name,
+    dt,
+    objective,
+    clusters,
+    admmopt,
+    solver_time,
+    objective_value,
+    cluster_results,
+):
+    admmopt_dict = {
+        attr: getattr(admmopt, attr)
+        for attr in dir(admmopt) if not attr.startswith('__')
+    }
+
     return {
         'timesteps': [timesteps.start, timesteps.stop],
-        'scenario': scenario.__name__,
+        'scenario': scenario_name,
         'dt': dt,
         'objective': objective,
         'clusters': clusters,
-        'admmopt': attr_dict(admmopt),
-        'times': times,
-        'objective_values': objective_values,
-        'results': results,
+        'admmopt': admmopt_dict,
+        'admm_time': solver_time,
+        'admm_objective': objective_value,
+        'cluster_results': cluster_results,
     }
 
 

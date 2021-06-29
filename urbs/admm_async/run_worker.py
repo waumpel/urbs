@@ -2,8 +2,9 @@ from time import sleep, time
 
 import pandas as pd
 
-from urbs.model import create_model
-from .urbs_admm_model import UrbsAdmmModel
+import urbs.model
+from .urbs_admm_model import AdmmStatus, UrbsAdmmModel
+from . import input_output
 
 def log_generator(ID, logqueue):
     """
@@ -37,7 +38,6 @@ def create_model(
     queues,
     result_dir,
     ):
-
     index = shared_lines.index.to_frame()
 
     flow_global = pd.Series({
@@ -54,17 +54,13 @@ def create_model(
     })
     lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
 
-    model = create_model(data_all, timesteps, type='sub',
+    model = urbs.model.create_model(data_all, timesteps, type='sub',
                         sites=sites,
                         data_transmission_boun=shared_lines,
                         data_transmission_int=internal_lines,
                         flow_global=flow_global,
                         lamda=lamda,
                         rho=admmopt.rho)
-
-    sending_queues = {
-        target: queues[target] for target in neighbors
-    }
 
     # enlarge shared_lines (copies of slices of data_all['transmission'])
     shared_lines['cluster_from'] = cluster_from
@@ -79,11 +75,10 @@ def create_model(
         model = model,
         n_clusters = n_clusters,
         neighbors = neighbors,
-        receiving_queue = queues[ID],
+        queues = queues,
         regions = sites,
         result_dir = result_dir,
         scenario_name = scenario_name,
-        sending_queues = sending_queues,
         shared_lines = shared_lines,
         shared_lines_index = index,
     )
@@ -148,8 +143,6 @@ def run_worker(
     log(f'Starting subproblem for regions {", ".join(s.regions)}.')
 
     for nu in range(max_iter):
-        # Flag indicating whether current convergence status has been printed
-        celebration = False
 
         if nu % 10 == 0:
             log(f'Iteration {nu}')
@@ -165,73 +158,75 @@ def run_worker(
         # Take the timestamp now, when objective and primal gap are known for this iteration.
         timestamps.append(time())
 
-        if s.local_convergence():
-            log(f'Converged at iteration {nu}')
-            celebration = True
-
         s.receive()
-        s.send()
+        if s.terminated():
+            log('Received termination msg: Terminating.')
+            break
 
-        if not s.global_convergence() and not s.terminated:
-            while len(s.updated[-1]) < s.n_wait or (s.all_converged()):
+        if s.status_update:
+            s.send_status()
 
-                sleep(s.admmopt.wait_time)
-                full, status = s.receive()
-                if not (full or status):
-                    continue
+        s.send_variables()
 
-                # In case of global convergence or termination, send another msg so that
-                # other processes are notified.
-                # Having this check inside the outer if-statement avoids potentially sending
-                # two messages.
-                if s.global_convergence() or s.terminated:
-                    s.send_status()
-                    break
-
-                # If `s.all_converged() == True`, this cluster may not reiterate, so any
-                # updates to `s.status` must be sent to the neighbors.
-                # (Otherwise, global convergence may not be detected.)
-                if s.all_converged():
-                    if s.status_update:
-                        if not celebration:
-                            log(f'Converged at iteration {nu}')
-                            celebration = True
-                        s.send_status()
-                # No need to send another msg; this cluster will either reiterate or
-                # reach convergence once again.
-                elif celebration:
-                    log('No longer converged')
-                    celebration = False
-
-        if s.global_convergence():
+        if s.all_global_convergence():
             log(f'Global convergence at iteration {nu}!')
             break
 
-        if s.terminated:
-            log('Received termination msg: Terminating.')
+        msg_counter = 0
+
+        while len(s.updated[-1]) < s.n_wait or (s.all_converged()):
+
+            if msg_counter > 100:
+                log('Timeout while checking for messages: Terminating.')
+                s.set_status(AdmmStatus.TERMINATED)
+                s.send_status()
+                break
+
+            sleep(s.admmopt.wait_time)
+            senders = s.receive()
+
+            if s.terminated():
+                log('Received termination msg: Terminating.')
+                break
+            if not senders:
+                continue
+            if s.status_update:
+                s.send_status()
+            if s.all_global_convergence():
+                break
+
+            msg_counter += 1
+
+        if s.all_global_convergence():
+            log(f'Global convergence at iteration {nu}!')
+            break
+
+        if s.terminated():
             break
 
         if nu == max_iter - 1:
             log('Timeout: Terminating.')
-            s.terminated = True
+            s.set_status(AdmmStatus.TERMINATED)
             s.send_status()
             break
 
         s.update_lamda()
         s.update_flow_global()
         s.update_rho()
-        s.choose_max_rho()
 
         s.update_cost_rule()
 
     # save(s.model, os.path.join(s.result_dir, '_{}_'.format(ID),'{}.h5'.format(s.sce)))
-    output.put({
-        'ID': s.ID,
-        'regions': s.regions,
-        'timestamps': timestamps,
-        'objective': s.objective_values,
-        'primal_residual': s.primalgaps,
-        'dual_residual': s.dualgaps,
-        'constraint_mismatch': s.max_mismatch_gaps,
-        'coupling_flows': s.flow_global.tolist(),
-    })
+    cluster_results = input_output.cluster_results_dict(
+        s.ID,
+        s.regions,
+        s.flow_global.tolist(),
+        timestamps,
+        s.objective_values,
+        s.primalgaps,
+        s.dualgaps,
+        s.max_mismatch_gaps,
+        s.rhos,
+        s.raw_dualgaps,
+    )
+    output.put(cluster_results)
