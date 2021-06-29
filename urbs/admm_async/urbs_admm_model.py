@@ -269,7 +269,6 @@ class UrbsAdmmModel(object):
                 if msg.status == AdmmStatus.TERMINATED:
                     self.log(f'Received msg with status {AdmmStatus.TERMINATED}')
                     self.set_status(AdmmStatus.TERMINATED)
-                    return
             else:
                 raise RuntimeError(f'Received a msg of unrecognized type: {type(msg)}')
 
