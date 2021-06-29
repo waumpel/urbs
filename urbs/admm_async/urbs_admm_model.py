@@ -295,16 +295,16 @@ class UrbsAdmmModel(object):
         Calculate the new dual gap.
         """
         self.log('Updating dual gap')
-        raw_gap = self.rho * np.square(self.flow_global - flow_global_old).sum(axis=0)
-        self.raw_dualgaps.append(raw_gap)
+        raw_dualgap = self.rho * np.square(self.flow_global - flow_global_old).sum(axis=0)
+        self.raw_dualgaps.append(raw_dualgap)
 
         if self.admmopt.tolerance_mode == 'absolute':
-            dualgap = raw_gap / min(1, len(self.flow_global))
+            dualgap = raw_dualgap / min(1, len(self.flow_global))
         elif self.admmopt.tolerance_mode == 'relative':
-            norm_old = np.square(flow_global_old).sum(axis=0)
-            if norm_old == 0:
-                norm_old = 1
-            dualgap = raw_gap / norm_old
+            norm = np.square(self.lamda).sum(axis=0)
+            if norm == 0:
+                norm = 1
+            dualgap = raw_dualgap / norm
         self.dualgaps.append(dualgap)
         # No need to call `update_convergence` here; this is done in the next call to
         # `update_primalgap`.
@@ -315,15 +315,18 @@ class UrbsAdmmModel(object):
         Calculate the new primal gap and call `self.update_convergence`.
         """
         self.log('Updating primal gap')
+        raw_primalgap = np.square(self.flows_all - self.flow_global).sum(axis=0)
         if self.admmopt.tolerance_mode == 'absolute':
-            primalgap = (np.square(self.flows_all - self.flow_global).sum(axis=0) /
-                         min(1, len(self.flow_global)))
+            primalgap = raw_primalgap / min(1, len(self.flow_global))
 
         elif self.admmopt.tolerance_mode == 'relative':
-            norm = np.square(self.flow_global).sum(axis=0)
+            norm = max(
+                np.square(self.flows_all).sum(axis=0),
+                np.square(self.flow_global).sum(axis=0)
+            )
             if norm == 0:
                 norm = 1
-            primalgap = np.square(self.flows_all - self.flow_global).sum(axis=0) / norm
+            primalgap = raw_primalgap / norm
 
         self.log(f'Primal gap: {primalgap}')
         self.primalgaps.append(primalgap)

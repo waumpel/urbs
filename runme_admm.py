@@ -64,9 +64,9 @@ admmopt = admm_async.AdmmOption(
     mismatch_tolerance = 0.01,
     rho = 1,
     max_penalty = 10**8,
-    penalty_mult = 1.1,
-    primal_decrease = 0.9,
-    # residual_distance = 1.1,
+    penalty_mult = 2,
+    # primal_decrease = 0.9,
+    residual_distance = 10,
     max_iter = 500,
     tolerance_mode = 'relative',
 )
