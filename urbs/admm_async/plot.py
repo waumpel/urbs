@@ -71,12 +71,12 @@ def data_series(results_dict):
     return series
 
 
-def series_cutoff(series, cutoff):
+def series_cutoff(series, lower, upper):
     new_series = {}
     for name, data in series.items():
         if name == 'avg_iter':
             new_series[name] = data
-        new_series[name] = [max(cutoff, x) for x in data]
+        new_series[name] = [min(upper, max(lower, x)) for x in data]
     return new_series
 
 
@@ -112,7 +112,7 @@ def plot_results(results_dict, result_dir, plot_rho=False, colors=None):
 
     admmopt = results_dict['admmopt']
     n_clusters = len(results_dict['clusters'])
-    series = series_cutoff(data_series(results_dict), 10**(-4))
+    series = series_cutoff(data_series(results_dict), 10**(-4), 10**8)
 
     fig_combined, ax_combined = plt.subplots()
     ax_combined.set_yscale('log')

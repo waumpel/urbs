@@ -67,7 +67,7 @@ admmopt = admm_async.AdmmOption(
     penalty_mult = 2,
     # primal_decrease = 0.9,
     residual_distance = 10,
-    max_iter = 500,
+    max_iter = 200,
     tolerance_mode = 'relative',
 )
 
