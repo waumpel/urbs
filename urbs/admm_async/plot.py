@@ -55,15 +55,18 @@ def data_series(results_dict):
     if 'mismatch' in first:
         max_mismatch = [max(v['mismatch'] for v in d.values()) for d in recent]
         series['max_mismatch'] = max_mismatch
-    if 'obj' in first:
-        sum_obj = [sum(v['obj'] for v in d.values()) for d in recent]
-        series['sum_obj'] = sum_obj
     if 'rho' in first:
         max_rho = [max(v['rho'] for v in d.values()) for d in recent]
         series['max_rho'] = max_rho
     if 'raw_dual' in first:
         max_raw_dual = [max(v['raw_dual'] for v in d.values()) for d in recent]
         series['max_raw_dual'] = max_raw_dual
+
+    if 'centralized_objective' in results_dict and 'obj' in first:
+        centralized_obj = results_dict['centralized_objective']
+        admm_obj = [sum(v['obj'] for v in d.values()) for d in recent]
+        obj_gap = [abs(x - centralized_obj) / centralized_obj for x in admm_obj]
+        series['obj_gap'] = obj_gap
 
     avg_iter = [x / n_clusters for x in range(len(max_primal))]
     series['avg_iter'] = avg_iter
@@ -137,7 +140,7 @@ def plot_results(results_dict, result_dir, plot_rho=False, colors=None):
         ax.plot(series['avg_iter'], series['max_primal'])
         ax_combined.plot(series['avg_iter'], series['max_primal'], label='primal gap', color=colors['primal'])
         if plot_rho:
-            ax.plot(series['avg_iter'], series['max_rho'], color='black')
+            ax.plot(series['avg_iter'], series['max_rho'], color=colors['rho'], label='rho')
         fig.savefig(join(result_dir, 'primal.svg'))
         plt.close(fig)
 
@@ -147,7 +150,7 @@ def plot_results(results_dict, result_dir, plot_rho=False, colors=None):
         ax.plot(series['avg_iter'], series['max_dual'])
         ax_combined.plot(series['avg_iter'], series['max_dual'], label='dualgap', color=colors['dual'])
         if plot_rho:
-            ax.plot(series['avg_iter'], series['max_rho'], color='black')
+            ax.plot(series['avg_iter'], series['max_rho'], color=colors['rho'], label='rho')
         fig.savefig(join(result_dir, 'dual.svg'))
         plt.close(fig)
 
@@ -157,7 +160,7 @@ def plot_results(results_dict, result_dir, plot_rho=False, colors=None):
         ax.plot(series['avg_iter'], series['max_mismatch'])
         ax_combined.plot(series['avg_iter'], series['max_mismatch'], label='mismatch', color=colors['mismatch'])
         if plot_rho:
-            ax.plot(series['avg_iter'], series['max_rho'], color='black')
+            ax.plot(series['avg_iter'], series['max_rho'], color=colors['rho'], label='rho')
         fig.savefig(join(result_dir, 'mismatch.svg'))
         plt.close(fig)
 
@@ -165,27 +168,23 @@ def plot_results(results_dict, result_dir, plot_rho=False, colors=None):
         fig, ax = fig_raw_dual()
         ax.plot(series['avg_iter'], series['max_raw_dual'])
         if plot_rho:
-            ax.plot(series['avg_iter'], series['max_rho'], color='black')
+            ax.plot(series['avg_iter'], series['max_rho'], color=colors['rho'], label='rho')
         fig.savefig(join(result_dir, 'raw_dual.svg'))
         plt.close(fig)
 
-    if 'sum_obj' in series:
-        if 'centralized_objective' in results_dict:
-            centralized_obj = results_dict['centralized_objective']
-            obj_gap = [abs(x - centralized_obj) / centralized_obj for x in series['sum_obj']]
+    if 'obj_gap' in series:
+        fig, ax = fig_objective()
+        ax.axhline(0.01, color='black', linestyle='dashed')
+        ax.plot(series['avg_iter'], series['obj_gap'])
+        ax_combined.plot(series['avg_iter'], series['obj_gap'], label='objective gap', color=colors['obj'])
+        if plot_rho:
+            ax.plot(series['avg_iter'], series['max_rho'], color=colors['rho'], label='rho')
+        fig.savefig(join(result_dir, 'objective.svg'))
+        plt.close(fig)
 
-            fig, ax = fig_objective()
-            ax.axhline(0.01, color='black', linestyle='dashed')
-            ax.plot(series['avg_iter'], obj_gap)
-            ax_combined.plot(series['avg_iter'], obj_gap, label='objective gap', color=colors['obj'])
-            if plot_rho:
-                ax.plot(series['avg_iter'], series['max_rho'], color='black')
-            fig.savefig(join(result_dir, 'objective.svg'))
-            plt.close(fig)
-
-            objective_convergence = beginning_of_the_end(obj_gap, 0.01)
-            if objective_convergence >= 0:
-                ax_combined.axvline(objective_convergence / n_clusters, color=colors['obj'])
+        objective_convergence = beginning_of_the_end(series['obj_gap'], 0.01)
+        if objective_convergence >= 0:
+            ax_combined.axvline(objective_convergence / n_clusters, color=colors['obj'])
 
     if plot_rho:
         ax_combined.plot(series['avg_iter'], series['max_rho'], label='penalty', color=colors['rho'])
