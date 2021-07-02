@@ -6,10 +6,11 @@
 
 from copy import deepcopy
 from enum import Enum
-from math import ceil
+from math import ceil, sqrt
 from os.path import join
 
 import numpy as np
+from numpy.linalg import norm
 import pandas as pd
 import pyomo.environ as pyomo
 from pyomo.environ import SolverFactory
@@ -294,16 +295,16 @@ class UrbsAdmmModel(object):
         Calculate the new dual gap.
         """
         self.log('Updating dual gap')
-        raw_dualgap = self.rho * np.square(self.flow_global - flow_global_old).sum(axis=0)
+        raw_dualgap = self.rho * norm(self.flow_global - flow_global_old)
         self.raw_dualgaps.append(raw_dualgap)
 
         if self.admmopt.tolerance_mode == 'absolute':
             dualgap = raw_dualgap / min(1, len(self.flow_global))
         elif self.admmopt.tolerance_mode == 'relative':
-            norm = np.square(self.lamda).sum(axis=0)
-            if norm == 0:
-                norm = 1
-            dualgap = raw_dualgap / norm
+            normalizer = norm(self.lamda)
+            if normalizer == 0:
+                normalizer = 1
+            dualgap = raw_dualgap / normalizer
         self.dualgaps.append(dualgap)
         # No need to call `update_convergence` here; this is done in the next call to
         # `update_primalgap`.
@@ -314,18 +315,18 @@ class UrbsAdmmModel(object):
         Calculate the new primal gap and call `self.update_convergence`.
         """
         self.log('Updating primal gap')
-        raw_primalgap = np.square(self.flows_all - self.flow_global).sum(axis=0)
+        raw_primalgap = norm(self.flows_all - self.flow_global)
         if self.admmopt.tolerance_mode == 'absolute':
             primalgap = raw_primalgap / min(1, len(self.flow_global))
 
         elif self.admmopt.tolerance_mode == 'relative':
-            norm = max(
-                np.square(self.flows_all).sum(axis=0),
-                np.square(self.flow_global).sum(axis=0)
+            normalizer = max(
+                norm(self.flows_all),
+                norm(self.flow_global)
             )
-            if norm == 0:
-                norm = 1
-            primalgap = raw_primalgap / norm
+            if normalizer == 0:
+                normalizer = 1
+            primalgap = raw_primalgap / normalizer
 
         self.log(f'Primal gap: {primalgap}')
         self.primalgaps.append(primalgap)
@@ -394,17 +395,16 @@ class UrbsAdmmModel(object):
         """
         msg = self.messages[k]
         flow_global_with_k = self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)]
+        raw_mismatch_gap = norm(flow_global_with_k - msg.flow_global)
 
         if self.admmopt.tolerance_mode == 'absolute':
-            mismatch_gap = (np.square(flow_global_with_k - msg.flow_global).sum(axis=0) /
-                            min(1, len(self.flow_global)))
+            mismatch_gap = raw_mismatch_gap / min(1, len(self.flow_global))
+
         elif self.admmopt.tolerance_mode == 'relative':
-            norm = max(np.square(flow_global_with_k).sum(axis=0),
-                       np.square(msg.flow_global).sum(axis=0))
-            if norm == 0:
-                norm = 1
-            mismatch_gap = (np.square(flow_global_with_k - msg.flow_global).sum(axis=0) /
-                            norm)
+            normalizer = max(norm(flow_global_with_k), norm(msg.flow_global))
+            if normalizer == 0:
+                normalizer = 1
+            mismatch_gap = norm(flow_global_with_k - msg.flow_global) / normalizer
 
         return mismatch_gap
 
@@ -456,6 +456,25 @@ class UrbsAdmmModel(object):
                     self.rho = min(self.admmopt.max_penalty, self.rho * self.admmopt.penalty_mult)
                 elif self.dualgaps[-1] > self.admmopt.residual_distance * self.primalgaps[-1]:
                     self.rho = self.rho / self.admmopt.penalty_mult
+
+        elif self.admmopt.penalty_mode == 'adaptive_multiplier':
+            if self.nu > 0:
+                if self.primalgaps[-1] > self.admmopt.mult_adapt * self.admmopt.residual_distance * self.dualgaps[-1]:
+                    mult = self.calc_multiplier()
+                    self.rho = min(self.admmopt.max_penalty, self.rho * mult)
+                elif self.dualgaps[-1] > self.admmopt.residual_distance * self.primalgaps[-1] / self.admmopt.mult_adapt:
+                    mult = self.calc_multiplier()
+                    self.rho = self.rho / mult
+
+
+    def calc_multiplier(self):
+        ratio = sqrt(self.primalgaps[-1] / (self.dualgaps[-1] * self.admmopt.mult_adapt))
+        if 1 <= ratio and ratio < self.admmopt.max_mult:
+            return ratio
+        elif 1 / self.admmopt.max_mult < ratio and ratio < 1:
+            return 1 / ratio
+        else:
+            return self.admmopt.max_mult
 
 
     def retrieve_boundary_flows(self):

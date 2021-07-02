@@ -10,6 +10,8 @@ class AdmmOption(object):
         penalty_mult = None,
         primal_decrease = None,
         residual_distance = None,
+        mult_adapt = None,
+        max_mult = None,
         async_correction = 0,
         wait_percent = 0.01,
         wait_time = 0.1,
@@ -24,23 +26,36 @@ class AdmmOption(object):
             if (max_penalty is None and
                 penalty_mult is None and
                 primal_decrease is None and
-                residual_distance is None):
+                residual_distance is None and
+                mult_adapt is None and
+                max_mult is None):
                 penalty_mode = 'fixed'
             elif (max_penalty is not None and
-                  penalty_mult is not None and
-                  primal_decrease is not None and
-                  residual_distance is None):
-                  penalty_mode = 'increasing'
+                penalty_mult is not None and
+                primal_decrease is not None and
+                residual_distance is None and
+                mult_adapt is None and
+                max_mult is None):
+                penalty_mode = 'increasing'
             elif (max_penalty is not None and
-                  penalty_mult is not None and
-                  primal_decrease is None and
-                  residual_distance is not None):
-                  penalty_mode = 'residual_balancing'
+                penalty_mult is not None and
+                primal_decrease is None and
+                residual_distance is not None and
+                mult_adapt is None and
+                max_mult is None):
+                penalty_mode = 'residual_balancing'
+            elif (max_penalty is not None and
+                penalty_mult is None and
+                primal_decrease is None and
+                residual_distance is not None and
+                mult_adapt is not None and
+                max_mult is not None):
+                penalty_mode = 'adaptive_multiplier'
             else:
                 raise ValueError("Cannot infer penalty_mode")
 
-        if penalty_mode not in ['fixed', 'increasing', 'residual_balancing']:
-            raise ValueError("tolerance_mode must be 'fixed', 'increasing' or 'residual_balancing'")
+        if penalty_mode not in ['fixed', 'increasing', 'residual_balancing', 'adaptive_multiplier']:
+            raise ValueError("tolerance_mode must be 'fixed', 'increasing', 'residual_balancing' or 'adaptive_multiplier'")
 
         if penalty_mode == 'fixed':
             if max_penalty is not None:
@@ -67,8 +82,8 @@ class AdmmOption(object):
         elif penalty_mode == 'residual_balancing':
             if max_penalty is None:
                 raise ValueError("max_penalty is required when using penalty_mode 'residual_balancing'")
-            elif max_penalty <= rho:
-                raise ValueError("max_penalty must be larger than rho")
+            elif max_penalty < rho:
+                raise ValueError("max_penalty must be larger than or equal to rho")
             if penalty_mult is None:
                 penalty_mult = 1.1
             elif penalty_mult <= 1:
@@ -77,6 +92,24 @@ class AdmmOption(object):
                 residual_distance = 1.1
             elif residual_distance <= 0:
                 raise ValueError("residual_distance must be larger than 0")
+
+        elif penalty_mode == 'adaptive_multiplier':
+            if max_penalty is None:
+                raise ValueError("max_penalty is required when using penalty_mode 'adaptive_multiplier'")
+            elif max_penalty < rho:
+                raise ValueError("max_penalty must be larger than or equal to rho")
+            if residual_distance is None:
+                residual_distance = 1.1
+            elif residual_distance <= 0:
+                raise ValueError("residual_distance must be larger than 0")
+            if mult_adapt is None:
+                mult_adapt = 1
+            elif mult_adapt <= 0:
+                raise ValueError("mult_adapt must be positive")
+            if max_mult is None:
+                max_mult = 10**8
+            elif max_mult <= 1:
+                raise ValueError("max_mult must be larger than 1")
 
 
         if primal_tolerance <= 0:
@@ -104,6 +137,8 @@ class AdmmOption(object):
         self.penalty_mult = penalty_mult
         self.primal_decrease = primal_decrease
         self.residual_distance = residual_distance
+        self.mult_adapt = mult_adapt
+        self.max_mult = max_mult
         self.async_correction = async_correction
         self.wait_percent = wait_percent
         self.wait_time = wait_time

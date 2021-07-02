@@ -64,12 +64,29 @@ admmopt = admm_async.AdmmOption(
     mismatch_tolerance = 0.01,
     rho = 1,
     max_penalty = 10**8,
-    penalty_mult = 2,
-    # primal_decrease = 0.9,
-    residual_distance = 10,
+    penalty_mult = 1.1,
+    primal_decrease = 0.9,
+    # residual_distance = 10,
+    # mult_adapt = 1,
+    # max_mult = 10**8,
     max_iter = 200,
     tolerance_mode = 'relative',
 )
+
+# admmopt = admm_async.AdmmOption(
+#     primal_tolerance = 0.01,
+#     dual_tolerance = 0.01,
+#     mismatch_tolerance = 0.01,
+#     rho = 1,
+#     max_penalty = 10**8,
+#     # penalty_mult = 2,
+#     # primal_decrease = 0.9,
+#     residual_distance = 10,
+#     mult_adapt = 1,
+#     max_mult = 10**8,
+#     max_iter = 200,
+#     tolerance_mode = 'relative',
+# )
 
 if __name__ == '__main__':
     freeze_support()
