@@ -424,7 +424,7 @@ class UrbsAdmmModel(object):
         dual = self.dualgaps[-1] < self.admmopt.dual_tolerance
         mismatch = all(self.mismatch_convergence.values())
         self.log(f'primal: {primal} dual: {dual} mismatch: {mismatch}')
-        new_value = primal and dual and mismatch
+        new_value = primal and mismatch
 
         if new_value == old_value:
             self.log('Still converged' if new_value else 'Still not converged')
