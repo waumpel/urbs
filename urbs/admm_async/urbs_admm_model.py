@@ -468,7 +468,12 @@ class UrbsAdmmModel(object):
 
 
     def calc_multiplier(self):
-        ratio = sqrt(self.primalgaps[-1] / (self.dualgaps[-1] * self.admmopt.mult_adapt))
+        dualgap = self.dualgaps[-1]
+        if dualgap == 0:
+            dualgap = 1
+
+        ratio = sqrt(self.primalgaps[-1] / (self.dualgap * self.admmopt.mult_adapt))
+
         if 1 <= ratio and ratio < self.admmopt.max_mult:
             return ratio
         elif 1 / self.admmopt.max_mult < ratio and ratio < 1:

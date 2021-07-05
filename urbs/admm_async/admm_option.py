@@ -99,7 +99,7 @@ class AdmmOption(object):
             elif max_penalty < rho:
                 raise ValueError("max_penalty must be larger than or equal to rho")
             if residual_distance is None:
-                residual_distance = 1.1
+                residual_distance = 1
             elif residual_distance <= 0:
                 raise ValueError("residual_distance must be larger than 0")
             if mult_adapt is None:
@@ -107,7 +107,7 @@ class AdmmOption(object):
             elif mult_adapt <= 0:
                 raise ValueError("mult_adapt must be positive")
             if max_mult is None:
-                max_mult = 10**8
+                max_mult = 10**2
             elif max_mult <= 1:
                 raise ValueError("max_mult must be larger than 1")
 
