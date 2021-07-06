@@ -9,18 +9,6 @@ dirs = [
     if isdir(join(result_dir, f)) and io.results_path('') in listdir(join(result_dir, f))
 ]
 
-# files = listdir(result_dir)
-# print('files')
-# print(files)
-# dirs = [f for f in files if isdir(f)]
-# print('dirs')
-# print(dirs)
-# for f in dirs:
-#     print(f)
-#     print(listdir(f))
-#     print(io.results_path())
-#     print(io.results_path() in listdir(f))
-
 stats = []
 
 for name in dirs:
