@@ -411,7 +411,7 @@ class UrbsAdmmModel(object):
 
     def update_convergence(self):
         """
-        Check for local convergence, i.e. if primal gap, dual gap, and constraint mismatch
+        Check for local convergence, i.e. if primal gap, and constraint mismatch
         with all neighbors are below their respective tolerance thresholds.
 
         Call `check_global_convergence` if necessary.
