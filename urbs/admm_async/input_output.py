@@ -89,3 +89,29 @@ def load_results(result_dir):
         results_dict = json.load(file)
 
     return results_dict
+
+
+def overview_path(result_dir):
+    return join(result_dir, 'overview.json')
+
+
+def save_overview(stats, result_dir):
+    """
+    ## Arguments
+    * stats: A list of dicts with the keys `name`, `time` and `gap`.
+    """
+    path = overview_path(result_dir)
+
+    fastest = sorted(stats, key=lambda x: x['time'])[0]
+    best = sorted(stats, key=lambda x: x['gap'])[0]
+    good = filter(lambda x: x['gap'] < 1, stats)
+    fastest_good = sorted(good, key=lambda x: x['time'])[0]
+
+    overview = {
+        'fastest': fastest,
+        'best': best,
+        'fastest_good': fastest_good,
+    }
+
+    with open(path, 'w', encoding='utf8') as file:
+        json.dump(overview, file, indent=4)
