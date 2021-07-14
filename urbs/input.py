@@ -244,7 +244,7 @@ def pyomo_model_prep(data_all, timesteps, sites, type, data_transmission=None):
                         'Environmental']
     #if type == 'sub':
         #m.cost_type_list.extend(['ADMM_Linear','ADMM_Quadratic'])
-        
+
     # Converting Data frames to dict
     # Data frames that need to be modified will be converted after modification
     m.site_dict = data['site'].to_dict()
@@ -296,7 +296,7 @@ def pyomo_model_prep(data_all, timesteps, sites, type, data_transmission=None):
         min_fraction = data['process']['min-fraction']
         min_fraction = min_fraction[min_fraction > 0]
         m.min_fraction_dict = min_fraction.to_dict()
-    
+
         # input ratios for partial efficiencies
         # only keep those entries whose values are
         # a) positive and
@@ -305,7 +305,7 @@ def pyomo_model_prep(data_all, timesteps, sites, type, data_transmission=None):
         r_in_min_fraction = r_in_min_fraction['ratio-min']
         r_in_min_fraction = r_in_min_fraction[r_in_min_fraction > 0]
         m.r_in_min_fraction_dict = r_in_min_fraction.to_dict()
-    
+
         # output ratios for partial efficiencies
         # only keep those entries whose values are
         # a) positive and
@@ -579,13 +579,20 @@ def pyomo_model_prep(data_all, timesteps, sites, type, data_transmission=None):
         m.transmission_dict = transmission.to_dict()
         # DCPF transmission lines are bidirectional and do not have symmetry
         # fix-cost and inv-cost should be multiplied by 2
-        if m.mode['dpf']:
-            transmission_dc = transmission[transmission['reactance'] > 0]
+        if m.mode['acpf']:
+            transmission_ac = transmission[transmission['resistance'] > 0]
+            m.transmission_ac_dict = transmission_ac.to_dict()
+            for entry in m.transmission_ac_dict['resistance']:
+                m.transmission_dict['inv-cost'][entry] = 2 * m.transmission_dict['inv-cost'][entry]
+                m.transmission_dict['fix-cost'][entry] = 2 * m.transmission_dict['fix-cost'][entry]
+
+        if m.mode['dcpf']:
+            transmission_dc = transmission[(transmission['reactance'] > 0) & ((transmission['resistance'] == 0) | pd.isna(transmission['resistance']))]
             m.transmission_dc_dict = transmission_dc.to_dict()
-            for t in m.transmission_dc_dict['reactance']:
-                m.transmission_dict['inv-cost'][t] = 2 * m.transmission_dict['inv-cost'][t]
-                m.transmission_dict['fix-cost'][t] = 2 * m.transmission_dict['fix-cost'][t]
-                
+            for entry in m.transmission_dc_dict['reactance']:
+                m.transmission_dict['inv-cost'][entry] = 2 * m.transmission_dict['inv-cost'][entry]
+                m.transmission_dict['fix-cost'][entry] = 2 * m.transmission_dict['fix-cost'][entry]
+
     if m.mode['sto']:
         m.storage_dict = storage.to_dict()
 
@@ -705,14 +712,14 @@ def add_carbon_supplier(data_all,clusters):
     year = date.today().year
     # add site Carbon_site
     data_all['site'].loc[(year,'Carbon_site'),:]=np.nan
-    
-    
+
+
     #add dummy process X to Carbon_site (to avoid errors)
     #data_all['process'].loc[year,'Carbon_site','X']=(0,0,np.inf,0,0,0,0,0,0,0,0,1,np.nan,np.nan,np.nan,np.nan)
-    
+
     #add dummy storage X to Carbon_site (to avoid errors)
     #data_all['storage'].loc[year,'Carbon_site','X','Carbon']=(0,0,np.inf,0,0,np.inf,0,1,0,0,0,0,0,0,1,0,0,0,np.nan,np.nan,np.nan)
-    
+
     # add carbon-connection from Carbon_site to the first site in each cluster
     for cluster in clusters:
         data_all['transmission'].loc[year,'Carbon_site',cluster[0],'CO2_line','Carbon'] = (1, 0, 0, 0, 0, 0, np.inf, 0.01, 1, np.nan, np.nan, np.nan, np.nan)
@@ -724,7 +731,7 @@ def add_carbon_supplier(data_all,clusters):
 
     # add commodity Carbon to Carbon_site
     data_all['commodity'].loc[year,'Carbon_site','Carbon','Stock']=(0,data_all['global_prop'].loc[2021].loc['CO2 limit','value'],np.inf)
-     
+
     # add free-movement carbon-connections within each cluster
     for cluster in clusters:
         if len(cluster) > 1:

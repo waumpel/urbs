@@ -1,6 +1,7 @@
 import math
 from datetime import datetime
 from .features import *
+from .features.transmission import *
 from .input import *
 import pyomo.environ as pyomo
 
@@ -161,6 +162,21 @@ def create_model(data_all,
         within=m.stf * m.sit,
         initialize=tuple(m.site_dict["area"].keys()),
         doc='Combinations of support timeframes and sites')
+
+    # tuple sets relevant for ac rules
+    m.sit_tuples_ac = pyomo.Set(
+        within=m.stf * m.sit,
+        initialize=[(stf, site)
+                    for (stf, site) in m.sit_tuples
+                    if m.site_dict['min-voltage'][(stf, site)] > 0],
+        doc='Combinations of support timeframes and sites with ac characteristics')
+    m.sit_slackbus = pyomo.Set(
+        within=m.stf * m.sit,
+        initialize=[(stf, site)
+                    for (stf, site) in m.sit_tuples
+                    if m.site_dict['ref-node'][(stf, site)] == 1],
+        doc='Set of all reference nodes in defined subsystems')
+
     m.com_tuples = pyomo.Set(
         within=m.stf * m.sit * m.com * m.com_type,
         initialize=tuple(m.commodity_dict["price"].keys()),
@@ -243,6 +259,13 @@ def create_model(data_all,
                     if process == pro and s == stf],
         doc='Commodities produced by process by site, e.g. (2020,Mid,PV,Elec)')
 
+    m.pro_output_tuples_reactive = pyomo.Set(
+        within=m.stf * m.sit * m.pro,
+        initialize=[(stf, site, process)
+                    for (stf, site, process) in m.pro_tuples
+                    if m.process_dict['pf-min'][(stf, site, process)] > 0],
+        doc='Commodities produced by process by site, e.g. (2020,Mid,PV,Elec-Reactive)')
+
     # process tuples for maximum gradient feature
     m.pro_rampupgrad_tuples = pyomo.Set(
         within=m.stf * m.sit * m.pro,
@@ -295,7 +318,7 @@ def create_model(data_all,
         doc='Power flow of commodity into process (MW) per timestep')
     m.e_pro_out = pyomo.Var(
         m.tm, m.pro_output_tuples,
-        within=pyomo.NonNegativeReals,
+        within=pyomo.Reals, #zuvor NonNegativeReals
         doc='Power flow out of process (MW) per timestep')
 
     # process new capacity expansion unit
@@ -307,10 +330,12 @@ def create_model(data_all,
     # Add additional features
     # called features are declared in distinct files in features folder
     if m.mode['tra']:
-        if m.mode['dpf']:
-            m = add_transmission_dc(m)
+        if m.mode['acpf']:
+            m = add_transmission_ac(m, data_transmission_boun)
+        elif m.mode['dcpf']:
+            m = add_transmission_dc(m, data_transmission_boun)
         else:
-            m = add_transmission(m,data_transmission_boun)
+            m = add_transmission(m, data_transmission_boun)
     if m.mode['sto']:
         m = add_storage(m)
     if m.mode['dsm']:
@@ -406,6 +431,19 @@ def create_model(data_all,
         m.pro_timevar_output_tuples,
         rule=def_process_output_rule,
         doc='process output = process throughput * output ratio')
+
+    # constraint für die Erzeugung von Blindleistung
+    m.def_process_output_reactive1 = pyomo.Constraint(
+        m.tm, m.pro_output_tuples_reactive,
+        rule=def_process_output_reactive_rule1,
+        doc='Q <= P * tan(phi_min)')
+
+    # constraint für die Erzeugung von Blindleistung
+    m.def_process_output_reactive2 = pyomo.Constraint(
+        m.tm, m.pro_output_tuples_reactive,
+        rule=def_process_output_reactive_rule2,
+        doc='Q >= -tan(phi_min)')
+
     m.def_intermittent_supply = pyomo.Constraint(
         m.tm, m.pro_input_tuples,
         rule=def_intermittent_supply_rule,
@@ -647,9 +685,20 @@ def def_process_input_rule(m, tm, stf, sit, pro, com):
 
 # process output power = process throughput * output ratio
 def def_process_output_rule(m, tm, stf, sit, pro, com):
-    return (m.e_pro_out[tm, stf, sit, pro, com] ==
-            m.tau_pro[tm, stf, sit, pro] * m.r_out_dict[(stf, pro, com)])
+    if com == 'electricity-reactive':
+        return pyomo.Constraint.Skip #todo: geht das schöner?
+    else:
+        return (m.e_pro_out[tm, stf, sit, pro, com] ==
+                m.tau_pro[tm, stf, sit, pro] * m.r_out_dict[(stf, pro, com)])
 
+
+def def_process_output_reactive_rule1(m, tm, stf, sit, pro):
+    return (m.e_pro_out[tm, stf, sit, pro, 'electricity-reactive'] <=
+             m.e_pro_out[tm, stf, sit, pro, 'electricity'] * math.tan(math.acos(m.process_dict['pf-min'][(stf, sit, pro)])))
+
+def def_process_output_reactive_rule2(m, tm, stf, sit, pro):
+    return (m.e_pro_out[tm, stf, sit, pro, 'electricity-reactive'] >=
+             -m.e_pro_out[tm, stf, sit, pro, 'electricity'] * math.tan(math.acos(m.process_dict['pf-min'][(stf, sit, pro)])))
 
 # process input (for supim commodity) = process capacity * timeseries
 def def_intermittent_supply_rule(m, tm, stf, sit, pro, coin):
