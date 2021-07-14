@@ -38,7 +38,8 @@ def identify_mode(data):
                 'tra': False,
                 'sto-c': False,
                 'sto-p': False},
-        'transdist': False              # transmission-distribution interface
+        'transdist': False,             # transmission-distribution interface
+        'tsam': False,
         # 'inv_mip':{
         #         'pro': False,
         #         'tra': False,

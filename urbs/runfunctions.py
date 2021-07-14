@@ -8,6 +8,7 @@ from .plot import *
 from .input import *
 from .validation import *
 from .saveload import *
+from .features import *
 
 
 def prepare_result_directory(result_name):
@@ -52,9 +53,9 @@ def setup_solver(optim, logfile='solver.log'):
 
 
 def run_scenario(input_files, Solver, timesteps, scenario, result_dir, dt,
-                 objective, plot_tuples=None,  plot_sites_name=None,
+                 objective, microgrid_files = None, plot_tuples=None,  plot_sites_name=None,
                  plot_periods=None, report_tuples=None,
-                 report_sites_name=None):
+                 cross_scenario_data=None, report_sites_name=None):
     """ run an urbs model for given input, time steps and scenario
     Args:
         - input_files: filenames of input Excel spreadsheets
@@ -83,12 +84,25 @@ def run_scenario(input_files, Solver, timesteps, scenario, result_dir, dt,
     # scenario name, read and modify data for scenario
     sce = scenario.__name__
     data = read_input(input_files, year)
-    data = scenario(data)
+    data, cross_scenario_data = scenario(data, cross_scenario_data)
     validate_input(data)
     validate_dc_objective(data, objective)
 
+    # read and modify microgrid data
+    mode = identify_mode(data)
+    if mode['transdist']:
+        microgrid_data_initial =[]
+        for i, microgrid_file in enumerate(microgrid_files):
+            microgrid_data_initial.append(read_input(microgrid_file, year))
+            validate_input(microgrid_data_initial[i])
+        # join microgrid data to model data
+        data, cross_scenario_data = create_transdist_data(data, microgrid_data_initial, cross_scenario_data)
+    elif mode['acpf']:
+        add_reactive_transmission_lines(data)
+        add_reactive_output_ratios(data)
+
     # create model
-    prob = create_model(data, dt, timesteps, objective)
+    prob = create_model(data, timesteps, dt, objective)
     prob.write('model.lp', io_options={'symbolic_solver_labels':True})
 
     # refresh time stamp string and create filename for logfile
@@ -121,4 +135,4 @@ def run_scenario(input_files, Solver, timesteps, scenario, result_dir, dt,
         periods=plot_periods,
         figure_size=(24, 9))
 
-    return prob
+    return prob, cross_scenario_data

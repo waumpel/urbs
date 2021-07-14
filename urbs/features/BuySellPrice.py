@@ -180,13 +180,22 @@ def revenue_costs(m):
             for tm in m.tm
             for c in sell_tuples)
     except KeyError:
-        return -sum(
-            m.e_co_sell[(tm,) + c] *
-            m.buy_sell_price_dict[c[2], ][(c[0], tm)] * m.weight *
-            m.commodity_dict['price'][c] *
-            m.commodity_dict['cost_factor'][c]
-            for tm in m.tm
-            for c in sell_tuples)
+        try:
+            return -sum(
+                m.e_co_sell[(tm,) + c] *
+                m.buy_sell_price_dict[c[2], ][(c[0], tm)] * m.weight *
+                m.commodity_dict['price'][c] *
+                m.commodity_dict['cost_factor'][c]
+                for tm in m.tm
+                for c in sell_tuples)
+        except KeyError:
+            return -sum(
+                m.e_co_sell[(tm,) + c] *
+                m.buy_sell_price_dict[c[1], c[2]][(c[0], tm)] * m.weight *
+                m.commodity_dict['price'][c] *
+                m.commodity_dict['cost_factor'][c]
+                for tm in m.tm
+                for c in sell_tuples)
 
 
 def purchase_costs(m):
@@ -200,10 +209,20 @@ def purchase_costs(m):
             for tm in m.tm
             for c in buy_tuples)
     except KeyError:
-        return sum(
-            m.e_co_buy[(tm,) + c] *
-            m.buy_sell_price_dict[c[2], ][(c[0], tm)] * m.weight *
-            m.commodity_dict['price'][c] *
-            m.commodity_dict['cost_factor'][c]
-            for tm in m.tm
-            for c in buy_tuples)
+        try:
+            return sum(
+                m.e_co_buy[(tm,) + c] *
+                m.buy_sell_price_dict[c[2], ][(c[0], tm)] * m.weight *
+                m.commodity_dict['price'][c] *
+                m.commodity_dict['cost_factor'][c]
+                for tm in m.tm
+                for c in buy_tuples)
+        except KeyError:
+            return sum(
+                m.e_co_buy[(tm,) + c] *
+                m.buy_sell_price_dict[c[1],c[2]][(c[0], tm)] * m.weight *
+                m.commodity_dict['price'][c] *
+                m.commodity_dict['cost_factor'][c]
+                for tm in m.tm
+                for c in buy_tuples)
+
