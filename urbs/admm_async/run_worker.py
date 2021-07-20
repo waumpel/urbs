@@ -20,7 +20,7 @@ def log_generator(ID, logqueue):
 
 
 def create_model(
-    ID,
+    ID, # TODO: remove
     data_all,
     scenario_name,
     timesteps,
@@ -38,6 +38,8 @@ def create_model(
     queues,
     result_dir,
     ):
+
+    print(f'Creating model {ID} for sites {sites}') # TODO: remove
     index = shared_lines.index.to_frame()
 
     flow_global = pd.Series({
@@ -60,7 +62,8 @@ def create_model(
                         data_transmission_int=internal_lines,
                         flow_global=flow_global,
                         lamda=lamda,
-                        rho=admmopt.rho)
+                        rho=admmopt.rho,
+                        ID=ID) # TODO: remove ID parameter
 
     # enlarge shared_lines (copies of slices of data_all['transmission'])
     shared_lines['cluster_from'] = cluster_from
@@ -85,6 +88,7 @@ def create_model(
 
 
 def run_worker(
+    s, # TODO: remove
     ID,
     data_all,
     scenario_name,
@@ -115,25 +119,26 @@ def run_worker(
                   file by the master process.
     """
 
-    s = create_model(
-        ID,
-        data_all,
-        scenario_name,
-        timesteps,
-        year,
-        initial_values,
-        admmopt,
-        n_clusters,
-        sites,
-        neighbors,
-        shared_lines,
-        internal_lines,
-        cluster_from,
-        cluster_to,
-        neighbor_cluster,
-        queues,
-        result_dir,
-    )
+    # TODO: switch back to parallel model creation
+    # s = create_model(
+    #     ID,
+    #     data_all,
+    #     scenario_name,
+    #     timesteps,
+    #     year,
+    #     initial_values,
+    #     admmopt,
+    #     n_clusters,
+    #     sites,
+    #     neighbors,
+    #     shared_lines,
+    #     internal_lines,
+    #     cluster_from,
+    #     cluster_to,
+    #     neighbor_cluster,
+    #     queues,
+    #     result_dir,
+    # )
 
     max_iter = s.admmopt.max_iter
     solver_times = [] # Stores the duration of each solver iteration

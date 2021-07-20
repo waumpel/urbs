@@ -96,7 +96,7 @@ def run_scenario(input_files, Solver, timesteps, scenario, result_dir, dt,
             microgrid_data_initial.append(read_input(microgrid_file, year))
             validate_input(microgrid_data_initial[i])
         # join microgrid data to model data
-        data, cross_scenario_data = create_transdist_data(data, microgrid_data_initial, cross_scenario_data)
+        data, cross_scenario_data, _ = create_transdist_data(data, microgrid_data_initial, cross_scenario_data)
     elif mode['acpf']:
         add_reactive_transmission_lines(data)
         add_reactive_output_ratios(data)

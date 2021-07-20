@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import glob
+from pandas.core.frame import DataFrame
 from xlrd import XLRDError
 from pyomo.environ import ConcreteModel
 from .features.modelhelper import *
@@ -182,7 +183,7 @@ def read_input(input_files, year):
 
 
 # preparing the pyomo model
-def pyomo_model_prep(data_all, timesteps, sites, type, data_transmission=None):
+def pyomo_model_prep(data_all, timesteps, sites, type, data_transmission=None, ID=None): # TODO: remove ID parameter
     '''Performs calculations on the data frames in dictionary "data" for
     further usage by the model.
 
@@ -215,11 +216,22 @@ def pyomo_model_prep(data_all, timesteps, sites, type, data_transmission=None):
         data['storage'] = data_all['storage'].loc(axis=0)[:,sites]
         if sites != ['Carbon_site']:
             data['demand'] = data_all['demand'][sites]
-            data['supim'] = data_all['supim'][sites]
+
+            supim_sites = [
+                site for site in sites
+                if site in data_all['supim'].columns.get_level_values(0)
+            ]
+            data['supim'] = data_all['supim'][supim_sites]
         else:
             data['demand'] = pd.DataFrame()
             data['supim'] = pd.DataFrame()
         data['transmission'] = data_transmission
+
+        eff_factor_sites = [
+            site for site in sites
+            if site in data_all['eff_factor'].columns.get_level_values(0)
+        ]
+        data['eff_factor'] = data_all['eff_factor'][eff_factor_sites]
     else:
         m.global_prop = data_all['global_prop'].drop('description', axis=1)
         data['site'] = data_all['site']
@@ -233,6 +245,10 @@ def pyomo_model_prep(data_all, timesteps, sites, type, data_transmission=None):
     m.global_prop = data_all['global_prop']
     commodity = data['commodity']
     process = data['process']
+
+    with open(f'temp/{ID}-pyomo_model_prep-process.txt', 'w', encoding='utf-8') as f:
+        f.write(process.to_string())
+
     m.mode = identify_mode(data)
     # create no expansion dataframes
     pro_const_cap = process[process['inst-cap'] == process['cap-up']]
@@ -720,10 +736,54 @@ def add_carbon_supplier(data_all,clusters):
     #add dummy storage X to Carbon_site (to avoid errors)
     #data_all['storage'].loc[year,'Carbon_site','X','Carbon']=(0,0,np.inf,0,0,np.inf,0,1,0,0,0,0,0,0,1,0,0,0,np.nan,np.nan,np.nan)
 
+    # TODO: create one dataframe with all transmissions, then append it
+
+    names = ['support_timeframe', 'Site In', 'Site Out', 'Transmission', 'Commodity']
+    data_to = {
+        'eff': 1,
+        'inv-cost': 0,
+        'fix-cost': 0,
+        'var-cost': 0,
+        'inst-cap': 0,
+        'cap-lo': 0,
+        'cap-up': np.inf,
+        'cap-Q/P-ratio': np.nan,
+        'wacc': 0.01,
+        'depreciation': 1,
+        'resistance': np.nan,
+        'reactance': np.nan,
+        'difflimit': np.nan,
+        'tra-block': np.nan,
+    }
+    data_from = {
+        'eff': 1,
+        'inv-cost': 0,
+        'fix-cost': 0,
+        'var-cost': 999,
+        'inst-cap': 0,
+        'cap-lo': 0,
+        'cap-up': np.inf,
+        'cap-Q/P-ratio': np.nan,
+        'wacc': 0.01,
+        'depreciation': 1,
+        'resistance': np.nan,
+        'reactance': np.nan,
+        'difflimit': np.nan,
+        'tra-block': np.nan,
+    }
+
     # add carbon-connection from Carbon_site to the first site in each cluster
     for cluster in clusters:
-        data_all['transmission'].loc[year,'Carbon_site',cluster[0],'CO2_line','Carbon'] = (1, 0, 0, 0, 0, 0, np.inf, 0.01, 1, np.nan, np.nan, np.nan, np.nan)
-        data_all['transmission'].loc[year,cluster[0],'Carbon_site','CO2_line','Carbon'] = (1, 0, 0, 999, 0, 0, np.inf, 0.01, 1, np.nan, np.nan, np.nan, np.nan)
+        levels = (year, 'Carbon_site', cluster[0], 'CO2_line', 'Carbon')
+        index = pd.MultiIndex.from_tuples([levels], names=names)
+        df = DataFrame(data_to, index)
+        data_all['transmission'].append(df)
+
+        levels = (year, cluster[0], 'Carbon_site', 'CO2_line', 'Carbon')
+        index = pd.MultiIndex.from_tuples([levels], names=names)
+        df = DataFrame(data_from, index)
+        data_all['transmission'].append(df)
+
         # add Carbon commodity to each site
         for site in cluster:
             data_all['commodity'].loc[year,site,'Carbon','Stock']=(0,0,0)
@@ -736,8 +796,16 @@ def add_carbon_supplier(data_all,clusters):
     for cluster in clusters:
         if len(cluster) > 1:
             for site in cluster[1:]:
-                data_all['transmission'].loc[year,cluster[0],site,'CO2_line','Carbon'] = (1, 0, 0, 0, 0, 0, np.inf, 0.01, 1, np.nan, np.nan, np.nan, np.nan)
-                data_all['transmission'].loc[year,site,cluster[0],'CO2_line','Carbon'] = (1, 0, 0, 999, 0, 0, np.inf, 0.01, 1, np.nan, np.nan, np.nan, np.nan)
+                levels = (year, cluster[0], site, 'CO2_line', 'Carbon')
+                index = pd.MultiIndex.from_tuples([levels], names=names)
+                df = DataFrame(data_to, index)
+                data_all['transmission'].append(df)
+
+                levels = (year, site, cluster[0], 'CO2_line', 'Carbon')
+                index = pd.MultiIndex.from_tuples([levels], names=names)
+                df = DataFrame(data_from, index)
+                data_all['transmission'].append(df)
+
     #import pdb;pdb.set_trace()
     for (y,a,b,c) in data_all['process_commodity'].index.values:
         if b == 'CO2' and c == 'Out':

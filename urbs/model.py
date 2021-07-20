@@ -16,7 +16,8 @@ def create_model(data_all,
                  data_transmission_int=None,
                  flow_global=None,
                  lamda=None,
-                 rho=None):
+                 rho=None,
+                 ID=None): # TODO: remove
     """Create a pyomo ConcreteModel urbs object from given input data.
 
     Args:
@@ -37,7 +38,7 @@ def create_model(data_all,
         timesteps = data_all['demand'].index.tolist()
 
     if type == 'sub':
-        m, data = pyomo_model_prep(data_all, timesteps, sites, type, pd.concat([data_transmission_boun,data_transmission_int]))  # preparing pyomo model
+        m, data = pyomo_model_prep(data_all, timesteps, sites, type, pd.concat([data_transmission_boun,data_transmission_int]), ID=ID)  # preparing pyomo model # TODO: remove ID parameter
     elif type =='normal':
         m, data = pyomo_model_prep(data_all, timesteps, sites, type)
 

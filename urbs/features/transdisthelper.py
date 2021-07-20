@@ -19,9 +19,12 @@ def create_transdist_data(data, microgrid_data_initial, cross_scenario_data):
     microgrid_set_list = build_set_list(data)
     microgrid_multiplicator_list = build_multiplicator_list(data)
 
+    new_sites = {}
+
     # process microgrid data for every region and microgrid type
     for set_number, set in enumerate(microgrid_set_list):  # top region microgrid setting
         top_region_name = data['site'].index.get_level_values(1)[set_number]
+        new_sites[top_region_name] = []
         for type_nr, quantity_nr in enumerate(set):  # Auflistung des settings
             microgrid_entries = microgrid_data_initial[type_nr]['site'].index.get_level_values(1)
             n = 0
@@ -29,7 +32,8 @@ def create_transdist_data(data, microgrid_data_initial, cross_scenario_data):
                 microgrid_data_input = copy.deepcopy(microgrid_data_initial[type_nr])
                 for entry in microgrid_entries:
                     # microgrids are derived from the predefined microgrid types and setting
-                    create_microgrid_data(microgrid_data_input, entry, n, top_region_name)
+                    new_name = create_microgrid_data(microgrid_data_input, entry, n, top_region_name)
+                    new_sites[top_region_name].append(new_name)
                 n += 1
                 # scale capacities, commodities, demand, areas and the loadprofile with multiplicator number of the microgrid
                 microgrid_data_input, demand_shift = multiplicator_scaling(mode, data, microgrid_data_input,
@@ -49,7 +53,7 @@ def create_transdist_data(data, microgrid_data_initial, cross_scenario_data):
                 concatenate_with_micros(data, microgrid_data_input)
     if data['transdist_share'].values[0] == 1:
         store_additional_demand(cross_scenario_data, mobility_transmission_shift, heat_transmission_shift)
-    return data, cross_scenario_data
+    return data, cross_scenario_data, new_sites
 
 def build_set_list(data):
     transdist_dict = data['site'].drop(columns=['base-voltage','area'], axis=1).to_dict()
@@ -69,37 +73,38 @@ def build_multiplicator_list(data):
 
 # In this function according to the microgrid-setting list and the defined microgrid types, microgrid data are created
 def create_microgrid_data(microgrid_data_input, entry, n, top_region_name):
+    new_name = entry + str(n + 1) + '_' + top_region_name
     microgrid_data_input['site'].rename(
-        index={entry: entry + str(n + 1) + '_' + top_region_name}, level=1, inplace=True)
+        index={entry: new_name}, level=1, inplace=True)
     microgrid_data_input['commodity'].rename(
-        index={entry: entry + str(n + 1) + '_' + top_region_name}, level=1, inplace=True)
+        index={entry: new_name}, level=1, inplace=True)
     microgrid_data_input['process'].rename(
-        index={entry: entry + str(n + 1) + '_' + top_region_name}, level=1, inplace=True)
+        index={entry: new_name}, level=1, inplace=True)
     microgrid_data_input['process_commodity'].rename(
-        index={entry: entry + str(n + 1) + '_' + top_region_name}, level=1, inplace=True)
+        index={entry: new_name}, level=1, inplace=True)
     microgrid_data_input['demand'].rename(
-        columns={entry: entry + str(n + 1) + '_' + top_region_name}, level=0, inplace=True)
+        columns={entry: new_name}, level=0, inplace=True)
     microgrid_data_input['supim'].rename(
-        columns={entry: entry + str(n + 1) + '_' + top_region_name}, level=0, inplace=True)
+        columns={entry: new_name}, level=0, inplace=True)
     microgrid_data_input['storage'].rename(
-        index={entry: entry + str(n + 1) + '_' + top_region_name}, level=1, inplace=True)
+        index={entry: new_name}, level=1, inplace=True)
     microgrid_data_input['dsm'].rename(
-        index={entry: entry + str(n + 1) + '_' + top_region_name}, level=1, inplace=True)
+        index={entry: new_name}, level=1, inplace=True)
     microgrid_data_input['buy_sell_price'].rename(
-        columns={entry: entry + str(n + 1) + '_' + top_region_name}, level=0, inplace=True)
+        columns={entry: new_name}, level=0, inplace=True)
     microgrid_data_input['eff_factor'].rename(
-        columns={entry: entry + str(n + 1) + '_' + top_region_name}, level=0, inplace=True)
+        columns={entry: new_name}, level=0, inplace=True)
     # for transmission data indexes on two levels must be changed
     microgrid_data_input['transmission'].rename(
-        index={entry: entry + str(n + 1) + '_' + top_region_name}, level=1, inplace=True)
+        index={entry: new_name}, level=1, inplace=True)
     microgrid_data_input['transmission'].rename(
-        index={entry: entry + str(n + 1) + '_' + top_region_name}, level=2, inplace=True)
+        index={entry: new_name}, level=2, inplace=True)
     # add transmission line from microgrids to top level region
     microgrid_data_input['transmission'].rename(
         index={'top_region_dummy': top_region_name}, level=1, inplace=True)
     microgrid_data_input['transmission'].rename(
         index={'top_region_dummy': top_region_name}, level=2, inplace=True)
-    return microgrid_data_input
+    return new_name
 
 # In this function according to the multiplicator list microgrid types are being scaled
 def multiplicator_scaling(mode, data, microgrid_data_input, microgrid_multiplicator_list, set_number, type_nr):

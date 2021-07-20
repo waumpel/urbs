@@ -3,15 +3,17 @@ import multiprocessing as mp
 import os
 from os.path import join
 from time import time
+from urbs.features.transdisthelper import *
+from urbs.identify import identify_mode
 
 import numpy as np
 import pandas as pd
 from pyomo.environ import SolverFactory
 
-from urbs.model import create_model
+import urbs.model
 from urbs.input import read_input, add_carbon_supplier
 from urbs.validation import validate_dc_objective, validate_input
-from .run_worker import run_worker
+from .run_worker import run_worker, create_model
 from . import input_output
 
 class InitialValues:
@@ -93,7 +95,7 @@ def read(input_file, scenario, objective):
 
 def run_centralized(data_all, timesteps, dt, scenario, result_dir):
     print('Solving the centralized problem...')
-    prob = create_model(data_all, timesteps, dt, type='normal')
+    prob = urbs.model.create_model(data_all, timesteps, dt, type='normal')
 
     # refresh time stamp string and create filename for logfile
     log_filename = os.path.join(result_dir, f'{scenario.__name__}.log')
@@ -135,6 +137,9 @@ def run_regional(
     objective,
     clusters,
     admmopt,
+    microgrid_files = None,
+    cross_scenario_data = None,
+    microgrid_cluster_mode = 'all',
     ):
     """
     Run an urbs model for given input, time steps and scenario with regional decomposition
@@ -161,10 +166,37 @@ def run_regional(
     # scenario name, read and modify data for scenario
     scenario_name = scenario.__name__
 
+    # read and modify microgrid data
+    mode = identify_mode(data_all)
+    if mode['transdist']:
+        microgrid_data_initial =[]
+        for i, microgrid_file in enumerate(microgrid_files):
+            microgrid_data_initial.append(read_input(microgrid_file, year))
+            validate_input(microgrid_data_initial[i])
+        # join microgrid data to model data
+        data_all, cross_scenario_data, new_sites = create_transdist_data(data_all, microgrid_data_initial, cross_scenario_data)
+
+        if microgrid_cluster_mode == 'all':
+            # create a list of all site names added by `create_transdist_data`
+            microgrid_cluster = [
+                site
+                for sites in new_sites.values()
+                for site in sites
+            ]
+            print(f"Added microgrid cluster {microgrid_cluster}.")
+            clusters.append(microgrid_cluster)
+        else:
+            raise ValueError(f"Unsupported `microgrid_cluster_mode`; must be 'all'.")
+
+    elif mode['acpf']:
+        add_reactive_transmission_lines(data_all)
+        add_reactive_output_ratios(data_all)
+
     # add carbon supplier if necessary
     if not data_all['global_prop'].loc[year].loc['CO2 limit', 'value'] == np.inf:
         data_all = add_carbon_supplier(data_all, clusters)
         clusters.append(['Carbon_site'])
+        print("Added carbon supplier cluster.")
 
     n_clusters = len(clusters)
 
@@ -248,9 +280,36 @@ def run_regional(
     # Queue for accumulating log messages
     logqueue = manager.Queue()
 
+    # TODO: switch back to parallel model creation
+    models = []
+
+    for ID in range(n_clusters):
+        m = create_model(
+            ID,
+            data_all,
+            scenario_name,
+            timesteps,
+            year,
+            initial_values,
+            admmopt,
+            n_clusters,
+            clusters[ID],
+            neighbors[ID],
+            shared_lines[ID],
+            internal_lines[ID],
+            cluster_from[ID],
+            cluster_to[ID],
+            neighbor_cluster[ID],
+            queues,
+            result_dir,
+        )
+        models.append(m)
+
+
     # Child processes for the ADMM subproblems
     procs = [
         mp.Process(target=run_worker, args=(
+            models[ID],
             ID,
             data_all,
             scenario_name,
