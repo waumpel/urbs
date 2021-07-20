@@ -246,9 +246,6 @@ def pyomo_model_prep(data_all, timesteps, sites, type, data_transmission=None, I
     commodity = data['commodity']
     process = data['process']
 
-    with open(f'temp/{ID}-pyomo_model_prep-process.txt', 'w', encoding='utf-8') as f:
-        f.write(process.to_string())
-
     m.mode = identify_mode(data)
     # create no expansion dataframes
     pro_const_cap = process[process['inst-cap'] == process['cap-up']]
