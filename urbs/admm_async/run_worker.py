@@ -1,6 +1,7 @@
 from time import sleep, time
 
 import pandas as pd
+from pyomo.environ import Constraint
 
 import urbs.model
 from .urbs_admm_model import AdmmStatus, UrbsAdmmModel

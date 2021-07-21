@@ -3,12 +3,13 @@ import multiprocessing as mp
 import os
 from os.path import join
 from time import time
+from urbs.pyomoio import get_entities, list_entities
 from urbs.features.transdisthelper import *
 from urbs.identify import identify_mode
 
 import numpy as np
 import pandas as pd
-from pyomo.environ import SolverFactory
+from pyomo.environ import SolverFactory, Constraint
 
 import urbs.model
 from urbs.input import read_input, add_carbon_supplier
@@ -304,7 +305,6 @@ def run_regional(
             result_dir,
         )
         models.append(m)
-
 
     # Child processes for the ADMM subproblems
     procs = [

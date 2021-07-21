@@ -554,13 +554,13 @@ def pyomo_model_prep(data_all, timesteps, sites, model_type, data_transmission=N
                                       storage['eff-distance'])
     else:
 
-        # if not process.empty:
-        process['invcost-factor'] = (
-            process.apply(
-                lambda x: invcost_factor(
-                    x['depreciation'],
-                    x['wacc']),
-                axis=1))
+        if not process.empty:
+            process['invcost-factor'] = (
+                process.apply(
+                    lambda x: invcost_factor(
+                        x['depreciation'],
+                        x['wacc']),
+                    axis=1))
 
         # cost factor will be set to 1 for non intertemporal problems
         commodity['cost_factor'] = 1
@@ -787,7 +787,11 @@ def add_carbon_supplier(data_all,clusters):
 
 
     # add commodity Carbon to Carbon_site
-    data_all['commodity'].loc[year,'Carbon_site','Carbon','Stock']=(0,data_all['global_prop'].loc[2021].loc['CO2 limit','value'],np.inf)
+    data_all['commodity'].loc[year,'Carbon_site','Carbon','Stock']={
+        'price': 0,
+        'max': data_all['global_prop'].loc[2021].loc['CO2 limit','value'],
+        'maxperhour': np.inf,
+    }
 
     # add free-movement carbon-connections within each cluster
     for cluster in clusters:
