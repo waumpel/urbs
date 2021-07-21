@@ -774,12 +774,12 @@ def add_carbon_supplier(data_all,clusters):
         levels = (year, 'Carbon_site', cluster[0], 'CO2_line', 'Carbon')
         index = pd.MultiIndex.from_tuples([levels], names=names)
         df = DataFrame(data_to, index)
-        data_all['transmission'].append(df)
+        data_all['transmission'] = data_all['transmission'].append(df)
 
         levels = (year, cluster[0], 'Carbon_site', 'CO2_line', 'Carbon')
         index = pd.MultiIndex.from_tuples([levels], names=names)
         df = DataFrame(data_from, index)
-        data_all['transmission'].append(df)
+        data_all['transmission'] = data_all['transmission'].append(df)
 
         # add Carbon commodity to each site
         for site in cluster:
@@ -796,12 +796,12 @@ def add_carbon_supplier(data_all,clusters):
                 levels = (year, cluster[0], site, 'CO2_line', 'Carbon')
                 index = pd.MultiIndex.from_tuples([levels], names=names)
                 df = DataFrame(data_to, index)
-                data_all['transmission'].append(df)
+                data_all['transmission'] = data_all['transmission'].append(df)
 
                 levels = (year, site, cluster[0], 'CO2_line', 'Carbon')
                 index = pd.MultiIndex.from_tuples([levels], names=names)
                 df = DataFrame(data_from, index)
-                data_all['transmission'].append(df)
+                data_all['transmission'] = data_all['transmission'].append(df)
 
     #import pdb;pdb.set_trace()
     for (y,a,b,c) in data_all['process_commodity'].index.values:
