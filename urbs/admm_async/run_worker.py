@@ -39,18 +39,7 @@ def create_model(
     result_dir,
     ):
 
-    print(f'Creating model {ID} for sites {sites}') # TODO: remove
     index = shared_lines.index.to_frame()
-
-    # TODO: remove print statements
-
-    print()
-    print('shared_lines')
-    print(shared_lines)
-
-    print()
-    print('shared_lines index')
-    print(index)
 
     flow_global = pd.Series({
         (t, year, source, target): initial_values.flow_global
@@ -58,23 +47,7 @@ def create_model(
         for source, target in zip(index['Site In'], index['Site Out'])
     })
 
-    print()
-    print('flow_global')
-    print(flow_global)
-
-    print()
-    print('index')
-    print(flow_global.index)
-
-    print()
-    print('names')
-    print(flow_global.index.names)
-
     flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-
-    print()
-    print('new names')
-    print(flow_global.index.names)
 
     lamda = pd.Series({
         (t, year, source, target): initial_values.lamda

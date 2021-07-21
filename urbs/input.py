@@ -183,7 +183,7 @@ def read_input(input_files, year):
 
 
 # preparing the pyomo model
-def pyomo_model_prep(data_all, timesteps, sites, type, data_transmission=None, ID=None): # TODO: remove ID parameter
+def pyomo_model_prep(data_all, timesteps, sites, model_type, data_transmission=None, ID=None): # TODO: remove ID parameter
     '''Performs calculations on the data frames in dictionary "data" for
     further usage by the model.
 
@@ -208,7 +208,7 @@ def pyomo_model_prep(data_all, timesteps, sites, type, data_transmission=None, I
     data = deepcopy(data_all)
     m.timesteps = timesteps
     data['site_all']=data_all['site']
-    if type == 'sub':
+    if model_type == 'sub':
         m.global_prop = data_all['global_prop'].drop('description', axis=1)
         data['site'] = data_all['site'].loc(axis=0)[:,sites]
         data['commodity'] = data_all['commodity'].loc(axis=0)[:,sites]
@@ -554,7 +554,7 @@ def pyomo_model_prep(data_all, timesteps, sites, type, data_transmission=None, I
                                       storage['eff-distance'])
     else:
 
-        # for one year problems
+        # if not process.empty:
         process['invcost-factor'] = (
             process.apply(
                 lambda x: invcost_factor(
@@ -635,7 +635,7 @@ def pyomo_model_prep(data_all, timesteps, sites, type, data_transmission=None, I
         m.sto_block_c_dict = sto_block_c[sto_block_c > 0].to_dict()
         sto_block_p = storage['p-block']
         m.sto_block_p_dict = sto_block_p[sto_block_p > 0].to_dict()
-    #if type == 'sub':
+    #if model_type == 'sub':
     #    with pd.ExcelWriter(sites[0]+'sub.xlsx') as writer:
     #        for key, val in data.items():
     #            if not val.empty:
@@ -728,7 +728,7 @@ def add_carbon_supplier(data_all,clusters):
 
 
     #add dummy process X to Carbon_site (to avoid errors)
-    #data_all['process'].loc[year,'Carbon_site','X']=(0,0,np.inf,0,0,0,0,0,0,0,0,1,np.nan,np.nan,np.nan,np.nan)
+    # data_all['process'].loc[year,'Carbon_site','X']=(0,0,np.inf,0,0,0,0,0,0,0,0,1,np.nan,np.nan,np.nan,np.nan)
 
     #add dummy storage X to Carbon_site (to avoid errors)
     #data_all['storage'].loc[year,'Carbon_site','X','Carbon']=(0,0,np.inf,0,0,np.inf,0,1,0,0,0,0,0,0,1,0,0,0,np.nan,np.nan,np.nan)
