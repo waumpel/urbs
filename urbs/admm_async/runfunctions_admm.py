@@ -175,19 +175,23 @@ def run_regional(
             microgrid_data_initial.append(read_input(microgrid_file, year))
             validate_input(microgrid_data_initial[i])
         # join microgrid data to model data
-        data_all, cross_scenario_data, new_sites = create_transdist_data(data_all, microgrid_data_initial, cross_scenario_data)
+        data_all, cross_scenario_data, microgrid_nodes = create_transdist_data(data_all, microgrid_data_initial, cross_scenario_data)
 
         if microgrid_cluster_mode == 'all':
-            # create a list of all site names added by `create_transdist_data`
+            # put ALL microgrid nodes into one cluster
             microgrid_cluster = [
-                site
-                for sites in new_sites.values()
-                for site in sites
+                node
+                for microgrid in microgrid_nodes
+                for node in microgrid
             ]
-            print(f"Added microgrid cluster {microgrid_cluster}.")
             clusters.append(microgrid_cluster)
+            print('Added one microgrid cluster for all microgrid nodes.')
+        elif microgrid_cluster_mode == 'microgrid':
+            # create one cluster for every microgrid
+            clusters.extend(microgrid_nodes.to_list())
+            print('Added one cluster per microgrid.')
         else:
-            raise ValueError(f"Unsupported `microgrid_cluster_mode`; must be 'all'.")
+            raise ValueError(f"Unsupported `microgrid_cluster_mode`; must be 'all' or 'microgrid'.")
 
     elif mode['acpf']:
         add_reactive_transmission_lines(data_all)

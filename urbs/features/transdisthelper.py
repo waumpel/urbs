@@ -3,6 +3,7 @@ import copy
 import math
 import numpy as np
 import os
+import pandas as pd
 
 def create_transdist_data(data, microgrid_data_initial, cross_scenario_data):
     mode = identify_mode(data)
@@ -19,21 +20,26 @@ def create_transdist_data(data, microgrid_data_initial, cross_scenario_data):
     microgrid_set_list = build_set_list(data)
     microgrid_multiplicator_list = build_multiplicator_list(data)
 
-    new_sites = {}
+    microgrid_nodes = pd.Series(
+        index=pd.MultiIndex(names=['top region', 'type', 'instance'], levels=[[], [], []], codes=[[], [], []]),
+        dtype=str
+    )
 
     # process microgrid data for every region and microgrid type
     for set_number, set in enumerate(microgrid_set_list):  # top region microgrid setting
         top_region_name = data['site'].index.get_level_values(1)[set_number]
-        new_sites[top_region_name] = []
         for type_nr, quantity_nr in enumerate(set):  # Auflistung des settings
             microgrid_entries = microgrid_data_initial[type_nr]['site'].index.get_level_values(1)
             n = 0
             while n < quantity_nr:
                 microgrid_data_input = copy.deepcopy(microgrid_data_initial[type_nr])
+                nodes = []
                 for entry in microgrid_entries:
                     # microgrids are derived from the predefined microgrid types and setting
                     new_name = create_microgrid_data(microgrid_data_input, entry, n, top_region_name)
-                    new_sites[top_region_name].append(new_name)
+                    nodes.append(new_name)
+
+                microgrid_nodes.loc[top_region_name, type_nr, quantity_nr] = nodes
                 n += 1
                 # scale capacities, commodities, demand, areas and the loadprofile with multiplicator number of the microgrid
                 microgrid_data_input, demand_shift = multiplicator_scaling(mode, data, microgrid_data_input,
@@ -53,7 +59,7 @@ def create_transdist_data(data, microgrid_data_initial, cross_scenario_data):
                 concatenate_with_micros(data, microgrid_data_input)
     if data['transdist_share'].values[0] == 1:
         store_additional_demand(cross_scenario_data, mobility_transmission_shift, heat_transmission_shift)
-    return data, cross_scenario_data, new_sites
+    return data, cross_scenario_data, microgrid_nodes
 
 def build_set_list(data):
     transdist_dict = data['site'].drop(columns=['base-voltage','area'], axis=1).to_dict()

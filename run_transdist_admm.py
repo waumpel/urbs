@@ -19,7 +19,8 @@ options.add_argument('-c', '--centralized', action='store_true',
                      help='Additionally compute the centralized solution for comparison.')
 args = options.parse_args()
 
-input_files = 'Transmission_Level.xlsx'  # for single year file name, for intertemporal folder name
+input_files = 'transdist.xlsx'  # for single year file name, for intertemporal folder name
+# input_files = 'Transmission_Level.xlsx'  # for single year file name, for intertemporal folder name
 input_dir = 'Input'
 input_path = os.path.join(input_dir, input_files)
 
@@ -101,6 +102,7 @@ if __name__ == '__main__':
             admmopt = admmopt,
             microgrid_files = microgrid_paths,
             cross_scenario_data = cross_scenario_data,
+            microgrid_cluster_mode = 'all',
         )
 
         if args.centralized:
