@@ -198,7 +198,7 @@ def run_regional(
         add_reactive_output_ratios(data_all)
 
     # add carbon supplier if necessary
-    if not data_all['global_prop'].loc[year].loc['CO2 limit', 'value'] == np.inf:
+    if not np.isinf(data_all['global_prop'].loc[year].loc['CO2 limit', 'value']):
         data_all = add_carbon_supplier(data_all, clusters)
         clusters.append(['Carbon_site'])
         print("Added carbon supplier cluster.")

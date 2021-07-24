@@ -19,7 +19,7 @@ options.add_argument('-c', '--centralized', action='store_true',
                      help='Additionally compute the centralized solution for comparison.')
 args = options.parse_args()
 
-input_files = 'transdist.xlsx'  # for single year file name, for intertemporal folder name
+input_files = 'transdist-2state.xlsx'  # for single year file name, for intertemporal folder name
 # input_files = 'Transmission_Level.xlsx'  # for single year file name, for intertemporal folder name
 input_dir = 'Input'
 input_path = os.path.join(input_dir, input_files)
@@ -50,9 +50,11 @@ objective = 'cost'  # set either 'cost' or 'CO2' as objective
 timesteps = range(offset, offset+length+1)
 dt = 1  # length of each time step (unit: hours)
 
-clusters = [
-    ['BB', 'BE', 'BW', 'BY', 'HB', 'HE', 'HH', 'MV', 'NI', 'NW', 'RP', 'SH', 'SL', 'SN', 'ST', 'TH', 'Baltic', 'North']
-]
+# clusters = [
+#     ['BB', 'BE', 'BW', 'BY', 'HB', 'HE', 'HH', 'MV', 'NI', 'NW', 'RP', 'SH', 'SL', 'SN', 'ST', 'TH', 'Baltic', 'North']
+# ]
+
+clusters = [['BB', 'MV']]
 
 # select scenarios to be run
 scenarios = [
@@ -102,7 +104,7 @@ if __name__ == '__main__':
             admmopt = admmopt,
             microgrid_files = microgrid_paths,
             cross_scenario_data = cross_scenario_data,
-            microgrid_cluster_mode = 'all',
+            microgrid_cluster_mode = 'microgrid',
         )
 
         if args.centralized:
