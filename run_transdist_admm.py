@@ -30,7 +30,7 @@ microgrid_paths = [
     os.path.join(microgrid_dir, file)
     for file in microgrid_files
 ]
-result_name = 'Trans-Dist'
+result_name = 'transdist-2state'
 result_dir = prepare_result_directory(result_name)  # name + time stamp
 
 # #copy input file to result directory
@@ -55,6 +55,8 @@ dt = 1  # length of each time step (unit: hours)
 # ]
 
 clusters = [['BB', 'MV']]
+
+# clusters = [['BB']]
 
 # select scenarios to be run
 scenarios = [

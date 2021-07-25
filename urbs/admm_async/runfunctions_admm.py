@@ -98,6 +98,10 @@ def run_centralized(data_all, timesteps, dt, scenario, result_dir):
     print('Solving the centralized problem...')
     prob = urbs.model.create_model(data_all, timesteps, dt, type='normal')
 
+    with open(join(result_dir, f'constraints-centralized.txt'), 'w', encoding='utf8') as f:
+        for con in prob.component_objects(Constraint):
+            con.pprint(ostream=f)
+
     # refresh time stamp string and create filename for logfile
     log_filename = os.path.join(result_dir, f'{scenario.__name__}.log')
 

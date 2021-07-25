@@ -1,3 +1,4 @@
+from os.path import join
 from time import sleep, time
 
 import pandas as pd
@@ -66,9 +67,9 @@ def create_model(
                         rho=admmopt.rho,
                         ID=ID) # TODO: remove ID parameter
 
-    # with open(f'temp/run_regional/constraints-{ID}.txt', 'w', encoding='utf8') as f:
-    #     for con in model.component_objects(Constraint):
-    #         con.pprint(ostream=f)
+    with open(join(result_dir, f'constraints-{ID}.txt'), 'w', encoding='utf8') as f:
+        for con in model.component_objects(Constraint):
+            con.pprint(ostream=f)
 
     # enlarge shared_lines (copies of slices of data_all['transmission'])
     shared_lines['cluster_from'] = cluster_from
