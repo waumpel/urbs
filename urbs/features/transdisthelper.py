@@ -189,6 +189,11 @@ def concatenate_with_micros(data, microgrid_data):
     data['storage'] = pd.concat([data['storage'], microgrid_data['storage']],sort=True)
     data['dsm'] = pd.concat([data['dsm'], microgrid_data['dsm']],sort=True)
     data['buy_sell_price'] = pd.concat([data['buy_sell_price'], microgrid_data['buy_sell_price']], axis=1,sort=True)
+    # If `data['eff_factor']`` is empty but has an index, `pd.concat` squashes the
+    # MultiIndex of `microgrid_data['eff_factor']` down into a regular index.
+    # To prevent this, use a completely empty DataFrame instead.
+    if data['eff_factor'].empty:
+        data['eff_factor'] = pd.DataFrame()
     data['eff_factor'] = pd.concat([data['eff_factor'], microgrid_data['eff_factor']], axis=1,sort=True)
     return data
 

@@ -20,7 +20,8 @@ options.add_argument('-c', '--centralized', action='store_true',
                      help='Additionally compute the centralized solution for comparison.')
 args = options.parse_args()
 
-input_files = 'Transmission_Level.xlsx'  # for single year file name, for intertemporal folder name
+input_files = 'transdist-1state.xlsx'  # for single year file name, for intertemporal folder name
+# input_files = 'Transmission_Level.xlsx'  # for single year file name, for intertemporal folder name
 input_dir = 'Input'
 input_path = os.path.join(input_dir, input_files)
 
@@ -30,7 +31,7 @@ microgrid_paths = [
     os.path.join(microgrid_dir, file)
     for file in microgrid_files
 ]
-result_name = 'Transmission_Level'
+result_name = 'transdist-1state'
 result_dir = prepare_result_directory(result_name)  # name + time stamp
 
 # #copy input file to result directory
@@ -49,12 +50,6 @@ objective = 'cost'  # set either 'cost' or 'CO2' as objective
 (offset, length) = (0, 1)  # time step selection
 timesteps = range(offset, offset+length+1)
 dt = 1  # length of each time step (unit: hours)
-
-# clusters = [
-#     ['BB', 'BE', 'BW', 'BY', 'HB', 'HE', 'HH', 'MV', 'NI', 'NW', 'RP', 'SH', 'SL', 'SN', 'ST', 'TH', 'Baltic', 'North']
-# ]
-
-# clusters = [['BB', 'MV']]
 
 clusters = [['BB']]
 
