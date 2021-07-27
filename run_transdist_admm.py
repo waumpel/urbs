@@ -50,13 +50,9 @@ objective = 'cost'  # set either 'cost' or 'CO2' as objective
 timesteps = range(offset, offset+length+1)
 dt = 1  # length of each time step (unit: hours)
 
-# clusters = [
-#     ['BB', 'BE', 'BW', 'BY', 'HB', 'HE', 'HH', 'MV', 'NI', 'NW', 'RP', 'SH', 'SL', 'SN', 'ST', 'TH', 'Baltic', 'North']
-# ]
-
-# clusters = [['BB', 'MV']]
-
-clusters = [['BB']]
+clusters = [
+    ['BB', 'BE', 'BW', 'BY', 'HB', 'HE', 'HH', 'MV', 'NI', 'NW', 'RP', 'SH', 'SL', 'SN', 'ST', 'TH', 'Baltic', 'North']
+]
 
 # select scenarios to be run
 scenarios = [
