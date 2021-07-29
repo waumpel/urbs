@@ -1,6 +1,5 @@
 import pandas as pd
 
-
 def identify_mode(data):
     """ Identify the urbs mode that is needed for running the current Input
 
@@ -30,6 +29,8 @@ def identify_mode(data):
         'tve': False,                   # time variable efficiency
         'dcpf': False,                  # dc power flow
         'acpf': False,                  # ac power flow
+        'tdy': False,                   # type periods
+        'tsam': False,                  # time series aggregation method
         'onoff': False,                 # on/off processes
         'minfraction': False,           # processes with minimum working load
         'chp': False,                   # chp processes
@@ -38,8 +39,7 @@ def identify_mode(data):
                 'tra': False,
                 'sto-c': False,
                 'sto-p': False},
-        'transdist': False,             # transmission-distribution interface
-        'tsam': False,
+        'transdist': False              # transmission-distribution interface
         # 'inv_mip':{
         #         'pro': False,
         #         'tra': False,
@@ -69,6 +69,10 @@ def identify_mode(data):
     if 'reactance' in data['transmission'].keys():
         if any(data['transmission']['reactance'] > 0):
             mode['dcpf'] = True
+    if any(data['type period']['weight_typeperiod'] > 0):
+        mode['tdy'] = True
+    if data['global_prop'].loc[pd.IndexSlice[:,'tsam'],'value'].iloc[0]:
+        mode['tsam'] = True
     if 'on-off' in data['process'].keys():
         if any(data['process']['on-off'] == 1):
             mode['onoff'] = True

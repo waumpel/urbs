@@ -2,15 +2,21 @@
 import os
 import shutil
 import urbs
-import pandas as pd
+import sys
+import time as t
+import numpy as np
+import multiprocessing as mp
+from os import getpid
+import matplotlib.pyplot as plt
+from urbs.runfunctions import *
 
 
-input_files = 'Transmission_Level.xlsx'  # for single year file name, for intertemporal folder name
+input_files = 'Transmission_Level_red.xlsx'  # for single year file name, for intertemporal folder name
 input_dir = 'Input'
 input_path = os.path.join(input_dir, input_files)
 
 microgrid_files = ['Microgrid_rural_A.xlsx','Microgrid_urban_A.xlsx']
-microgrid_dir = 'Input/Microgrid_types'
+microgrid_dir = 'Input/microgrid_types'
 microgrid_paths = []
 for i, microgrid_file in enumerate(microgrid_files):
     microgrid_paths.append(os.path.join(microgrid_dir, microgrid_file))
@@ -34,9 +40,13 @@ objective = 'cost'  # set either 'cost' or 'CO2' as objective
 solver = 'gurobi'
 
 # simulation timesteps
-(offset, length) = (0, 10)  # time step selection
+(offset, length) = (0,24)  # time step selection
 timesteps = range(offset, offset+length+1)
 dt = 1  # length of each time step (unit: hours)
+
+# input data for tsam method
+noTypicalPeriods = 4
+hoursPerPeriod = 168
 
 # detailed reporting commodity/sites
 report_tuples = []
@@ -72,7 +82,9 @@ for scenario in scenarios:
                              plot_periods=plot_periods,
                              report_tuples=report_tuples,
                              cross_scenario_data = cross_scenario_data,
-                             report_sites_name=report_sites_name)
+                             report_sites_name=report_sites_name,
+                             noTypicalPeriods=noTypicalPeriods,
+                             hoursPerPeriod=hoursPerPeriod)
 
     # save cross_Scenario dara
     # PV_private_rooftop capacity results for 100% distribution grids are saved to use equal PV capacities in the subsequent scenarios

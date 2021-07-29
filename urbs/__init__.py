@@ -11,9 +11,9 @@ commodities.
 """
 
 from .colorcodes import COLORS
-from .identify import identify_mode, identify_expansion
-from .input import *
 from .model import create_model
+from .input import *
+from .validation import validate_input
 from .output import get_constants, get_timeseries
 from .plot import plot, result_figures, to_color
 from .pyomoio import get_entity, get_entities, list_entities
@@ -21,4 +21,4 @@ from .report import report
 from .runfunctions import *
 from .saveload import load, save
 from .scenarios import *
-from .validation import validate_input
+from .identify import identify_mode, identify_expansion

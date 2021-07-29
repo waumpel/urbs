@@ -5,19 +5,7 @@ from .features.transmission import *
 from .input import *
 import pyomo.environ as pyomo
 
-def create_model(data_all,
-                 timesteps=None,
-                 dt=1,
-                 objective='cost',
-                 dual=False,
-                 type='normal',
-                 sites = None,
-                 data_transmission_boun=None,
-                 data_transmission_int=None,
-                 flow_global=None,
-                 lamda=None,
-                 rho=None,
-                 ID=None): # TODO: remove
+def create_model(data, dt=1, timesteps=None, objective='cost', hoursPerPeriod=None, weighting_order=None,dual=True):
     """Create a pyomo ConcreteModel urbs object from given input data.
 
     Args:
@@ -35,31 +23,21 @@ def create_model(data_all,
 
     # Optional
     if not timesteps:
-        timesteps = data_all['demand'].index.tolist()
-
-    if type == 'sub':
-        m, data = pyomo_model_prep(data_all, timesteps, sites, type, pd.concat([data_transmission_boun,data_transmission_int]), ID=ID)  # preparing pyomo model # TODO: remove ID parameter
-    elif type =='normal':
-        m, data = pyomo_model_prep(data_all, timesteps, sites, type)
-
+        timesteps = data['demand'].index.tolist()
+    m = pyomo_model_prep(data, timesteps)  # preparing pyomo model
     m.name = 'urbs'
     m.created = datetime.now().strftime('%Y%m%dT%H%M')
     m._data = data
 
-    m.type = type
-    if m.type =='sub':
-        print("urbs Regional-" + str(sites) + " is created.")
-    elif m.type =='normal':
-        print("urbs Original is created.")
-
     # Parameters
+
     # weight = length of year (hours) / length of simulation (hours)
     # weight scales costs and emissions from length of simulation to a full
     # year, making comparisons among cost types (invest is annualized, fixed
     # costs are annual by default, variable costs are scaled by weight) and
     # among different simulation durations meaningful.
     m.weight = pyomo.Param(
-        initialize=float(8760) / ((len(m.timesteps) - 1) * dt),
+        initialize=float(8760) / (len(m.timesteps) - 1 * dt),
         doc='Pre-factor for variable costs and emissions for an annual result')
 
     # dt = spacing between timesteps. Required for storage equation that
@@ -105,13 +83,13 @@ def create_model(data_all,
         doc='Set of modeled support timeframes (e.g. years)')
 
     # site (e.g. north, middle, south...)
+    indexlist = set()
+    for key in m.commodity_dict["price"]:
+        indexlist.add(tuple(key)[1])
     m.sit = pyomo.Set(
-        initialize = [s for (y,s) in data['site_all'].index.values],
-        doc='Set of all sites')
-
-    m.sit_inside = pyomo.Set(
-        initialize=m._data['commodity'].index.get_level_values('Site').unique(),
-        doc='Set of sites belonging to the cluster')
+        initialize=indexlist,
+        ordered=False,
+        doc='Set of sites')
 
     # commodity (e.g. solar, wind, coal...)
     indexlist = set()
@@ -139,20 +117,6 @@ def create_model(data_all,
         initialize=indexlist,
         ordered=False,
         doc='Set of conversion processes')
-
-    if type=='sub':
-        m.flow_global = pyomo.Var(
-            m.tm,m.stf,m.sit,m.sit,
-            within=pyomo.Reals,
-            doc='flow global in')
-        m.lamda = pyomo.Var(
-            m.tm,m.stf,m.sit,m.sit,
-            within=pyomo.Reals,
-            doc='lambda in')
-        m.rho = pyomo.Param(
-            within=pyomo.Reals,
-            initialize=rho,
-            doc='rho in')
 
     # cost_type
     m.cost_type = pyomo.Set(
@@ -193,7 +157,7 @@ def create_model(data_all,
         ordered=False,
         doc='Commodities that can be purchased at some site(s)')
 
-
+    
     if m.mode['int']:
         # tuples for operational status of technologies
         m.operational_pro_tuples = pyomo.Set(
@@ -253,6 +217,7 @@ def create_model(data_all,
                     if process == pro and s == stf],
         doc='Commodities consumed by process by site,'
             'e.g. (2020,Mid,PV,Solar)')
+
     m.pro_output_tuples = pyomo.Set(
         within=m.stf * m.sit * m.pro * m.com,
         initialize=[(stf, site, process, commodity)
@@ -333,17 +298,22 @@ def create_model(data_all,
     # called features are declared in distinct files in features folder
     if m.mode['tra']:
         if m.mode['acpf']:
-            m = add_transmission_ac(m, data_transmission_boun)
+            m = add_transmission_ac(m)
         elif m.mode['dcpf']:
-            m = add_transmission_dc(m, data_transmission_boun)
+            m = add_transmission_dc(m)
         else:
-            m = add_transmission(m, data_transmission_boun)
+            m = add_transmission(m)
     if m.mode['sto']:
         m = add_storage(m)
     if m.mode['dsm']:
         m = add_dsm(m)
     if m.mode['bsp']:
         m = add_buy_sell_price(m)
+    if m.mode['tdy']:
+        if m.mode['tsam']:
+            store_typeperiod_parameter(m, hoursPerPeriod, weighting_order)
+        m = add_typeperiod(m)
+
     if (m.mode['tve'] or m.mode['onoff'] or #m.mode['chp'] or
         m.mode['minfraction']):
         m = add_advanced_processes(m)
@@ -481,63 +451,64 @@ def create_model(data_all,
         doc='cap_pro_new = pro_cap_unit * cap-block')
 
 
-#    if m.mode['int']:
-#        m.res_global_co2_limit = pyomo.Constraint(
-#            m.stf,
-#            rule=res_global_co2_limit_rule,
-#            doc='total co2 commodity output <= global.prop CO2 limit')
+    # if m.mode['int']:
+    #     m.res_global_co2_limit = pyomo.Constraint(
+    #         m.stf,
+    #         rule=res_global_co2_limit_rule,
+    #         doc='total co2 commodity output <= global.prop CO2 limit')
 
     # costs
-    if m.type == 'normal':
-        m.def_costs = pyomo.Constraint(
-                m.cost_type,
-                rule=def_costs_rule,
-                doc='main cost function by cost type')
-    elif m.type == 'sub':
-        m.def_costs = pyomo.Constraint(
-                m.cost_type,
-                rule=def_costs_rule_sub,
-                doc='main cost function by cost type')
+    m.def_costs = pyomo.Constraint(
+        m.cost_type,
+        rule=def_costs_rule,
+        doc='main cost function by cost type')
 
     # objective and global constraints
     if m.obj.value == 'cost':
+        m.res_global_co2_limit = pyomo.Constraint(
+            m.stf,
+            rule=res_global_co2_limit_rule,
+            doc='total co2 commodity output <= Global CO2 limit')
 
-#        if m.mode['int']:
-#            m.res_global_co2_budget = pyomo.Constraint(
-#                rule=res_global_co2_budget_rule,
-#                doc='total co2 commodity output <= global.prop CO2 budget')
-#        else:
-#            m.res_global_co2_limit = pyomo.Constraint(
-#                m.stf,
-#                rule=res_global_co2_limit_rule,
-#                doc='total co2 commodity output <= Global CO2 limit')
+        if m.mode['int']:
+            m.res_global_co2_budget = pyomo.Constraint(
+                rule=res_global_co2_budget_rule,
+                doc='total co2 commodity output <= global.prop CO2 budget')
 
-        if m.type == 'normal':
-            m.objective_function = pyomo.Objective(
-                rule=cost_rule,
-                sense=pyomo.minimize,
-                doc='minimize(cost = sum of all cost types)')
-        elif m.type == 'sub':
-            m.objective_function = pyomo.Objective(
-                rule=cost_rule_sub(flow_global=flow_global,
-                                   lamda=lamda,
-                                   rho=rho),
-                sense=pyomo.minimize,
-                doc='minimize(cost = sum of all cost types)')
+            m.res_global_cost_limit = pyomo.Constraint(
+                m.stf,
+                rule=res_global_cost_limit_rule,
+                doc='total costs <= Global cost limit')
 
-#    elif m.obj.value == 'CO2':
-#        m.res_global_cost_limit = pyomo.Constraint(
-#            rule=res_global_cost_limit_rule,
-#            doc='total costs <= Global cost limit')
-#
-#        m.objective_function = pyomo.Objective(
-#            rule=co2_rule,
-#            sense=pyomo.minimize,
-#            doc='minimize total CO2 emissions')
+        m.objective_function = pyomo.Objective(
+            rule=cost_rule,
+            sense=pyomo.minimize,
+            doc='minimize(cost = sum of all cost types)')
+
+    elif m.obj.value == 'CO2':
+
+        m.res_global_cost_limit = pyomo.Constraint(
+            m.stf,
+            rule=res_global_cost_limit_rule,
+            doc='total costs <= Global cost limit')
+        if m.mode['int']:
+            m.res_global_cost_budget = pyomo.Constraint(
+                rule=res_global_cost_budget_rule,
+                doc='total costs <= global.prop Cost budget')
+            m.res_global_co2_limit = pyomo.Constraint(
+                m.stf,
+                rule=res_global_co2_limit_rule,
+                doc='total co2 commodity output <= Global CO2 limit')
+
+        m.objective_function = pyomo.Objective(
+            rule=co2_rule,
+            sense=pyomo.minimize,
+            doc='minimize total CO2 emissions')
+
     else:
         raise NotImplementedError("Non-implemented objective quantity. Set "
                                   "either 'cost' or 'CO2' as the objective in "
-                                  "runme.py.py!")
+                                  "runme.py!")
 
     if dual:
         m.dual = pyomo.Suffix(direction=pyomo.Suffix.IMPORT)
@@ -615,7 +586,7 @@ def res_stock_total_rule(m, stf, sit, com, com_type):
         total_consumption = 0
         for tm in m.tm:
             total_consumption += (
-                m.e_co_stock[tm, stf, sit, com, com_type])
+                m.e_co_stock[tm, stf, sit, com, com_type] * m.typeperiod['weight_typeperiod'][(stf,tm)])
         total_consumption *= m.weight
         return (total_consumption <=
                 m.commodity_dict['max'][(stf, sit, com, com_type)])
@@ -644,7 +615,7 @@ def res_env_total_rule(m, stf, sit, com, com_type):
         # calculate total creation of environmental commodity com
         env_output_sum = 0
         for tm in m.tm:
-            env_output_sum += (- commodity_balance(m, tm, stf, sit, com))
+            env_output_sum += (- commodity_balance(m, tm, stf, sit, com)* m.typeperiod['weight_typeperiod'][(stf,tm)])
         env_output_sum *= m.weight
         return (env_output_sum <=
                 m.commodity_dict['max'][(stf, sit, com, com_type)])
@@ -691,7 +662,7 @@ def def_process_output_rule(m, tm, stf, sit, pro, com):
         return pyomo.Constraint.Skip #todo: geht das schöner?
     else:
         return (m.e_pro_out[tm, stf, sit, pro, com] ==
-                m.tau_pro[tm, stf, sit, pro] * m.r_out_dict[(stf, pro, com)])
+            m.tau_pro[tm, stf, sit, pro] * m.r_out_dict[(stf, pro, com)])
 
 
 def def_process_output_reactive_rule1(m, tm, stf, sit, pro):
@@ -768,8 +739,7 @@ def res_global_co2_limit_rule(m, stf):
             for sit in m.sit:
                 # minus because negative commodity_balance represents creation
                 # of that commodity.
-                co2_output_sum += (- commodity_balance(m, tm,
-                                                       stf, sit, 'CO2'))
+                co2_output_sum += (- commodity_balance(m, tm, stf, sit, 'CO2')* m.typeperiod['weight_typeperiod'][(stf,tm)])
 
         # scaling to annual output (cf. definition of m.weight)
         co2_output_sum *= m.weight
@@ -792,6 +762,7 @@ def res_global_co2_budget_rule(m):
                     # creation of that commodity.
                     co2_output_sum += (- commodity_balance
                                        (m, tm, stf, sit, 'CO2') *
+                                       m.typeperiod['weight_typeperiod'][(stf,tm)] *
                                        m.weight *
                                        stf_dist(stf, m))
 
@@ -801,12 +772,24 @@ def res_global_co2_budget_rule(m):
         return pyomo.Constraint.Skip
 
 
-def res_global_cost_limit_rule(m):
-    if math.isinf(m.global_prop_dict["value"][min(m.stf), "Cost limit"]):
+# total cost of one year <= Global cost limit
+def res_global_cost_limit_rule(m, stf):
+    if math.isinf(m.global_prop_dict["value"][stf, "Cost limit"]):
         return pyomo.Constraint.Skip
-    elif m.global_prop_dict["value"][min(m.stf), "Cost limit"] >= 0:
+    elif m.global_prop_dict["value"][stf, "Cost limit"] >= 0:
         return(pyomo.summation(m.costs) <= m.global_prop_dict["value"]
-               [min(m.stf), "Cost limit"])
+               [stf, "Cost limit"])
+    else:
+        return pyomo.Constraint.Skip
+
+
+# total cost in entire period <= Global cost budget
+def res_global_cost_budget_rule(m):
+    if math.isinf(m.global_prop_dict["value"][min(m.stf), "Cost budget"]):
+        return pyomo.Constraint.Skip
+    elif m.global_prop_dict["value"][min(m.stf), "Cost budget"] >= 0:
+        return(pyomo.summation(m.costs) <= m.global_prop_dict["value"]
+               [min(m.stf), "Cost budget"])
     else:
         return pyomo.Constraint.Skip
 
@@ -860,7 +843,7 @@ def def_costs_rule(m, cost_type):
 
     elif cost_type == 'Variable':
         cost = \
-            sum(m.tau_pro[(tm,) + p] * m.weight *
+            sum(m.tau_pro[(tm,) + p] * m.weight * m.typeperiod['weight_typeperiod'][(m.stf_list[0],tm)] *
                 m.process_dict['var-cost'][p] *
                 m.process_dict['cost_factor'][p]
                 for tm in m.tm
@@ -873,7 +856,7 @@ def def_costs_rule(m, cost_type):
 
     elif cost_type == 'Fuel':
         return m.costs[cost_type] == sum(
-            m.e_co_stock[(tm,) + c] * m.weight *
+            m.e_co_stock[(tm,) + c] * m.weight * m.typeperiod['weight_typeperiod'][(m.stf_list[0],tm)] *
             m.commodity_dict['price'][c] *
             m.commodity_dict['cost_factor'][c]
             for tm in m.tm for c in m.com_tuples
@@ -894,7 +877,7 @@ def def_costs_rule(m, cost_type):
 
     elif cost_type == 'Environmental':
         return m.costs[cost_type] == sum(
-            - commodity_balance(m, tm, stf, sit, com) * m.weight *
+            - commodity_balance(m, tm, stf, sit, com) * m.weight * m.typeperiod['weight_typeperiod'][(m.stf_list[0],tm)] *
             m.commodity_dict['price'][(stf, sit, com, com_type)] *
             m.commodity_dict['cost_factor'][(stf, sit, com, com_type)]
             for tm in m.tm
@@ -911,123 +894,9 @@ def def_costs_rule(m, cost_type):
     else:
         raise NotImplementedError("Unknown cost type.")
 
-def def_costs_rule_sub(m, cost_type):
-    #Calculate total costs by cost type.
-    #Sums up process activity and capacity expansions
-    #and sums them in the cost types that are specified in the set
-    #m.cost_type. To change or add cost types, add/change entries
-    #there and modify the if/elif cases in this function accordingly.
-    #Cost types are
-    #  - Investment costs for process power, storage power and
-    #    storage capacity. They are multiplied by the investment
-    #    factors. Rest values of units are subtracted.
-    #  - Fixed costs for process power, storage power and storage
-    #    capacity.
-    #  - Variables costs for usage of processes, storage and transmission.
-    #  - Fuel costs for stock commodity purchase.
-
-    if cost_type == 'Invest':
-        cost = \
-            sum(m.cap_pro_new[p] *
-                m.process_dict['inv-cost'][p] *
-                m.process_dict['invcost-factor'][p]
-                for p in m.pro_tuples)
-        if m.mode['int']:
-            cost -= \
-                sum(m.cap_pro_new[p] *
-                    m.process_dict['inv-cost'][p] *
-                    m.process_dict['overpay-factor'][p]
-                    for p in m.pro_tuples)
-        if m.mode['tra']:
-            # transmission_cost is defined in transmission.py
-            cost += transmission_cost_sub(m, cost_type)
-        if m.mode['sto']:
-            # storage_cost is defined in storage.py
-            cost += storage_cost(m, cost_type)
-        return m.costs[cost_type] == cost
-
-    elif cost_type == 'Fixed':
-        cost = \
-            sum(m.cap_pro[p] * m.process_dict['fix-cost'][p] *
-                m.process_dict['cost_factor'][p]
-                for p in m.pro_tuples)
-        if m.mode['tra']:
-            cost += transmission_cost_sub(m, cost_type)
-        if m.mode['sto']:
-            cost += storage_cost(m, cost_type)
-        return m.costs[cost_type] == cost
-
-    elif cost_type == 'Variable':
-        cost = \
-            sum(m.tau_pro[(tm,) + p] * m.weight *
-                m.process_dict['var-cost'][p] *
-                m.process_dict['cost_factor'][p]
-                for tm in m.tm
-                for p in m.pro_tuples)
-        if m.mode['tra']:
-            cost += transmission_cost_sub(m, cost_type)
-        if m.mode['sto']:
-            cost += storage_cost(m, cost_type)
-        return m.costs[cost_type] == cost
-
-    elif cost_type == 'Fuel':
-        return m.costs[cost_type] == sum(
-            m.e_co_stock[(tm,) + c] * m.weight *
-            m.commodity_dict['price'][c] *
-            m.commodity_dict['cost_factor'][c]
-            for tm in m.tm for c in m.com_tuples
-            if c[2] in m.com_stock)
-
-    elif cost_type == 'Start-up':
-        if m.mode['onoff']:
-            cost = sum(m.start_up[(tm,) + p] * m.weight *
-                   m.start_price_dict[p] * m.cap_pro[p] *
-                   m.process_dict['cost_factor'][p]
-                   for tm in m.tm
-                   for p in m.pro_start_up_tuples)
-            return m.costs[cost_type] == cost
-        else:
-            return m.costs[cost_type] == 0
-
-
-
-    elif cost_type == 'Environmental':
-        return m.costs[cost_type] == sum(
-            - commodity_balance(m, tm, stf, sit, com) * m.weight *
-            m.commodity_dict['price'][(stf, sit, com, com_type)] *
-            m.commodity_dict['cost_factor'][(stf, sit, com, com_type)]
-            for tm in m.tm
-            for stf, sit, com, com_type in m.com_tuples
-            if com in m.com_env)
-
-    # Revenue and Purchase costs defined in BuySellPrice.py
-    elif cost_type == 'Revenue':
-        return m.costs[cost_type] == revenue_costs(m)
-
-    elif cost_type == 'Purchase':
-        return m.costs[cost_type] == purchase_costs(m)
-
-    else:
-        raise NotImplementedError("Unknown cost type.")
 
 def cost_rule(m):
     return pyomo.summation(m.costs)
-
-
-def cost_rule_sub(flow_global, lamda, rho):
-    def cost_rule(m):
-            return (pyomo.summation(m.costs) + 0.5 * rho *
-                        sum((m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] -
-                            flow_global[(tm, stf, sit_in, sit_out)])**2
-                            for tm in m.tm
-                            for stf, sit_in, sit_out, tra, com in m.tra_tuples_boun) +
-                        sum(lamda[(tm, stf, sit_in, sit_out)] *
-                            (m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] -
-                            flow_global[(tm, stf, sit_in, sit_out)])
-                            for tm in m.tm
-                            for stf, sit_in, sit_out, tra, com in m.tra_tuples_boun))
-
-    return cost_rule
 
 
 # CO2 output in entire period <= Global CO2 budget
@@ -1038,9 +907,12 @@ def co2_rule(m):
             for sit in m.sit:
                 # minus because negative commodity_balance represents
                 # creation of that commodity.
-                co2_output_sum += (- commodity_balance
-                                   (m, tm, stf, sit, 'CO2') *
-                                   m.weight *
-                                   stf_dist(stf, m))
+                if m.mode['int']:
+                    co2_output_sum += (- commodity_balance(m, tm, stf, sit, 'CO2') *
+                                       m.typeperiod['weight_typeperiod'][(stf, tm)] *
+                                       m.weight * stf_dist(stf, m))
+                else:
+                    co2_output_sum += (- commodity_balance(m, tm, stf, sit, 'CO2') *
+                                       m.weight)
 
     return (co2_output_sum)

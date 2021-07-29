@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import os
-
 # SCENARIO GENERATORS
 # In this script a variety of scenario generator functions are defined to
 # facilitate scenario definitions.
@@ -63,7 +62,7 @@ def transdist25(data, cross_scenario_data):
     data['global_prop'].loc[pd.IndexSlice[:, 'TransDist'], 'value'].iloc[0] = 1
     data, cross_scenario_data = variable_distribution_share(data, cross_scenario_data, 0.25)
     return data, cross_scenario_data
-
+    
 def transmission(data, cross_scenario_data):
     ###set transdist parameter to zero
     data['global_prop'].loc[pd.IndexSlice[:, 'TransDist'], 'value'] = 0
@@ -75,11 +74,9 @@ def transmission(data, cross_scenario_data):
 
 
 
-
 def scenario_base(data):
     # do nothing
     return data
-
 
 def scenario_stock_prices(data):
     # change stock commodity prices
