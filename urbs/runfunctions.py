@@ -45,7 +45,7 @@ def setup_solver(optim, logfile='solver.log'):
         optim.set_options("Method=2") # ohne method concurrent optimization
         #optim.set_options("QCPDual=0")
         #optim.set_options("BarConvTol=1e-7")
-        optim.set_options("Threads=8")
+        optim.set_options("Threads=4")
         # optim.set_options("timelimit=7200")  # seconds
         # optim.set_options("mipgap=5e-4")  # default = 1e-4
     elif optim.name == 'glpk':
