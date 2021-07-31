@@ -26,6 +26,8 @@ def create_model(
     data_all,
     scenario_name,
     timesteps,
+    dt,
+    objective,
     year,
     initial_values,
     admmopt,
@@ -38,6 +40,8 @@ def create_model(
     cluster_to,
     neighbor_cluster,
     queues,
+    hoursPerPeriod,
+    weighting_order,
     result_dir,
     ):
 
@@ -58,18 +62,25 @@ def create_model(
     })
     lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
 
-    model = urbs.model.create_model(data_all, timesteps, type='sub',
-                        sites=sites,
-                        data_transmission_boun=shared_lines,
-                        data_transmission_int=internal_lines,
-                        flow_global=flow_global,
-                        lamda=lamda,
-                        rho=admmopt.rho,
-                        ID=ID) # TODO: remove ID parameter
+    model = urbs.model.create_model(
+        data_all,
+        timesteps,
+        dt,
+        objective,
+        sites=sites,
+        shared_lines=shared_lines,
+        internal_lines=internal_lines,
+        flow_global=flow_global,
+        lamda=lamda,
+        rho=admmopt.rho,
+        hoursPerPeriod=hoursPerPeriod,
+        weighting_order=weighting_order,
+        ID=ID) # TODO: remove ID parameter
 
-    with open(join(result_dir, f'constraints-{ID}.txt'), 'w', encoding='utf8') as f:
-        for con in model.component_objects(Constraint):
-            con.pprint(ostream=f)
+    # TODO: remove
+    # with open(join(result_dir, f'constraints-{ID}.txt'), 'w', encoding='utf8') as f:
+    #     for con in model.component_objects(Constraint):
+    #         con.pprint(ostream=f)
 
     # enlarge shared_lines (copies of slices of data_all['transmission'])
     shared_lines['cluster_from'] = cluster_from
@@ -111,6 +122,8 @@ def run_worker(
     cluster_to,
     neighbor_cluster,
     queues,
+    hoursPerPeriod,
+    weighting_order,
     result_dir,
     output,
     logqueue
@@ -143,6 +156,8 @@ def run_worker(
     #     cluster_to,
     #     neighbor_cluster,
     #     queues,
+    #     hoursPerPeriod,
+    #     weighting_order,
     #     result_dir,
     # )
 

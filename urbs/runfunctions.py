@@ -1,20 +1,24 @@
-import os
-import pyomo.environ
-from pyomo.opt.base import SolverFactory
 from datetime import datetime, date
-from .model import create_model
-from .report import *
-from .plot import *
-from .input import *
-from .validation import *
-from .saveload import *
+import os
+import time
+
+from pyomo.environ import SolverFactory
+
 from .features import *
+from .input import *
+from .model import create_model
+from .plot import *
+from .report import *
+from .saveload import *
+from .validation import *
 
 
 def prepare_result_directory(result_name):
     """ create a time stamped directory within the result folder.
+
     Args:
         result_name: user specified result name
+
     Returns:
         a subfolder in the result folder
 
@@ -36,6 +40,12 @@ def setup_solver(optim, logfile='solver.log'):
         # reference with list of option names
         # http://www.gurobi.com/documentation/5.6/reference-manual/parameters
         optim.set_options("logfile={}".format(logfile))
+        optim.set_options("NumericFocus=3")
+        optim.set_options("Crossover=0")
+        optim.set_options("Method=2") # ohne method concurrent optimization
+        #optim.set_options("QCPDual=0")
+        #optim.set_options("BarConvTol=1e-7")
+        optim.set_options("Threads=8")
         # optim.set_options("timelimit=7200")  # seconds
         # optim.set_options("mipgap=5e-4")  # default = 1e-4
     elif optim.name == 'glpk':
@@ -52,29 +62,49 @@ def setup_solver(optim, logfile='solver.log'):
     return optim
 
 
-def run_scenario(input_files, Solver, timesteps, scenario, result_dir, dt,
-                 objective, microgrid_files = None, plot_tuples=None,  plot_sites_name=None,
-                 plot_periods=None, report_tuples=None,
-                 cross_scenario_data=None, report_sites_name=None):
-    """ run an urbs model for given input, time steps and scenario
+def run_scenario(
+    input_files,
+    solver_name,
+    timesteps,
+    scenario,
+    result_dir,
+    dt,
+    objective,
+    plot_tuples=None,
+    plot_sites_name=None,
+    plot_periods=None,
+    report_tuples=None,
+    report_sites_name=None,
+    microgrid_files=None,
+    cross_scenario_data=None,
+    noTypicalPeriods=None,
+    hoursPerPeriod=None):
+    """
+    Run an urbs model for given input, time steps and scenario
+
     Args:
-        - input_files: filenames of input Excel spreadsheets
-        - Solver: the user specified solver
-        - timesteps: a list of timesteps, e.g. range(0,8761)
-        - scenario: a scenario function that modifies the input data dict
-        - result_dir: directory name for result spreadsheet and plots
-        - dt: length of each time step (unit: hours)
-        - objective: objective function chosen (either "cost" or "CO2")
-        - plot_tuples: (optional) list of plot tuples (c.f. urbs.result_figures)
-        - plot_sites_name: (optional) dict of names for sites in plot_tuples
-        - plot_periods: (optional) dict of plot periods
+        - `input_files`: filenames of input Excel spreadsheets
+        - `solver_name`: the user specified solver
+        - `timesteps`: a list of timesteps, e.g. range(0,8761)
+        - `scenario`: a scenario function that modifies the input data dict
+        - `result_dir`: directory name for result spreadsheet and plots
+        - `dt`: length of each time step (unit: hours)
+        - `objective`: objective function chosen (either "cost" or "CO2")
+        - `plot_tuples`: (optional) list of plot tuples (c.f. urbs.result_figures)
+        - `plot_sites_name`: (optional) dict of names for sites in plot_tuples
+        - `plot_periods`: (optional) dict of plot periods
           (c.f. urbs.result_figures)
-        - report_tuples: (optional) list of (sit, com) tuples
+        - `report_tuples`: (optional) list of (sit, com) tuples
           (c.f. urbs.report)
-        - report_sites_name: (optional) dict of names for sites in
+        - `report_sites_name`: (optional) dict of names for sites in
           report_tuples
-    Returns:
-        the urbs model instance
+        - `microgrid_files`: Filenames of input Excel spreadsheets for microgrid types.
+        - `cross_scenario_data`: TODO
+        - `noTypicalPeriods`: TODO
+        - `hoursPerPeriod`: TODO
+
+    Return:
+        A `pyomo.ConcreteModel` instance.
     """
 
     # sets a modeled year for non-intertemporal problems
@@ -87,6 +117,7 @@ def run_scenario(input_files, Solver, timesteps, scenario, result_dir, dt,
     data, cross_scenario_data = scenario(data, cross_scenario_data)
     validate_input(data)
     validate_dc_objective(data, objective)
+
 
     # read and modify microgrid data
     mode = identify_mode(data)
@@ -101,26 +132,39 @@ def run_scenario(input_files, Solver, timesteps, scenario, result_dir, dt,
         add_reactive_transmission_lines(data)
         add_reactive_output_ratios(data)
 
-    # create model
-    prob = create_model(data, timesteps, dt, objective)
-    prob.write('model.lp', io_options={'symbolic_solver_labels':True})
+    if mode['tsam']:
+        data, timesteps, weighting_order, cross_scenario_data = run_tsam(
+            data, noTypicalPeriods, hoursPerPeriod, cross_scenario_data)
+        # create model
+        tt = time.time()
+        prob = create_model(
+            data,
+            timesteps,
+            dt,
+            objective,
+            hoursPerPeriod=hoursPerPeriod,
+            weighting_order=weighting_order)
+        print('Elapsed time to build pyomo model: %s s' % round(time.time() - tt, 4))
+    else:
+        # create model
+        tt = time.time()
+        prob = create_model(data, timesteps, dt, objective)
+        print('Elapsed time to build pyomo model: %s s' % round(time.time() - tt,4))
 
     # refresh time stamp string and create filename for logfile
     log_filename = os.path.join(result_dir, '{}.log').format(sce)
 
     # solve model and read results
-    optim = SolverFactory(Solver)  # cplex, glpk, gurobi, ...
+    optim = SolverFactory(solver_name)  # cplex, glpk, gurobi, ...
     optim = setup_solver(optim, logfile=log_filename)
-    result = optim.solve(prob, tee=True)
-    assert str(result.solver.termination_condition) == 'optimal'
+    result = optim.solve(prob, tee=True,report_timing=True)
+    #assert str(result.solver.termination_condition) == 'optimal'
 
     # save problem solution (and input data) to HDF5 file
     # save(prob, os.path.join(result_dir, '{}.h5'.format(sce)))
-
-    # write report to spreadsheet
-    report(
-        prob,
-        os.path.join(result_dir, '{}.xlsx').format(sce),
+    #save(prob, os.path.join('C:/Users/beneh/Documents/Dokumente/Beneharos_Dokumente/01_Uni/00_Master/4_Semester/Masterarbeit/3_Postprocessing/model_h5/transdist', '{}.h5'.format(sce)))
+    ## write report to spreadsheet
+    report(prob,os.path.join(result_dir, '{}.xlsx').format(sce),
         report_tuples=report_tuples,
         report_sites_name=report_sites_name)
 

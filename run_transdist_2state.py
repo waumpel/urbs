@@ -1,3 +1,5 @@
+# TODO: fix this once run_transdist_1state is working
+
 # -*- coding: utf-8 -*-
 import argparse
 from datetime import date
@@ -97,7 +99,7 @@ if __name__ == '__main__':
         admm_results = admm_async.run_regional(
             data_all = data_all,
             timesteps = timesteps,
-            scenario = scenario,
+            scenario = scenario.__name__,
             result_dir = result_dir,
             dt = dt,
             objective = objective,

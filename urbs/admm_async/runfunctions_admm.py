@@ -3,6 +3,7 @@ import multiprocessing as mp
 import os
 from os.path import join
 from time import time
+from urbs.features.typeperiod import run_tsam
 from urbs.pyomoio import get_entities, list_entities
 from urbs.features.transdisthelper import *
 from urbs.identify import identify_mode
@@ -136,40 +137,45 @@ def run_centralized(data_all, timesteps, dt, scenario, result_dir):
 def run_regional(
     data_all,
     timesteps,
-    scenario,
+    scenario_name,
     result_dir,
     dt,
     objective,
     clusters,
     admmopt,
-    microgrid_files = None,
-    cross_scenario_data = None,
-    microgrid_cluster_mode = 'all',
+    microgrid_files=None,
+    microgrid_cluster_mode='microgrid',
+    # TODO: cross_scenario_data
+    cross_scenario_data=None,
+    # TODO: type periods
+    noTypicalPeriods=None,
+    hoursPerPeriod=None,
     ):
     """
     Run an urbs model for given input, time steps and scenario with regional decomposition
     using ADMM.
 
     Args:
-        data_all: input data, as parsed by `read`
-        timesteps: a list of timesteps, e.g. range(0,8761)
-        scenario: a scenario function that modifies the input data dict
-        result_dir: directory name for result spreadsheet and plots
-        dt: width of a time step in hours(default: 1)
-        objective: the entity which is optimized ('cost' or 'co2')
-        clusters: user-defined region clusters for regional decomposition (list of lists)
-        admmopt: `AdmmOption` object
+        - `data_all`: Input data dict, after applying scenario and validation.
+        - `timesteps`: List of timesteps, e.g. range(0,8761).
+        - `scenario_name`: Name of the scenario function used to modify the input data dict.
+        - `result_dir`: Directory name for result spreadsheet and plots.
+        - `dt`: Length of each time step in hours.
+        - `objective`: Objective function, either "cost" or "CO2".
+        - `clusters`: List of lists partitioning the sites of the problem into clusters.
+        - `admmopt`: `AdmmOption` object.
+        - `microgrid_files`: Filenames of input Excel spreadsheets for microgrid types.
+        - `cross_scenario_data`: TODO
+        - `noTypicalPeriods`: TODO
+        - `hoursPerPeriod`: TODO
 
-    Returns:
-        Result summary dict
+    Return:
+        Result summary dict. (See `input_output.results_dict`)
     """
     print('Solving the distributed problem...')
 
     # hard-coded year. ADMM doesn't work with intertemporal models (yet)
     year = date.today().year
-
-    # scenario name, read and modify data for scenario
-    scenario_name = scenario.__name__
 
     # read and modify microgrid data
     mode = identify_mode(data_all)
@@ -200,6 +206,10 @@ def run_regional(
     elif mode['acpf']:
         add_reactive_transmission_lines(data_all)
         add_reactive_output_ratios(data_all)
+
+    if mode['tsam']:
+        data_all, timesteps, weighting_order, cross_scenario_data = run_tsam(
+            data_all, noTypicalPeriods, hoursPerPeriod, cross_scenario_data)
 
     # add carbon supplier if necessary
     if not np.isinf(data_all['global_prop'].loc[year].loc['CO2 limit', 'value']):
@@ -298,6 +308,8 @@ def run_regional(
             data_all,
             scenario_name,
             timesteps,
+            dt,
+            objective,
             year,
             initial_values,
             admmopt,
@@ -310,6 +322,8 @@ def run_regional(
             cluster_to[ID],
             neighbor_cluster[ID],
             queues,
+            hoursPerPeriod,
+            weighting_order,
             result_dir,
         )
         models.append(m)
@@ -334,6 +348,8 @@ def run_regional(
             cluster_to[ID],
             neighbor_cluster[ID],
             queues,
+            hoursPerPeriod,
+            weighting_order,
             result_dir,
             output,
             logqueue,

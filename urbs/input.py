@@ -1,14 +1,15 @@
-import pandas as pd
-import os
-import glob
-from pandas.core.frame import DataFrame
-from xlrd import XLRDError
-from pyomo.environ import ConcreteModel
-from .features.modelhelper import *
-from .identify import *
-from datetime import datetime, date
-import numpy as np
 from copy import deepcopy
+from datetime import date
+import glob
+import os
+import numpy as np
+
+import pandas as pd
+from pyomo.environ import ConcreteModel
+
+from .features.modelhelper import *
+from .identify import identify_mode, identify_expansion
+
 
 def read_input(input_files, year):
     """Read Excel input file and prepare URBS input dict.
@@ -85,6 +86,12 @@ def read_input(input_files, year):
             demand = xls.parse('Demand').set_index(['t'])
             demand = pd.concat([demand], keys=[support_timeframe],
                                names=['support_timeframe'])
+            try:
+                typeperiod = demand.loc[:, ['weight_typeperiod']]
+                demand = demand.drop(columns=['weight_typeperiod'])
+            except KeyError:
+                pass
+
             # split columns by dots '.', so that 'DE.Elec' becomes
             # the two-level column index ('DE', 'Elec')
             demand.columns = split_columns(demand.columns, '.')
@@ -166,6 +173,7 @@ def read_input(input_files, year):
         'commodity': commodity,
         'process': process,
         'process_commodity': process_commodity,
+        'type period': typeperiod,
         'demand': demand,
         'supim': supim,
         'transmission': transmission,
@@ -183,17 +191,26 @@ def read_input(input_files, year):
 
 
 # preparing the pyomo model
-def pyomo_model_prep(data_all, timesteps, sites, model_type, data_transmission=None, ID=None): # TODO: remove ID parameter
-    '''Performs calculations on the data frames in dictionary "data" for
+def pyomo_model_prep(
+    data_all,
+    timesteps,
+    sites=None,
+    data_transmission=None,
+    ID=None): # TODO: remove ID parameter
+    """
+    Performs calculations on the data frames in dictionary `data_all` for
     further usage by the model.
 
     Args:
-        - data: input data dictionary
-        - timesteps: range of modeled timesteps
+    * `data_all`: Input data dictionary.
+    * `timesteps`: Range of modeled timesteps.
+    * `sites`: List of sites in this model. For use with ADMM. Defaults to `None`.
+    * `data_transmission`: `DataFrame` of transmissions in this model. For use with ADMM.
+      Defaults to `None`.
 
-    Returns:
-        a rudimentary pyomo.CancreteModel instance
-    '''
+    Return:
+        A rudimentary `ConcreteModel` instance.
+    """
 
     m = ConcreteModel()
 
@@ -208,7 +225,20 @@ def pyomo_model_prep(data_all, timesteps, sites, model_type, data_transmission=N
     data = deepcopy(data_all)
     m.timesteps = timesteps
     data['site_all']=data_all['site']
-    if model_type == 'sub':
+
+    # for standard problems
+    if sites is None:
+        m.global_prop = data_all['global_prop'].drop('description', axis=1)
+        data['site'] = data_all['site']
+        data['commodity'] = data_all['commodity']
+        data['process'] = data_all['process']
+        data['storage'] = data_all['storage']
+        data['demand'] = data_all['demand']
+        data['supim'] = data_all['supim']
+        data['transmission'] = data_all['transmission']
+
+    # for ADMM subproblems
+    else:
         m.global_prop = data_all['global_prop'].drop('description', axis=1)
         data['site'] = data_all['site'].loc(axis=0)[:,sites]
         data['commodity'] = data_all['commodity'].loc(axis=0)[:,sites]
@@ -232,15 +262,6 @@ def pyomo_model_prep(data_all, timesteps, sites, model_type, data_transmission=N
             if site in data_all['eff_factor'].columns.get_level_values(0)
         ]
         data['eff_factor'] = data_all['eff_factor'][eff_factor_sites]
-    else:
-        m.global_prop = data_all['global_prop'].drop('description', axis=1)
-        data['site'] = data_all['site']
-        data['commodity'] = data_all['commodity']
-        data['process'] = data_all['process']
-        data['storage'] = data_all['storage']
-        data['demand'] = data_all['demand']
-        data['supim'] = data_all['supim']
-        data['transmission'] = data_all['transmission']
 
     m.global_prop = data_all['global_prop']
     commodity = data['commodity']
@@ -255,12 +276,12 @@ def pyomo_model_prep(data_all, timesteps, sites, model_type, data_transmission=N
     # creating list wih cost types
     m.cost_type_list = ['Invest', 'Fixed', 'Variable', 'Fuel', 'Start-up',
                         'Environmental']
-    #if type == 'sub':
-        #m.cost_type_list.extend(['ADMM_Linear','ADMM_Quadratic'])
 
     # Converting Data frames to dict
     # Data frames that need to be modified will be converted after modification
     m.site_dict = data['site'].to_dict()
+
+    # TODO: unnecessary? could cause confusion
     if sites != ['Carbon_site']:
         m.demand_dict = data['demand'].to_dict()
         m.supim_dict = data['supim'].to_dict()
@@ -288,6 +309,14 @@ def pyomo_model_prep(data_all, timesteps, sites, model_type, data_transmission=N
     if m.mode['tve']:
         m.eff_factor_dict = \
             data["eff_factor"].dropna(axis=0, how='all').to_dict()
+    if m.mode['tdy']:
+        m.typeperiod = data['type period'].dropna(axis=0, how='all').to_dict()
+    else:
+        # if mode 'typeperiod' is not active, create a dict with ones
+        temp = pd.DataFrame(index=data['demand'].dropna(axis=0, how='all').index)
+        temp['weight_typeperiod']=1
+        m.typeperiod = temp.to_dict()
+
     if m.mode['onoff']:
         # on/off option
         # only keep those entries whose values are 1
@@ -385,6 +414,7 @@ def pyomo_model_prep(data_all, timesteps, sites, model_type, data_transmission=N
             m.sto_ep_ratio_dict = {}
 
     # derive invcost factor from WACC and depreciation duration
+    # TODO: ADMM support for intertemporal models
     if m.mode['int']:
         # modify pro_const_cap for intertemporal mode
         for index in tuple(pro_const_cap.index):
@@ -549,10 +579,10 @@ def pyomo_model_prep(data_all, timesteps, sites, model_type, data_transmission=N
                                           .apply(discount_factor, m=m))
             storage['eff-distance'] = (storage['stf_dist']
                                        .apply(effective_distance, m=m))
-            import pdb;pdb.set_trace()
             storage['cost_factor'] = (storage['discount-factor'] *
                                       storage['eff-distance'])
     else:
+        # for one-year problems
 
         if not process.empty:
             process['invcost-factor'] = (
@@ -635,16 +665,7 @@ def pyomo_model_prep(data_all, timesteps, sites, model_type, data_transmission=N
         m.sto_block_c_dict = sto_block_c[sto_block_c > 0].to_dict()
         sto_block_p = storage['p-block']
         m.sto_block_p_dict = sto_block_p[sto_block_p > 0].to_dict()
-    #if model_type == 'sub':
-    #    with pd.ExcelWriter(sites[0]+'sub.xlsx') as writer:
-    #        for key, val in data.items():
-    #            if not val.empty:
-    #                val.to_excel(writer, sheet_name=key)
-   # else:
-    #    with pd.ExcelWriter('master_from_sub.xlsx') as writer:
-    #        for key, val in data.items():
-    #            if not val.empty:
-    #                val.to_excel(writer, sheet_name=key)
+
     return m, data
 
 
@@ -699,28 +720,10 @@ def get_input(prob, name):
         # unknown
         raise ValueError("Unknown input DataFrame name!")
 
-def add_carbon_supplier(data_all,clusters):
-    """Read Excel input file and prepare URBS input dict.
 
-    Reads an Excel spreadsheet that adheres to the structure shown in
-    mimo-example.xlsx. Two preprocessing steps happen here:
-    1. Column titles in 'Demand' and 'SupIm' are split, so that
-    'Site.Commodity' becomes the MultiIndex column ('Site', 'Commodity').
-    2. The attribute 'annuity-factor' is derived here from the columns 'wacc'
-    and 'depreciation' for 'Process', 'Transmission' and 'Storage'.
-
-    Args:
-        filename: filename to an Excel spreadsheet with the required sheets
-            'Commodity', 'Process', 'Transmission', 'Storage', 'Demand' and
-            'SupIm'.
-
-    Returns:
-        a dict of 6 DataFrames
-
-    Example:
-        >>> data = read_excel('mimo-example.xlsx')
-        >>> data['global_prop'].loc['CO2 limit', 'value']
-        150000000
+def add_carbon_supplier(data_all, clusters):
+    """
+    TODO
     """
     year = date.today().year
     # add site Carbon_site
@@ -773,12 +776,12 @@ def add_carbon_supplier(data_all,clusters):
     for cluster in clusters:
         levels = (year, 'Carbon_site', cluster[0], 'CO2_line', 'Carbon')
         index = pd.MultiIndex.from_tuples([levels], names=names)
-        df = DataFrame(data_to, index)
+        df =pd.DataFrame(data_to, index)
         data_all['transmission'] = data_all['transmission'].append(df)
 
         levels = (year, cluster[0], 'Carbon_site', 'CO2_line', 'Carbon')
         index = pd.MultiIndex.from_tuples([levels], names=names)
-        df = DataFrame(data_from, index)
+        df =pd.DataFrame(data_from, index)
         data_all['transmission'] = data_all['transmission'].append(df)
 
         # add Carbon commodity to each site
@@ -799,12 +802,12 @@ def add_carbon_supplier(data_all,clusters):
             for site in cluster[1:]:
                 levels = (year, cluster[0], site, 'CO2_line', 'Carbon')
                 index = pd.MultiIndex.from_tuples([levels], names=names)
-                df = DataFrame(data_to, index)
+                df =pd.DataFrame(data_to, index)
                 data_all['transmission'] = data_all['transmission'].append(df)
 
                 levels = (year, site, cluster[0], 'CO2_line', 'Carbon')
                 index = pd.MultiIndex.from_tuples([levels], names=names)
-                df = DataFrame(data_from, index)
+                df =pd.DataFrame(data_from, index)
                 data_all['transmission'] = data_all['transmission'].append(df)
 
     #import pdb;pdb.set_trace()

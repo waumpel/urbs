@@ -1,9 +1,10 @@
-from urbs.identify import *
 import copy
 import math
-import numpy as np
 import os
+
 import pandas as pd
+
+from urbs.identify import *
 
 def create_transdist_data(data, microgrid_data_initial, cross_scenario_data):
     mode = identify_mode(data)

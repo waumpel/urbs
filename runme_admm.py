@@ -96,7 +96,7 @@ if __name__ == '__main__':
         admm_results = admm_async.run_regional(
             data_all = data_all,
             timesteps = timesteps,
-            scenario = scenario,
+            scenario = scenario.__name__,
             result_dir = result_dir,
             dt = dt,
             objective = objective,
