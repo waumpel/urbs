@@ -316,16 +316,21 @@ class UrbsAdmmModel(object):
         """
         self.log('Updating primal gap')
         raw_primalgap = norm(self.flows_all - self.flow_global)
+        self.log(f'raw_primalgap: {raw_primalgap}')
         if self.admmopt.tolerance_mode == 'absolute':
+            self.log(f'tolerance_mode: {self.admmopt.tolerance_mode}')
             primalgap = raw_primalgap / min(1, len(self.flow_global))
 
         elif self.admmopt.tolerance_mode == 'relative':
+            self.log(f'tolerance_mode: {self.admmopt.tolerance_mode}')
             normalizer = max(
                 norm(self.flows_all),
                 norm(self.flow_global)
             )
+            self.log(f'normalizer: {normalizer}')
             if normalizer == 0:
                 normalizer = 1
+                self.log(f'normalizer: {normalizer}')
             primalgap = raw_primalgap / normalizer
 
         self.log(f'Primal gap: {primalgap}')

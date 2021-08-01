@@ -105,26 +105,7 @@ def create_model(
 
 
 def run_worker(
-    s, # TODO: remove
-    ID,
-    data_all,
-    scenario_name,
-    timesteps,
-    year,
-    initial_values,
-    admmopt,
-    n_clusters,
-    sites,
-    neighbors,
-    shared_lines,
-    internal_lines,
-    cluster_from,
-    cluster_to,
-    neighbor_cluster,
-    queues,
-    hoursPerPeriod,
-    weighting_order,
-    result_dir,
+    s,
     output,
     logqueue
     ):
@@ -137,29 +118,6 @@ def run_worker(
     * `logqueue`: `mp.Queue` for sending log messages. These are written to a shared log
                   file by the master process.
     """
-
-    # TODO: switch back to parallel model creation
-    # s = create_model(
-    #     ID,
-    #     data_all,
-    #     scenario_name,
-    #     timesteps,
-    #     year,
-    #     initial_values,
-    #     admmopt,
-    #     n_clusters,
-    #     sites,
-    #     neighbors,
-    #     shared_lines,
-    #     internal_lines,
-    #     cluster_from,
-    #     cluster_to,
-    #     neighbor_cluster,
-    #     queues,
-    #     hoursPerPeriod,
-    #     weighting_order,
-    #     result_dir,
-    # )
 
     max_iter = s.admmopt.max_iter
     solver_times = [] # Stores the duration of each solver iteration

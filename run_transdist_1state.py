@@ -93,15 +93,19 @@ if __name__ == '__main__':
             noTypicalPeriods=noTypicalPeriods,
             hoursPerPeriod=hoursPerPeriod)
 
+
         # save cross_Scenario dara
         # PV_private_rooftop capacity results for 100% distribution grids are saved to use equal PV capacities in the subsequent scenarios
-        if scenario.__name__ == 'transdist100':
-            cap_PV_private = prob._result['cap_pro'].loc[:, :, 'PV_private_rooftop'].droplevel(level=[0])
-            cap_PV_private.index = pd.MultiIndex.from_tuples(cap_PV_private.index.str.split('_').tolist())
-            cap_PV_private = cap_PV_private.groupby(level=[2]).sum().to_frame()
-            cap_PV_private.index.name = 'sit'
-            cap_PV_private['pro'] = 'PV_private_rooftop'
-            cap_PV_private.set_index(['pro'], inplace=True, append=True)
-            cap_PV_private = cap_PV_private.squeeze()
-            cross_scenario_data['PV_cap_shift'] = cap_PV_private
+        # Got AttributeError: 'ConcreteModel' object has no attribute '_result'
+
+        # if scenario.__name__ == 'transdist100':
+
+            # cap_PV_private = prob._result['cap_pro'].loc[:, :, 'PV_private_rooftop'].droplevel(level=[0])
+            # cap_PV_private.index = pd.MultiIndex.from_tuples(cap_PV_private.index.str.split('_').tolist())
+            # cap_PV_private = cap_PV_private.groupby(level=[2]).sum().to_frame()
+            # cap_PV_private.index.name = 'sit'
+            # cap_PV_private['pro'] = 'PV_private_rooftop'
+            # cap_PV_private.set_index(['pro'], inplace=True, append=True)
+            # cap_PV_private = cap_PV_private.squeeze()
+            # cross_scenario_data['PV_cap_shift'] = cap_PV_private
 
