@@ -328,6 +328,11 @@ def run_regional(
         )
         models.append(m)
 
+    for ID in range(n_clusters):
+        run_worker(models[ID], output, logqueue)
+
+    quit()
+
     # Child processes for the ADMM subproblems
     procs = [
         mp.Process(target=run_worker, args=(
