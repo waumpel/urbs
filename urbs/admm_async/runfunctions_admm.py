@@ -302,8 +302,7 @@ def run_regional(
     # TODO: switch back to parallel model creation
     models = []
 
-    # for ID in range(n_clusters):
-    for ID in [0]:
+    for ID in range(n_clusters):
         m = create_model(
             ID,
             data_all,
@@ -338,8 +337,7 @@ def run_regional(
             output,
             logqueue,
         ))
-        # for ID in range(n_clusters)
-        for ID in [0]
+        for ID in range(n_clusters)
     ]
 
     solver_start = time()
