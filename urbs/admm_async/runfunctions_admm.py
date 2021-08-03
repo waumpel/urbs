@@ -337,8 +337,6 @@ def run_regional(
     for proc in procs:
         proc.join()
 
-    quit()
-
     ttime = time()
     solver_time = ttime - solver_start
 
