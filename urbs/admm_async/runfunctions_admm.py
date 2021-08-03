@@ -338,7 +338,7 @@ def run_regional(
         for ID in range(n_clusters)
     ]
 
-    quit()
+    # quit()
 
     solver_start = time()
     for proc in procs:
@@ -351,6 +351,8 @@ def run_regional(
 
     for proc in procs:
         proc.join()
+
+    quit()
 
     ttime = time()
     solver_time = ttime - solver_start
