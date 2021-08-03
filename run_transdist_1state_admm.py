@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 import argparse
 from datetime import date
-from multiprocessing import freeze_support
+from multiprocessing import freeze_support, set_start_method
+
 import os
 from os.path import join
 import shutil
@@ -16,6 +17,7 @@ from urbs.admm_async import plot
 from urbs.admm_async import input_output
 
 if __name__ == '__main__':
+    set_start_method("spawn")
     freeze_support()
 
     options = argparse.ArgumentParser()
