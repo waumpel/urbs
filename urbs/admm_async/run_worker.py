@@ -8,16 +8,15 @@ import urbs.model
 from .urbs_admm_model import AdmmStatus, UrbsAdmmModel
 from . import input_output
 
-def log_generator(ID, logqueue):
+def log_generator(ID):
     """
-    Return a log function that prefixes messages with the process `ID`, prints them to
-    stdout, and sends them to the `logqueue`.
+    Return a log function that prefixes messages with the process `ID` and prints them to
+    stdout.
     """
     prefix = f'Process[{ID}] '
     def fun(*args):
         msg = prefix + f'{" ".join(str(arg) for arg in args)}'
         print(msg)
-        logqueue.put(msg)
     return fun
 
 
@@ -107,7 +106,6 @@ def create_model(
 def run_worker(
     s,
     output,
-    logqueue
     ):
     """
     Main function for child processes of ADMM. Iteratively solves one subproblem of ADMM.
@@ -115,15 +113,13 @@ def run_worker(
     ### Args:
     * `s`: `UrbsAdmmModel` representing the subproblem.
     * `output`: `multiprocessing.Queue` for sending results.
-    * `logqueue`: `mp.Queue` for sending log messages. These are written to a shared log
-                  file by the master process.
     """
 
     max_iter = s.admmopt.max_iter
     solver_times = [] # Stores the duration of each solver iteration
     timestamps = [] # Stores the times after each solver iteration
 
-    log = log_generator(s.ID, logqueue)
+    log = log_generator(s.ID)
     log(f'Starting subproblem for regions {", ".join(s.regions)}.')
 
     for nu in range(max_iter):

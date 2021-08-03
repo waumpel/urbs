@@ -296,9 +296,6 @@ def run_regional(
     # Queue for collecting the results from each subproblem after convergence
     output = manager.Queue()
 
-    # Queue for accumulating log messages
-    logqueue = manager.Queue()
-
     # TODO: switch back to parallel model creation
     models = []
 
@@ -333,7 +330,6 @@ def run_regional(
         mp.Process(target=run_worker, args=(
             models[ID],
             output,
-            logqueue,
         ))
         for ID in range(n_clusters)
     ]
@@ -357,12 +353,6 @@ def run_regional(
     ttime = time()
     solver_time = ttime - solver_start
 
-    # Write accumulated log messages to logfile
-    with open(join(result_dir, 'shared.log'), 'w', encoding='utf8') as logfile:
-        while not logqueue.empty():
-            msg = logqueue.get(block=False)
-            logfile.write(msg + '\n')
-
     # get results
     results = sorted(results, key=lambda x: x['ID'])
 
@@ -376,8 +366,6 @@ def run_regional(
     # print results
     print(f'ADMM solver time: {solver_time:4.0f} s')
     print(f'ADMM objective  : {obj_total:.4e}')
-
-    logfile.close()
 
     # === Save results and plots ===
 
