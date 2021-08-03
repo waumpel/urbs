@@ -179,9 +179,6 @@ def run_worker(
         s.retrieve_boundary_flows()
         s.update_primalgap()
 
-        log('quitting')
-        return
-
         # Take the timestamp now, when objective and primal gap are known for this iteration.
         timestamps.append(time())
 
