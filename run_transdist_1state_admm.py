@@ -98,31 +98,34 @@ if __name__ == '__main__':
         validate_input(data_all)
         validate_dc_objective(data_all, objective)
 
-        admm_results = admm_async.run_regional(
-            data_all=data_all,
-            timesteps=timesteps,
-            scenario_name=scenario.__name__,
-            result_dir=result_dir,
-            dt=dt,
-            objective=objective,
-            clusters=clusters,
-            admmopt=admmopt,
+        admm_results, weighting_order = admm_async.run_regional(
+            data_all,
+            timesteps,
+            scenario.__name__,
+            result_dir,
+            dt,
+            objective,
+            clusters,
+            admmopt,
             microgrid_files=microgrid_paths,
+            microgrid_cluster_mode='microgrid',
             cross_scenario_data=cross_scenario_data,
             noTypicalPeriods=noTypicalPeriods,
             hoursPerPeriod=hoursPerPeriod,
-            microgrid_cluster_mode='microgrid',
         )
 
         if args.centralized:
-            # run_regional already performed transdist preprocessing,
-            # don't have to do that again (TODO: factor out preprocessing)
-            # TODO: use run_scenario instead
+            # Run_regional already performed transdist preprocessing,
+            # don't have to do that again.
             centralized_result = admm_async.run_centralized(
-                data_all, timesteps, dt, scenario, result_dir,
-                # TODO: run_centralized must support this (but use run_scenario instead)
-                noTypicalPeriods=noTypicalPeriods,
+                data_all,
+                timesteps,
+                scenario.__name__,
+                result_dir,
+                dt,
+                objective,
                 hoursPerPeriod=hoursPerPeriod,
+                weighting_order=weighting_order,
             )
             obj_cent = centralized_result['objective']
             obj_admm = admm_results['admm_objective']

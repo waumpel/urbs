@@ -95,16 +95,28 @@ def read(input_file, scenario, objective):
     return data_all, ttime
 
 
-def run_centralized(data_all, timesteps, dt, scenario, result_dir):
-    print('Solving the centralized problem...')
-    prob = urbs.model.create_model(data_all, timesteps, dt, type='normal')
+def run_centralized(
+    data_all,
+    timesteps,
+    scenario_name,
+    result_dir,
+    dt,
+    objective,
+    hoursPerPeriod,
+    weighting_oder,
+    ):
 
-    with open(join(result_dir, f'constraints-centralized.txt'), 'w', encoding='utf8') as f:
-        for con in prob.component_objects(Constraint):
-            con.pprint(ostream=f)
+    prob = urbs.model.create_model(
+        data_all,
+        timesteps,
+        dt,
+        objective,
+        hoursPerPeriod=hoursPerPeriod,
+        weighting_order=weighting_oder,
+    )
 
     # refresh time stamp string and create filename for logfile
-    log_filename = os.path.join(result_dir, f'{scenario.__name__}.log')
+    log_filename = os.path.join(result_dir, f'{scenario_name}.log')
 
     # setup solver
     solver_name = 'gurobi'
@@ -114,26 +126,22 @@ def run_centralized(data_all, timesteps, dt, scenario, result_dir):
     start = time()
     result = solver.solve(prob, tee=False)
     ttime = time() - start
-    flows_from_original_problem = pd.DataFrame.from_dict(
-        {name: entity.value for name, entity in prob.e_tra_in.items()},
-        orient='index',
-        columns=['Original']
-    )
+
+    # flows_from_original_problem = pd.DataFrame.from_dict(
+    #     {name: entity.value for name, entity in prob.e_tra_in.items()},
+    #     orient='index',
+    #     columns=['Original']
+    # )
 
     objective = result['Problem'][0]['Lower bound']
-
-    print(f'centralized solver time: {ttime:4.0f} s')
-    print(f'centralized objective  : {objective:.4e}')
 
     return {
         'time': ttime,
         'objective': objective,
-        'flows': flows_from_original_problem,
+        # 'flows': flows_from_original_problem,
     }
 
 
-
-# @profile
 def run_regional(
     data_all,
     timesteps,
@@ -374,4 +382,7 @@ def run_regional(
         results,
     )
 
-    return results_dict
+    if mode['tsam']:
+        return results_dict, weighting_order
+    else:
+        return results_dict
