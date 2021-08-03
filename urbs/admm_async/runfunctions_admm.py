@@ -296,11 +296,9 @@ def run_regional(
     # Queue for collecting the results from each subproblem after convergence
     output = manager.Queue()
 
-    # TODO: switch back to parallel model creation
-    models = []
-
-    for ID in range(n_clusters):
-        m = create_model(
+    # Child processes for the ADMM subproblems
+    procs = [
+        mp.Process(target=run_worker, args=(
             ID,
             data_all,
             scenario_name,
@@ -322,19 +320,10 @@ def run_regional(
             hoursPerPeriod,
             weighting_order,
             result_dir,
-        )
-        models.append(m)
-
-    # Child processes for the ADMM subproblems
-    procs = [
-        mp.Process(target=run_worker, args=(
-            models[ID],
             output,
         ))
         for ID in range(n_clusters)
     ]
-
-    # quit()
 
     solver_start = time()
     for proc in procs:
