@@ -131,8 +131,13 @@ class UrbsAdmmModel(object):
 
         self.solver = SolverFactory('gurobi_persistent')
         self.solver.set_instance(model, symbolic_solver_labels=False)
-        self.solver.set_gurobi_param('Method', 2)
-        self.solver.set_gurobi_param('Threads', 1)
+        # self.solver.set_gurobi_param('Method', 2)
+        # self.solver.set_gurobi_param('Threads', 1)
+        self.solver.set_options(f"logfile={join(result_dir, f'process-{ID}-solver.log')}")
+        self.solver.set_options("NumericFocus=3")
+        self.solver.set_options("Crossover=0")
+        self.solver.set_options("Method=2") # ohne method concurrent optimization
+        self.solver.set_options("Threads=8")
 
         self.status = [AdmmStatus.NO_CONVERGENCE] * n_clusters
         self.status_update = False
