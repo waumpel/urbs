@@ -9,7 +9,7 @@ import urbs
 
 if __name__ == '__main__':
 
-    input_files = 'transdist-1state.xlsx'  # for single year file name, for intertemporal folder name
+    input_files = 'transdist-1state-tsam.xlsx'  # for single year file name, for intertemporal folder name
     input_dir = 'Input'
     input_path = os.path.join(input_dir, input_files)
 
@@ -19,7 +19,7 @@ if __name__ == '__main__':
         os.path.join(microgrid_dir, file)
         for file in microgrid_files
     ]
-    result_name = 'transdist-1state'
+    result_name = 'transdist-1state-tsam'
     result_dir = urbs.prepare_result_directory(result_name)  # name + time stamp
 
     # #copy input file to result directory

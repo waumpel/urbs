@@ -4,12 +4,10 @@ from datetime import date
 from multiprocessing import freeze_support, set_start_method
 
 import os
-from os.path import join
 import shutil
 from urbs.validation import validate_dc_objective, validate_input
 from urbs.input import read_input
 import urbs
-import pandas as pd
 
 from urbs import admm_async
 from urbs.runfunctions import prepare_result_directory
@@ -25,7 +23,7 @@ if __name__ == '__main__':
                         help='Additionally compute the centralized solution for comparison.')
     args = options.parse_args()
 
-    input_files = 'transdist-1state.xlsx'  # for single year file name, for intertemporal folder name
+    input_files = 'transdist-1state-tsam.xlsx'  # for single year file name, for intertemporal folder name
     # input_files = 'Transmission_Level.xlsx'  # for single year file name, for intertemporal folder name
     input_dir = 'Input'
     input_path = os.path.join(input_dir, input_files)
@@ -36,7 +34,7 @@ if __name__ == '__main__':
         os.path.join(microgrid_dir, file)
         for file in microgrid_files
     ]
-    result_name = 'transdist-1state-admm'
+    result_name = 'transdist-1state-tsam-admm'
     result_dir = prepare_result_directory(result_name)  # name + time stamp
 
     # #copy input file to result directory
