@@ -39,7 +39,10 @@ def setup_solver(optim, logfile='solver.log'):
     if optim.name == 'gurobi':
         # reference with list of option names
         # http://www.gurobi.com/documentation/5.6/reference-manual/parameters
-        optim.set_options("logfile={}".format(logfile))
+        print('logfile')
+        optim.set_options(f"logfile={logfile}")
+        print('LogFile')
+        optim.set_options(f"LogFile={logfile}")
         optim.set_options("NumericFocus=3")
         optim.set_options("Crossover=0")
         optim.set_options("Method=2") # ohne method concurrent optimization
