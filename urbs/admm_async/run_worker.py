@@ -122,10 +122,10 @@ def run_worker(
     cluster_to,
     neighbor_cluster,
     queues,
-    hoursPerPeriod,
-    weighting_order,
     result_dir,
     output,
+    hoursPerPeriod=None,
+    weighting_order=None,
     ):
     """
     Main function for child processes of ADMM. Iteratively solves one subproblem of ADMM.

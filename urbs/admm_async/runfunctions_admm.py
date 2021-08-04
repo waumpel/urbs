@@ -305,33 +305,60 @@ def run_regional(
     output = manager.Queue()
 
     # Child processes for the ADMM subproblems
-    procs = [
-        mp.Process(target=run_worker, args=(
-            ID,
-            data_all,
-            scenario_name,
-            timesteps,
-            dt,
-            objective,
-            year,
-            initial_values,
-            admmopt,
-            n_clusters,
-            clusters[ID],
-            neighbors[ID],
-            shared_lines[ID],
-            internal_lines[ID],
-            cluster_from[ID],
-            cluster_to[ID],
-            neighbor_cluster[ID],
-            queues,
-            hoursPerPeriod,
-            weighting_order,
-            result_dir,
-            output,
-        ))
-        for ID in range(n_clusters)
-    ]
+    if mode['tsam']:
+        procs = [
+            mp.Process(target=run_worker, args=(
+                ID,
+                data_all,
+                scenario_name,
+                timesteps,
+                dt,
+                objective,
+                year,
+                initial_values,
+                admmopt,
+                n_clusters,
+                clusters[ID],
+                neighbors[ID],
+                shared_lines[ID],
+                internal_lines[ID],
+                cluster_from[ID],
+                cluster_to[ID],
+                neighbor_cluster[ID],
+                queues,
+                hoursPerPeriod,
+                weighting_order,
+                result_dir,
+                output,
+            ))
+            for ID in range(n_clusters)
+        ]
+    else:
+        procs = [
+            mp.Process(target=run_worker, args=(
+                ID,
+                data_all,
+                scenario_name,
+                timesteps,
+                dt,
+                objective,
+                year,
+                initial_values,
+                admmopt,
+                n_clusters,
+                clusters[ID],
+                neighbors[ID],
+                shared_lines[ID],
+                internal_lines[ID],
+                cluster_from[ID],
+                cluster_to[ID],
+                neighbor_cluster[ID],
+                queues,
+                result_dir,
+                output,
+            ))
+            for ID in range(n_clusters)
+        ]
 
     solver_start = time()
     for proc in procs:
