@@ -58,6 +58,10 @@ if __name__ == '__main__':
 
     clusters = [['BB']]
 
+    # input data for tsam method
+    noTypicalPeriods = 4
+    hoursPerPeriod = 168
+
     # select scenarios to be run
     scenarios = [
                 urbs.transdist100, # transdist100 scenarios must be simulated first to store distribution demand
@@ -94,7 +98,7 @@ if __name__ == '__main__':
         validate_input(data_all)
         validate_dc_objective(data_all, objective)
 
-        admm_results = admm_async.run_regional(
+        admm_results, weighting_order = admm_async.run_regional(
             data_all,
             timesteps,
             scenario.__name__,
@@ -106,6 +110,8 @@ if __name__ == '__main__':
             microgrid_files=microgrid_paths,
             microgrid_cluster_mode='microgrid',
             cross_scenario_data=cross_scenario_data,
+            noTypicalPeriods=noTypicalPeriods,
+            hoursPerPeriod=hoursPerPeriod,
         )
 
         if args.centralized:
@@ -118,6 +124,8 @@ if __name__ == '__main__':
                 result_dir,
                 dt,
                 objective,
+                hoursPerPeriod=hoursPerPeriod,
+                weighting_order=weighting_order,
             )
             obj_cent = centralized_result['objective']
             obj_admm = admm_results['admm_objective']

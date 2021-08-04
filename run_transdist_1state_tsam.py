@@ -42,6 +42,10 @@ if __name__ == '__main__':
     timesteps = range(offset, offset+length+1)
     dt = 1  # length of each time step (unit: hours)
 
+    # input data for tsam method
+    noTypicalPeriods = 4
+    hoursPerPeriod = 168
+
     # TODO: delete?
     # detailed reporting commodity/sites
     report_tuples = []
@@ -86,7 +90,8 @@ if __name__ == '__main__':
             report_sites_name=report_sites_name,
             microgrid_files=microgrid_paths,
             cross_scenario_data=cross_scenario_data,
-        )
+            noTypicalPeriods=noTypicalPeriods,
+            hoursPerPeriod=hoursPerPeriod)
 
 
         # save cross_Scenario dara
