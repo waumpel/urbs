@@ -326,10 +326,10 @@ def run_regional(
                 cluster_to[ID],
                 neighbor_cluster[ID],
                 queues,
-                hoursPerPeriod,
-                weighting_order,
                 result_dir,
                 output,
+                hoursPerPeriod,
+                weighting_order,
             ))
             for ID in range(n_clusters)
         ]
