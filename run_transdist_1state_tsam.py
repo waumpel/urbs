@@ -9,7 +9,7 @@ import urbs
 
 if __name__ == '__main__':
 
-    input_files = 'transdist-1state.xlsx'  # for single year file name, for intertemporal folder name
+    input_files = 'transdist-1state-tsam.xlsx'  # for single year file name, for intertemporal folder name
     input_dir = 'Input'
     input_path = os.path.join(input_dir, input_files)
 
@@ -19,7 +19,7 @@ if __name__ == '__main__':
         os.path.join(microgrid_dir, file)
         for file in microgrid_files
     ]
-    result_name = 'transdist-1state'
+    result_name = 'transdist-1state-tsam'
     result_dir = urbs.prepare_result_directory(result_name)  # name + time stamp
 
     # #copy input file to result directory
@@ -41,6 +41,10 @@ if __name__ == '__main__':
     (offset, length) = (0, 1)  # time step selection
     timesteps = range(offset, offset+length+1)
     dt = 1  # length of each time step (unit: hours)
+
+    # input data for tsam method
+    noTypicalPeriods = 4
+    hoursPerPeriod = 168
 
     # TODO: delete?
     # detailed reporting commodity/sites
@@ -86,7 +90,8 @@ if __name__ == '__main__':
             report_sites_name=report_sites_name,
             microgrid_files=microgrid_paths,
             cross_scenario_data=cross_scenario_data,
-        )
+            noTypicalPeriods=noTypicalPeriods,
+            hoursPerPeriod=hoursPerPeriod)
 
 
         # save cross_Scenario dara
