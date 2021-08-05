@@ -115,6 +115,11 @@ def run_centralized(
         weighting_order=weighting_oder,
     )
 
+    # log number of constraints TODO: remove
+    with open(join(result_dir, 'constraints-centralized.txt'), 'w', encoding='utf8') as f:
+        for con in prob.component_objects(Constraint):
+            f.write(f'{con.name}: {len(list(con.items()))}\n')
+
     # refresh time stamp string and create filename for logfile
     log_filename = os.path.join(result_dir, f'{scenario_name}.log')
 
