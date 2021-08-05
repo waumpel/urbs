@@ -6,7 +6,7 @@ from time import time
 
 import numpy as np
 import pandas as pd
-from pyomo.environ import SolverFactory
+from pyomo.environ import SolverFactory, Constraint
 
 from urbs.model import create_model
 from urbs.input import read_input, add_carbon_supplier
@@ -94,6 +94,11 @@ def read(input_file, scenario, objective):
 def run_centralized(data_all, timesteps, dt, scenario, result_dir):
     print('Solving the centralized problem...')
     prob = create_model(data_all, timesteps, dt, type='normal')
+
+    # log number of constraints TODO: remove
+    # with open(join(result_dir, 'constraints-centralized.txt'), 'w', encoding='utf8') as f:
+    #     for con in prob.component_objects(Constraint):
+    #         f.write(f'{con.name}: {len(list(con.items()))}\n')
 
     # refresh time stamp string and create filename for logfile
     log_filename = os.path.join(result_dir, f'{scenario.__name__}.log')

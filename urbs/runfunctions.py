@@ -1,12 +1,15 @@
 import os
-from pyomo.environ import Constraint, SolverFactory
+from os.path import join
 from datetime import datetime, date
-from .model import create_model
-from .report import *
-from .plot import *
+
+from pyomo.environ import Constraint, SolverFactory
+
 from .input import *
-from .validation import *
+from .model import create_model
+from .plot import *
+from .report import *
 from .saveload import *
+from .validation import *
 
 
 def prepare_result_directory(result_name):
@@ -90,11 +93,10 @@ def run_scenario(input_files, Solver, timesteps, scenario, result_dir, dt,
     prob = create_model(data, dt, timesteps, objective)
     prob.write('model.lp', io_options={'symbolic_solver_labels':True})
 
-    print('Counting constraints')
-    counter = 0
-    for _ in prob.component_objects(Constraint):
-        counter += 1
-    print(f'Number of constraints: {counter}')
+    # log number of constraints TODO: remove
+    # with open(join(result_dir, 'constraints.txt'), 'w', encoding='utf8') as f:
+    #     for con in prob.component_objects(Constraint):
+    #         f.write(f'{con.name}: {len(list(con.items()))}\n')
 
     # refresh time stamp string and create filename for logfile
     log_filename = os.path.join(result_dir, '{}.log').format(sce)
