@@ -1,8 +1,9 @@
 from datetime import datetime, date
 import os
+from os.path import join
 import time
 
-from pyomo.environ import SolverFactory
+from pyomo.environ import SolverFactory, Constraint
 
 from .features import *
 from .input import *
@@ -150,6 +151,11 @@ def run_scenario(
         tt = time.time()
         prob = create_model(data, timesteps, dt, objective)
         print('Elapsed time to build pyomo model: %s s' % round(time.time() - tt,4))
+
+    # TODO: remove
+    with open(join(result_dir, 'constraints.txt'), 'w', encoding='utf8') as f:
+        for con in prob.component_objects(Constraint):
+            con.pprint(ostream=f)
 
     # refresh time stamp string and create filename for logfile
     log_filename = os.path.join(result_dir, '{}.log').format(sce)
