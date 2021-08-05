@@ -76,6 +76,15 @@ def create_model(
         weighting_order=weighting_order,
         ID=ID) # TODO: remove ID parameter
 
+    log = log_generator(ID)
+
+    log('Counting constraints')
+    counter = 0
+    for _ in model.component_objects(Constraint):
+        counter += 1
+        log(counter)
+    log(f'Number of constraints: {counter}')
+
     # TODO: remove
     # with open(join(result_dir, f'constraints-{ID}.txt'), 'w', encoding='utf8') as f:
     #     for con in model.component_objects(Constraint):
