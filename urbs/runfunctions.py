@@ -152,7 +152,12 @@ def run_scenario(
         prob = create_model(data, timesteps, dt, objective)
         print('Elapsed time to build pyomo model: %s s' % round(time.time() - tt,4))
 
-    print(f'Number of constraints: {len(prob.component_objects(Constraint))}')
+    print('Counting constraints')
+    counter = 0
+    for _ in prob.component_objects(Constraint):
+        counter += 1
+        print(counter)
+    print(f'Number of constraints: {counter}')
 
     # TODO: remove
     # print('logging constraints...')
