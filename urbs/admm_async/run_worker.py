@@ -1,6 +1,7 @@
 from time import sleep, time
 
 import pandas as pd
+from pyomo.environ import Constraint
 
 import urbs.model
 from .urbs_admm_model import AdmmStatus, UrbsAdmmModel
@@ -61,6 +62,13 @@ def create_model(
                         flow_global=flow_global,
                         lamda=lamda,
                         rho=admmopt.rho)
+
+    log = log_generator(ID)
+    log('Counting constraints')
+    counter = 0
+    for _ in model.component_objects(Constraint):
+        counter += 1
+    log(f'Number of constraints: {counter}')
 
     # enlarge shared_lines (copies of slices of data_all['transmission'])
     shared_lines['cluster_from'] = cluster_from
