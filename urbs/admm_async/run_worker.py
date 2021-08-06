@@ -76,11 +76,6 @@ def create_model(
         weighting_order=weighting_order,
         ID=ID) # TODO: remove ID parameter
 
-    # TODO: remove
-    # with open(join(result_dir, f'constraints-{ID}.txt'), 'w', encoding='utf8') as f:
-    #     for con in model.component_objects(Constraint):
-    #         con.pprint(ostream=f)
-
     # enlarge shared_lines (copies of slices of data_all['transmission'])
     shared_lines['cluster_from'] = cluster_from
     shared_lines['cluster_to'] = cluster_to
