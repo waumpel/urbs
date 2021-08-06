@@ -52,8 +52,6 @@ def create_model(
         for source, target in zip(index['Site In'], index['Site Out'])
     })
 
-    print(f'{ID}: flow_global.size: {flow_global.size}')
-
     flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
 
     lamda = pd.Series({
