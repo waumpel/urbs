@@ -19,7 +19,7 @@ def create_model(
     rho=None,
     hoursPerPeriod=None,
     weighting_order=None,
-    ID=None): # TODO: remove
+    ):
     """
     Create an urbs model from the given input data.
 
@@ -56,7 +56,7 @@ def create_model(
     if sites is None:
         m, data = pyomo_model_prep(data_all, timesteps)
     else:
-        m, data = pyomo_model_prep(data_all, timesteps, sites, pd.concat([shared_lines,internal_lines]), ID=ID)  # preparing pyomo model # TODO: remove ID parameter
+        m, data = pyomo_model_prep(data_all, timesteps, sites, pd.concat([shared_lines,internal_lines])) # prepare pyomo model
 
     m.name = 'urbs'
     m.created = datetime.now().strftime('%Y%m%dT%H%M')

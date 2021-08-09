@@ -1,22 +1,24 @@
 from datetime import date, datetime
+import json
 import multiprocessing as mp
 import os
 from os.path import join
 from time import time
+from urbs.admm_async.admm_worker import AdmmWorker
+from urbs.admm_async.admm_messages import AdmmStatusMessage, AdmmIterationResult
 from urbs.features.typeperiod import run_tsam
-from urbs.pyomoio import get_entities, list_entities
 from urbs.features.transdisthelper import *
 from urbs.identify import identify_mode
 
 import numpy as np
 import pandas as pd
-from pyomo.environ import SolverFactory, Constraint
+from pyomo.environ import SolverFactory
 
 import urbs.model
 from urbs.input import read_input, add_carbon_supplier
-from urbs.validation import validate_dc_objective, validate_input
-from .run_worker import run_worker, create_model
-from . import input_output
+from urbs.validation import validate_input
+from.admm_metadata import AdmmMetadata
+
 
 class InitialValues:
     """
@@ -80,21 +82,6 @@ def setup_solver(solver, logfile='solver.log'):
     return solver
 
 
-def read(input_file, scenario, objective):
-    print('Reading data...')
-    year = date.today().year
-
-    start = time()
-    data_all = read_input(input_file, year)
-    ttime = time() - start
-
-    data_all = scenario(data_all)
-    validate_input(data_all)
-    validate_dc_objective(data_all, objective)
-
-    return data_all, ttime
-
-
 def run_centralized(
     data_all,
     timesteps,
@@ -145,7 +132,6 @@ def run_centralized(
 def run_regional(
     data_all,
     timesteps,
-    scenario_name,
     result_dir,
     dt,
     objective,
@@ -166,7 +152,6 @@ def run_regional(
     Args:
         - `data_all`: Input data dict, after applying scenario and validation.
         - `timesteps`: List of timesteps, e.g. range(0,8761).
-        - `scenario_name`: Name of the scenario function used to modify the input data dict.
         - `result_dir`: Directory name for result spreadsheet and plots.
         - `dt`: Length of each time step in hours.
         - `objective`: Objective function, either "cost" or "CO2".
@@ -218,6 +203,8 @@ def run_regional(
     if mode['tsam']:
         data_all, timesteps, weighting_order, cross_scenario_data = run_tsam(
             data_all, noTypicalPeriods, hoursPerPeriod, cross_scenario_data)
+    else:
+        weighting_order = None
 
     # add carbon supplier if necessary
     if not np.isinf(data_all['global_prop'].loc[year].loc['CO2 limit', 'value']):
@@ -304,13 +291,15 @@ def run_regional(
     # Queue for collecting the results from each subproblem after convergence
     output = manager.Queue()
 
-    # Child processes for the ADMM subproblems
-    if mode['tsam']:
-        procs = [
-            mp.Process(target=run_worker, args=(
+    procs = []
+    for ID in range(n_clusters):
+        proc = mp.Process(
+            name=f'AdmmWorker[{ID}]',
+            target=AdmmWorker.run_worker,
+            args=(
                 ID,
+                output,
                 data_all,
-                scenario_name,
                 timesteps,
                 dt,
                 objective,
@@ -326,48 +315,34 @@ def run_regional(
                 cluster_to[ID],
                 neighbor_cluster[ID],
                 queues,
-                result_dir,
-                output,
                 hoursPerPeriod,
                 weighting_order,
-            ))
-            for ID in range(n_clusters)
-        ]
-    else:
-        procs = [
-            mp.Process(target=run_worker, args=(
-                ID,
-                data_all,
-                scenario_name,
-                timesteps,
-                dt,
-                objective,
-                year,
-                initial_values,
-                admmopt,
-                n_clusters,
-                clusters[ID],
-                neighbors[ID],
-                shared_lines[ID],
-                internal_lines[ID],
-                cluster_from[ID],
-                cluster_to[ID],
-                neighbor_cluster[ID],
-                queues,
-                result_dir,
-                output,
-            ))
-            for ID in range(n_clusters)
-        ]
+            )
+        )
+        procs.append(proc)
 
     solver_start = time()
     for proc in procs:
         proc.start()
 
-    # collect results as the subproblems converge
-    results = [
-        output.get(block=True) for _ in range(n_clusters)
-    ]
+    terminated = { ID: False for ID in range(n_clusters) }
+    results = {}
+
+    with open(join(result_dir, 'iteration_results.txt'), 'w', encoding='utf8') as logfile:
+        logfile.write(' '.join(AdmmIterationResult._HEADERS) + '\n')
+        while True:
+            msg = output.get(block=True)
+            if isinstance(msg, AdmmIterationResult):
+                msg.subtract_time(solver_start)
+                logfile.write(str(msg) + '\n')
+                results[msg.process_id] = msg
+            elif isinstance(msg, AdmmStatusMessage):
+                terminated[msg.sender] = True
+                if all(terminated.values()):
+                    break
+            else:
+                RuntimeWarning(f'Received unexpected item of type `{type(msg)}`, ' +
+                                'should be `AdmmIterationResult` or `AdmmStatusMsg`')
 
     for proc in procs:
         proc.join()
@@ -375,41 +350,15 @@ def run_regional(
     ttime = time()
     solver_time = ttime - solver_start
 
-    # get results
-    results = sorted(results, key=lambda x: x['ID'])
-
-    obj_total = 0
-
-    for cluster_idx in range(0, n_clusters):
-        if cluster_idx != results[cluster_idx]['ID']:
-            raise RuntimeError(f'Result of worker {cluster_idx + 1} was not returned')
-        obj_total += results[cluster_idx]['iteration_series'][-1]['obj']
+    admm_objective = sum(result.objective for result in results.values())
 
     # print results
     print(f'ADMM solver time: {solver_time:4.0f} s')
-    print(f'ADMM objective  : {obj_total:.4e}')
+    print(f'ADMM objective  : {admm_objective:.4e}')
 
-    # === Save results and plots ===
+    metadata = AdmmMetadata(n_clusters, admmopt)
 
-    # subtract the solver start from all timestamps
-    for r in results:
-        iteration_series = r['iteration_series']
-        for i in range(len(iteration_series)):
-            iteration_series[i]['time'] -= solver_start
+    with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
+        json.dump(metadata.to_dict(), f, indent=4)
 
-    results_dict = input_output.results_dict(
-        timesteps,
-        scenario_name,
-        dt,
-        objective,
-        clusters,
-        admmopt,
-        solver_time,
-        obj_total,
-        results,
-    )
-
-    if mode['tsam']:
-        return results_dict, weighting_order
-    else:
-        return results_dict
+    return admm_objective

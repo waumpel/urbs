@@ -196,7 +196,7 @@ def pyomo_model_prep(
     timesteps,
     sites=None,
     data_transmission=None,
-    ID=None): # TODO: remove ID parameter
+    ):
     """
     Performs calculations on the data frames in dictionary `data_all` for
     further usage by the model.

@@ -1,39 +1,27 @@
-# -*- coding: utf-8 -*-
-import argparse
 from datetime import date
 from multiprocessing import freeze_support, set_start_method
-
-import os
-from os.path import join
+from os import mkdir
+from os.path import join, isdir
 import shutil
-from urbs.validation import validate_dc_objective, validate_input
-from urbs.input import read_input
-import urbs
-import pandas as pd
 
+import urbs
 from urbs import admm_async
+from urbs.input import read_input
 from urbs.runfunctions import prepare_result_directory
-from urbs.admm_async import plot
-from urbs.admm_async import input_output
+from urbs.validation import validate_dc_objective, validate_input
 
 if __name__ == '__main__':
     set_start_method("spawn")
     freeze_support()
 
-    options = argparse.ArgumentParser()
-    options.add_argument('-c', '--centralized', action='store_true',
-                        help='Additionally compute the centralized solution for comparison.')
-    args = options.parse_args()
-
     input_files = 'transdist-1state.xlsx'  # for single year file name, for intertemporal folder name
-    # input_files = 'Transmission_Level.xlsx'  # for single year file name, for intertemporal folder name
     input_dir = 'Input'
-    input_path = os.path.join(input_dir, input_files)
+    input_path = join(input_dir, input_files)
 
     microgrid_files = ['Microgrid_rural_A.xlsx', 'Microgrid_urban_A.xlsx']
     microgrid_dir = 'Input/Microgrid_types'
     microgrid_paths = [
-        os.path.join(microgrid_dir, file)
+        join(microgrid_dir, file)
         for file in microgrid_files
     ]
     result_name = 'transdist-1state-admm'
@@ -41,9 +29,9 @@ if __name__ == '__main__':
 
     # #copy input file to result directory
     try:
-        shutil.copytree(input_path, os.path.join(result_dir, input_dir))
+        shutil.copytree(input_path, join(result_dir, input_dir))
     except NotADirectoryError:
-        shutil.copyfile(input_path, os.path.join(result_dir, input_files))
+        shutil.copyfile(input_path, join(result_dir, input_files))
 
     # #copy run file to result directory
     shutil.copy(__file__, result_dir)
@@ -87,6 +75,10 @@ if __name__ == '__main__':
     cross_scenario_data = {}
 
     for scenario in scenarios:
+        scenario_dir = join(result_dir, scenario.__name__)
+        if not isdir(scenario_dir):
+            mkdir(scenario_dir)
+
         year = date.today().year
         data_all = read_input(input_path, year)
 
@@ -94,11 +86,10 @@ if __name__ == '__main__':
         validate_input(data_all)
         validate_dc_objective(data_all, objective)
 
-        admm_results = admm_async.run_regional(
+        admm_objective = admm_async.run_regional(
             data_all,
             timesteps,
-            scenario.__name__,
-            result_dir,
+            scenario_dir,
             dt,
             objective,
             clusters,
@@ -107,27 +98,6 @@ if __name__ == '__main__':
             microgrid_cluster_mode='microgrid',
             cross_scenario_data=cross_scenario_data,
         )
-
-        if args.centralized:
-            # Run_regional already performed transdist preprocessing,
-            # don't have to do that again.
-            centralized_result = admm_async.run_centralized(
-                data_all,
-                timesteps,
-                scenario.__name__,
-                result_dir,
-                dt,
-                objective,
-            )
-            obj_cent = centralized_result['objective']
-            obj_admm = admm_results['admm_objective']
-            gap = (obj_admm - obj_cent) / obj_cent
-            admm_results['centralized_objective'] = obj_cent
-            admm_results['objective_gap'] = gap
-            admm_results['centralized_time'] = centralized_result['time']
-
-        input_output.save_results(admm_results, result_dir)
-        plot.plot_results(admm_results, result_dir, plot_rho=True)
 
         # TODO: how to get `prob`, used to be model instance (in centralized approach)
         # TODO: The capacities should be disjunct in the subproblems. We just need to read out the variables and store them for each cluster.
