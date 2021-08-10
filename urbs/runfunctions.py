@@ -34,8 +34,7 @@ def prepare_result_directory(result_name):
     return result_dir
 
 
-def setup_solver(optim, logfile='solver.log'):
-    """ """
+def setup_solver(optim, logfile='solver.log', threads=None):
     if optim.name == 'gurobi':
         # reference with list of option names
         # http://www.gurobi.com/documentation/5.6/reference-manual/parameters
@@ -45,7 +44,9 @@ def setup_solver(optim, logfile='solver.log'):
         optim.set_options("Method=2") # ohne method concurrent optimization
         #optim.set_options("QCPDual=0")
         #optim.set_options("BarConvTol=1e-7")
-        optim.set_options("Threads=8")
+        if threads is None:
+            threads = 8
+        optim.set_options(f"Threads={threads}")
         # optim.set_options("timelimit=7200")  # seconds
         # optim.set_options("mipgap=5e-4")  # default = 1e-4
     elif optim.name == 'glpk':
@@ -78,7 +79,9 @@ def run_scenario(
     microgrid_files=None,
     cross_scenario_data=None,
     noTypicalPeriods=None,
-    hoursPerPeriod=None):
+    hoursPerPeriod=None,
+    threads=None,
+    ):
     """
     Run an urbs model for given input, time steps and scenario
 
@@ -156,7 +159,7 @@ def run_scenario(
 
     # solve model and read results
     optim = SolverFactory(solver_name)  # cplex, glpk, gurobi, ...
-    optim = setup_solver(optim, logfile=log_filename)
+    optim = setup_solver(optim, logfile=log_filename, threads=threads)
     result = optim.solve(prob, tee=True,report_timing=True)
     #assert str(result.solver.termination_condition) == 'optimal'
 

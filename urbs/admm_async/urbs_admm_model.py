@@ -83,6 +83,7 @@ class UrbsAdmmModel(object):
         neighbors,
         shared_lines,
         shared_lines_index,
+        threads=None,
     ):
         self.admmopt = admmopt
         self.dualgap = np.nan
@@ -99,12 +100,14 @@ class UrbsAdmmModel(object):
         self.shared_lines = shared_lines
         self.shared_lines_index = shared_lines_index
 
+        if threads is None:
+            threads = 1
         self.solver = SolverFactory('gurobi_persistent')
         self.solver.set_instance(model, symbolic_solver_labels=False)
         self.solver.set_options("NumericFocus=3")
         self.solver.set_options("Crossover=0")
         self.solver.set_options("Method=2")
-        self.solver.set_options("Threads=1") # TODO
+        self.solver.set_options(f"Threads={threads}")
 
 
     def solve_iteration(self):

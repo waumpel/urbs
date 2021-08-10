@@ -38,7 +38,7 @@ if __name__ == '__main__':
     solver = 'gurobi'
 
     # simulation timesteps
-    (offset, length) = (0, 24)  # time step selection
+    (offset, length) = (0, 1)  # time step selection
     timesteps = range(offset, offset+length+1)
     dt = 1  # length of each time step (unit: hours)
 
@@ -91,7 +91,8 @@ if __name__ == '__main__':
             microgrid_files=microgrid_paths,
             cross_scenario_data=cross_scenario_data,
             noTypicalPeriods=noTypicalPeriods,
-            hoursPerPeriod=hoursPerPeriod)
+            hoursPerPeriod=hoursPerPeriod,
+        )
 
         # save cross_Scenario dara
         # PV_private_rooftop capacity results for 100% distribution grids are saved to use equal PV capacities in the subsequent scenarios

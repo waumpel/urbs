@@ -104,6 +104,7 @@ class AdmmWorker:
         queues,
         hoursPerPeriod=None,
         weighting_order=None,
+        threads=None,
         ) -> None:
 
         worker = AdmmWorker(ID, output, admmopt, n_clusters, neighbors, queues)
@@ -122,6 +123,7 @@ class AdmmWorker:
             neighbor_cluster,
             hoursPerPeriod,
             weighting_order,
+            threads,
         )
 
 
@@ -141,6 +143,7 @@ class AdmmWorker:
         neighbor_cluster,
         hoursPerPeriod=None,
         weighting_order=None,
+        threads=None,
         ) -> None:
 
         self.model = self._create_model(
@@ -158,6 +161,7 @@ class AdmmWorker:
             neighbor_cluster,
             hoursPerPeriod=hoursPerPeriod,
             weighting_order=weighting_order,
+            threads=threads,
         )
 
         self._log(f'Starting subproblem for regions {sites}.')
@@ -436,6 +440,7 @@ class AdmmWorker:
         neighbor_cluster,
         hoursPerPeriod=None,
         weighting_order=None,
+        threads=None,
         ) -> UrbsAdmmModel:
 
         index = shared_lines.index.to_frame()
@@ -483,6 +488,7 @@ class AdmmWorker:
             self.neighbors,
             shared_lines,
             index,
+            threads=threads,
         )
 
 

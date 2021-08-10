@@ -48,6 +48,12 @@ if __name__ == '__main__':
         ['BB', 'BE', 'BW', 'BY', 'HB', 'HE', 'HH', 'MV', 'NI', 'NW', 'RP', 'SH', 'SL', 'SN', 'ST', 'TH', 'Baltic', 'North']
     ]
 
+    # input data for tsam method
+    noTypicalPeriods = 4
+    hoursPerPeriod = 168
+
+    threads = 1
+
     # select scenarios to be run
     scenarios = [
                 urbs.transdist100, # transdist100 scenarios must be simulated first to store distribution demand
@@ -99,6 +105,7 @@ if __name__ == '__main__':
                 microgrid_files=microgrid_paths,
                 microgrid_cluster_mode='microgrid',
                 cross_scenario_data=cross_scenario_data,
+                threads=threads,
             )
 
             # TODO: how to get `prob`, used to be model instance (in centralized approach)

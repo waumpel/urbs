@@ -139,11 +139,10 @@ def run_regional(
     admmopt,
     microgrid_files=None,
     microgrid_cluster_mode='microgrid',
-    # TODO: cross_scenario_data
     cross_scenario_data=None,
-    # TODO: type periods
     noTypicalPeriods=None,
     hoursPerPeriod=None,
+    threads=None,
     ):
     """
     Run an urbs model for given input, time steps and scenario with regional decomposition
@@ -317,6 +316,7 @@ def run_regional(
                 queues,
                 hoursPerPeriod,
                 weighting_order,
+                threads,
             )
         )
         procs.append(proc)
@@ -335,6 +335,7 @@ def run_regional(
             if isinstance(msg, AdmmIterationResult):
                 msg.subtract_time(solver_start)
                 logfile.write(str(msg) + '\n')
+                logfile.flush()
                 results[msg.process_id] = msg
             elif isinstance(msg, AdmmStatusMessage):
                 terminated[msg.sender] = True
