@@ -4,6 +4,7 @@ import multiprocessing as mp
 import os
 from os.path import join
 from time import time
+from typing import List
 from urbs.admm_async.admm_worker import AdmmWorker
 from urbs.admm_async.admm_messages import AdmmStatusMessage, AdmmIterationResult
 from urbs.features.typeperiod import run_tsam
@@ -135,7 +136,7 @@ def run_regional(
     result_dir,
     dt,
     objective,
-    clusters,
+    clusters: List[List[str]],
     admmopt,
     microgrid_files=None,
     microgrid_cluster_mode='microgrid',
@@ -291,7 +292,18 @@ def run_regional(
     output = manager.Queue()
 
     procs = []
-    for ID in range(n_clusters):
+    urban_index = -1
+    for i, cluster in enumerate(clusters):
+        if any('urban' in site for site in cluster):
+            urban_index = i
+            print(f'Found urban cluster: index {urban_index}')
+            break
+
+    if urban_index == -1:
+        raise RuntimeError('Could not find urban cluster')
+
+    # for ID in range(n_clusters):
+    for ID in [urban_index]:
         proc = mp.Process(
             name=f'AdmmWorker[{ID}]',
             target=AdmmWorker.run_worker,
