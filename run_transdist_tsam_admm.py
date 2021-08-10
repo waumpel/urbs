@@ -24,7 +24,7 @@ if __name__ == '__main__':
         join(microgrid_dir, file)
         for file in microgrid_files
     ]
-    result_name = 'Transmission_Level'
+    result_name = 'transdist-tsam-admm'
     result_dir = prepare_result_directory(result_name)  # name + time stamp
 
     # #copy input file to result directory
@@ -105,6 +105,8 @@ if __name__ == '__main__':
                 microgrid_files=microgrid_paths,
                 microgrid_cluster_mode='microgrid',
                 cross_scenario_data=cross_scenario_data,
+                noTypicalPeriods=noTypicalPeriods,
+                hoursPerPeriod=hoursPerPeriod,
                 threads=threads,
             )
 

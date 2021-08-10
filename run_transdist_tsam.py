@@ -19,7 +19,7 @@ if __name__ == '__main__':
         os.path.join(microgrid_dir, file)
         for file in microgrid_files
     ]
-    result_name = 'Trans-Dist'
+    result_name = 'transdist-tsam-admm'
     result_dir = urbs.prepare_result_directory(result_name)  # name + time stamp
 
     # #copy input file to result directory

@@ -180,6 +180,7 @@ class AdmmWorker:
         self.updated = set()
 
         objective, primalgap, dualgap, penalty, start, stop = self.model.solve_iteration()
+        self._log(f'Iteration {nu} solved in {(stop - start):.2f} s')
         self._update_convergence()
 
         self._receive()

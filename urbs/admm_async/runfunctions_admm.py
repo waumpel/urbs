@@ -321,6 +321,7 @@ def run_regional(
         )
         procs.append(proc)
 
+    # TODO: wait until all models have been created?
     solver_start = time()
     for proc in procs:
         proc.start()
