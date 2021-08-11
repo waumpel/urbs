@@ -167,7 +167,7 @@ class AdmmWorker:
         )
 
         self._log(f'Starting subproblem for regions {sites}.')
-        input('Press Enter to continue')
+        input('Continue?')
 
         for nu in range(self.admmopt.max_iter):
             result = self._run_iteration(nu)
@@ -448,8 +448,6 @@ class AdmmWorker:
         ) -> UrbsAdmmModel:
 
         self._log('Creating model')
-        input('Press Enter to continue')
-
         index = shared_lines.index.to_frame()
 
         flow_global = pd.Series({
@@ -468,8 +466,6 @@ class AdmmWorker:
         lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
 
         self._log('Creating urbs model')
-        input('Press Enter to continue')
-
         model = urbs.model.create_model(
             data_all,
             timesteps,
@@ -491,7 +487,7 @@ class AdmmWorker:
         shared_lines['neighbor_cluster'] = neighbor_cluster
 
         self._log('Creating UrbsAdmmModel')
-        input('Press Enter to continue')
+        input('Continue?')
 
         return UrbsAdmmModel(
             self.admmopt,

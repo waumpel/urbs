@@ -2,8 +2,9 @@ from copy import deepcopy
 from datetime import date
 import glob
 import os
-import numpy as np
+from sys import getsizeof
 
+import numpy as np
 import pandas as pd
 from pyomo.environ import ConcreteModel
 
@@ -212,7 +213,7 @@ def pyomo_model_prep(
         A rudimentary `ConcreteModel` instance.
     """
 
-    print('Pyomo prep')
+    print('pyomo_model_prep')
 
     m = ConcreteModel()
 
@@ -223,6 +224,15 @@ def pyomo_model_prep(
     #
     #     storage.loc[site, storage, commodity][attribute]
     #
+
+    print(f'getsizeof(data_all): {getsizeof(data_all)}')
+    sum_size = 0
+    for key, value in data_all.items():
+        size = getsizeof(value)
+        sum_size += size
+        print(f'getsizeof(data_all[{key}]): {size}')
+
+    print(f'sum_size: {sum_size}')
 
     data = deepcopy(data_all)
     m.timesteps = timesteps
@@ -264,6 +274,17 @@ def pyomo_model_prep(
             if site in data_all['eff_factor'].columns.get_level_values(0)
         ]
         data['eff_factor'] = data_all['eff_factor'][eff_factor_sites]
+
+
+    print(f'getsizeof(data): {getsizeof(data)}')
+    sum_size = 0
+    for key, value in data.items():
+        size = getsizeof(value)
+        sum_size += size
+        print(f'getsizeof(data[{key}]): {size}')
+
+    print(f'sum_size: {sum_size}')
+
 
     m.global_prop = data_all['global_prop']
     commodity = data['commodity']

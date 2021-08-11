@@ -302,8 +302,6 @@ def run_regional(
     if urban_index == -1:
         raise RuntimeError('Could not find urban cluster')
 
-    input('Press Enter to continue')
-
     # for ID in range(n_clusters):
     for ID in [urban_index]:
         AdmmWorker.run_worker(

@@ -58,6 +58,8 @@ def create_model(
     else:
         m, data = pyomo_model_prep(data_all, timesteps, sites, pd.concat([shared_lines,internal_lines])) # prepare pyomo model
 
+    input('pyomo_model_prep is done. Continue?')
+
     m.name = 'urbs'
     m.created = datetime.now().strftime('%Y%m%dT%H%M')
     m._data = data
