@@ -302,38 +302,36 @@ def run_regional(
     if urban_index == -1:
         raise RuntimeError('Could not find urban cluster')
 
-    print('Creating processes')
+    input('Press Enter to continue')
 
     # for ID in range(n_clusters):
     for ID in [urban_index]:
-        proc = mp.Process(
-            name=f'AdmmWorker[{ID}]',
-            target=AdmmWorker.run_worker,
-            args=(
-                ID,
-                output,
-                data_all,
-                timesteps,
-                dt,
-                objective,
-                year,
-                initial_values,
-                admmopt,
-                n_clusters,
-                clusters[ID],
-                neighbors[ID],
-                shared_lines[ID],
-                internal_lines[ID],
-                cluster_from[ID],
-                cluster_to[ID],
-                neighbor_cluster[ID],
-                queues,
-                hoursPerPeriod,
-                weighting_order,
-                threads,
-            )
+        AdmmWorker.run_worker(
+            ID,
+            output,
+            data_all,
+            timesteps,
+            dt,
+            objective,
+            year,
+            initial_values,
+            admmopt,
+            n_clusters,
+            clusters[ID],
+            neighbors[ID],
+            shared_lines[ID],
+            internal_lines[ID],
+            cluster_from[ID],
+            cluster_to[ID],
+            neighbor_cluster[ID],
+            queues,
+            hoursPerPeriod,
+            weighting_order,
+            threads,
         )
-        procs.append(proc)
+
+    print('I should not have gotten to this point. Quitting...')
+    quit()
 
     print('Starting processes')
 

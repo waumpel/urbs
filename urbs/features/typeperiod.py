@@ -153,6 +153,7 @@ def run_tsam(data, noTypicalPeriods, hoursPerPeriod, cross_scenario_data):
     timesteps_new = range(0, timeframe)
 
     print(f'Time elapsed for tsam: {(time.time() - tsam_start):.2f} s')
+    input('Press Enter to continue')
 
     return data, timesteps_new, weighting_order, cross_scenario_data
 
