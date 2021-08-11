@@ -1,13 +1,18 @@
-import pyomo.core as pyomo
-import pandas as pd
-import tsam.timeseriesaggregation as tsam
 from datetime import datetime, timedelta
-import numpy as np
 import itertools  as it
-from urbs.identify import *
 import os
+import time
+
+import numpy as np
+import pandas as pd
+import pyomo.core as pyomo
+import tsam.timeseriesaggregation as tsam
+
+from urbs.identify import *
 
 def run_tsam(data, noTypicalPeriods, hoursPerPeriod, cross_scenario_data):
+    print('Running tsam')
+    tsam_start = time.time()
     ###bring together all time series data
     time_series_data = pd.concat([data['demand'], data['supim'], data['buy_sell_price'], data['eff_factor']], axis=1, sort=True)
     # dict which allocates the first equal column of the dataframe to each column before droping duplicates of dataframe
@@ -146,6 +151,8 @@ def run_tsam(data, noTypicalPeriods, hoursPerPeriod, cross_scenario_data):
 
     ###return new timestep range
     timesteps_new = range(0, timeframe)
+
+    print(f'Time elapsed for tsam: {(time.time() - tsam_start):.2f} s')
 
     return data, timesteps_new, weighting_order, cross_scenario_data
 

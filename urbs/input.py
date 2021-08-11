@@ -212,6 +212,8 @@ def pyomo_model_prep(
         A rudimentary `ConcreteModel` instance.
     """
 
+    print('Pyomo prep')
+
     m = ConcreteModel()
 
     # Preparations

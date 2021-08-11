@@ -3,6 +3,7 @@ from multiprocessing import freeze_support, set_start_method
 from os import mkdir
 from os.path import join, isdir
 import shutil
+import time
 
 import urbs
 from urbs import admm_async
@@ -83,32 +84,36 @@ if __name__ == '__main__':
     cross_scenario_data = {}
 
     for scenario in scenarios:
+        print(f'Running scenario {scenario.__name__}')
+        scenario_start = time.time()
         scenario_dir = join(result_dir, scenario.__name__)
         if not isdir(scenario_dir):
             mkdir(scenario_dir)
 
-            year = date.today().year
-            data_all = read_input(input_path, year)
+        year = date.today().year
+        data_all = read_input(input_path, year)
 
-            data_all, cross_scenario_data = scenario(data_all, cross_scenario_data)
-            validate_input(data_all)
-            validate_dc_objective(data_all, objective)
+        data_all, cross_scenario_data = scenario(data_all, cross_scenario_data)
+        validate_input(data_all)
+        validate_dc_objective(data_all, objective)
 
-            admm_objective = admm_async.run_regional(
-                data_all,
-                timesteps,
-                scenario_dir,
-                dt,
-                objective,
-                clusters,
-                admmopt,
-                microgrid_files=microgrid_paths,
-                microgrid_cluster_mode='microgrid',
-                cross_scenario_data=cross_scenario_data,
-                noTypicalPeriods=noTypicalPeriods,
-                hoursPerPeriod=hoursPerPeriod,
-                threads=threads,
-            )
+        admm_objective = admm_async.run_regional(
+            data_all,
+            timesteps,
+            scenario_dir,
+            dt,
+            objective,
+            clusters,
+            admmopt,
+            microgrid_files=microgrid_paths,
+            microgrid_cluster_mode='microgrid',
+            cross_scenario_data=cross_scenario_data,
+            noTypicalPeriods=noTypicalPeriods,
+            hoursPerPeriod=hoursPerPeriod,
+            threads=threads,
+        )
+
+        print(f'Time elapsed for scenario {scenario.__name__}: {(time.time() - scenario_start):.2f} s')
 
             # TODO: how to get `prob`, used to be model instance (in centralized approach)
             # if scenario.__name__ == 'transdist100':

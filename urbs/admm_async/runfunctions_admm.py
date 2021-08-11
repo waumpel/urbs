@@ -302,6 +302,8 @@ def run_regional(
     if urban_index == -1:
         raise RuntimeError('Could not find urban cluster')
 
+    print('Creating processes')
+
     # for ID in range(n_clusters):
     for ID in [urban_index]:
         proc = mp.Process(
@@ -332,6 +334,8 @@ def run_regional(
             )
         )
         procs.append(proc)
+
+    print('Starting processes')
 
     # TODO: wait until all models have been created?
     solver_start = time()

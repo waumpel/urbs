@@ -107,6 +107,8 @@ class AdmmWorker:
         threads=None,
         ) -> None:
 
+        print('Creating AdmmWorker object')
+
         worker = AdmmWorker(ID, output, admmopt, n_clusters, neighbors, queues)
         worker.run(
             data_all,
@@ -444,6 +446,8 @@ class AdmmWorker:
         threads=None,
         ) -> UrbsAdmmModel:
 
+        self._log('Creating model')
+
         index = shared_lines.index.to_frame()
 
         flow_global = pd.Series({
@@ -460,6 +464,8 @@ class AdmmWorker:
             for source, target in zip(index['Site In'], index['Site Out'])
         })
         lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+
+        self._log('Creating urbs model')
 
         model = urbs.model.create_model(
             data_all,
@@ -480,6 +486,8 @@ class AdmmWorker:
         shared_lines['cluster_from'] = cluster_from
         shared_lines['cluster_to'] = cluster_to
         shared_lines['neighbor_cluster'] = neighbor_cluster
+
+        self._log('Creating UrbsAdmmModel')
 
         return UrbsAdmmModel(
             self.admmopt,
