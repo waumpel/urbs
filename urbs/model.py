@@ -151,20 +151,6 @@ def create_model(
         ordered=False,
         doc='Set of conversion processes')
 
-    if sites is not None:
-        m.flow_global = pyomo.Var(
-            m.tm,m.stf,m.sit,m.sit,
-            within=pyomo.Reals,
-            doc='flow global in')
-        m.lamda = pyomo.Var(
-            m.tm,m.stf,m.sit,m.sit,
-            within=pyomo.Reals,
-            doc='lambda in')
-        m.rho = pyomo.Param(
-            within=pyomo.Reals,
-            initialize=rho,
-            doc='rho in')
-
     # cost_type
     m.cost_type = pyomo.Set(
         initialize=m.cost_type_list,
