@@ -164,8 +164,6 @@ def run_regional(
     Return:
         Result summary dict. (See `input_output.results_dict`)
     """
-    print('Solving the distributed problem...')
-
     # hard-coded year. ADMM doesn't work with intertemporal models (yet)
     year = date.today().year
 
@@ -204,6 +202,8 @@ def run_regional(
             data_all, noTypicalPeriods, hoursPerPeriod, cross_scenario_data)
     else:
         weighting_order = None
+
+    print('ADMM preprocessing')
 
     # add carbon supplier if necessary
     if not np.isinf(data_all['global_prop'].loc[year].loc['CO2 limit', 'value']):
@@ -321,10 +321,24 @@ def run_regional(
         )
         procs.append(proc)
 
-    # TODO: wait until all models have been created?
+    print('Spawning worker processes')
+
     solver_start = time()
     for proc in procs:
         proc.start()
+
+    model_creation_status = { ID: False for ID in range(n_clusters) }
+    while not all(model_creation_status.values()):
+        msg = output.get(block=True)
+        if msg['msg'] == 'model created':
+            model_creation_status[msg['sender']] = True
+        else:
+            RuntimeWarning(f'Received unexpected msg')
+
+    print('All workers have created their models. Starting ADMM')
+
+    for q in queues:
+        q.put('start solving')
 
     terminated = { ID: False for ID in range(n_clusters) }
     results = {}
@@ -343,7 +357,7 @@ def run_regional(
                 if all(terminated.values()):
                     break
             else:
-                RuntimeWarning(f'Received unexpected item of type `{type(msg)}`, ' +
+                RuntimeWarning(f'Received item of unexpected type, ' +
                                 'should be `AdmmIterationResult` or `AdmmStatusMsg`')
 
     for proc in procs:

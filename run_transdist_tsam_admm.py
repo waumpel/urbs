@@ -87,36 +87,36 @@ if __name__ == '__main__':
         if not isdir(scenario_dir):
             mkdir(scenario_dir)
 
-            year = date.today().year
-            data_all = read_input(input_path, year)
+        year = date.today().year
+        data_all = read_input(input_path, year)
 
-            data_all, cross_scenario_data = scenario(data_all, cross_scenario_data)
-            validate_input(data_all)
-            validate_dc_objective(data_all, objective)
+        data_all, cross_scenario_data = scenario(data_all, cross_scenario_data)
+        validate_input(data_all)
+        validate_dc_objective(data_all, objective)
 
-            admm_objective = admm_async.run_regional(
-                data_all,
-                timesteps,
-                scenario_dir,
-                dt,
-                objective,
-                clusters,
-                admmopt,
-                microgrid_files=microgrid_paths,
-                microgrid_cluster_mode='microgrid',
-                cross_scenario_data=cross_scenario_data,
-                noTypicalPeriods=noTypicalPeriods,
-                hoursPerPeriod=hoursPerPeriod,
-                threads=threads,
-            )
+        admm_objective = admm_async.run_regional(
+            data_all,
+            timesteps,
+            scenario_dir,
+            dt,
+            objective,
+            clusters,
+            admmopt,
+            microgrid_files=microgrid_paths,
+            microgrid_cluster_mode='microgrid',
+            cross_scenario_data=cross_scenario_data,
+            noTypicalPeriods=noTypicalPeriods,
+            hoursPerPeriod=hoursPerPeriod,
+            threads=threads,
+        )
 
-            # TODO: how to get `prob`, used to be model instance (in centralized approach)
-            # if scenario.__name__ == 'transdist100':
-            #     cap_PV_private = prob._result['cap_pro'].loc[:, :, 'PV_private_rooftop'].droplevel(level=[0])
-            #     cap_PV_private.index = pd.MultiIndex.from_tuples(cap_PV_private.index.str.split('_').tolist())
-            #     cap_PV_private = cap_PV_private.groupby(level=[2]).sum().to_frame()
-            #     cap_PV_private.index.name = 'sit'
-            #     cap_PV_private['pro'] = 'PV_private_rooftop'
-            #     cap_PV_private.set_index(['pro'], inplace=True, append=True)
-            #     cap_PV_private = cap_PV_private.squeeze()
-            #     cross_scenario_data['PV_cap_shift'] = cap_PV_private
+        # TODO: how to get `prob`, used to be model instance (in centralized approach)
+        # if scenario.__name__ == 'transdist100':
+        #     cap_PV_private = prob._result['cap_pro'].loc[:, :, 'PV_private_rooftop'].droplevel(level=[0])
+        #     cap_PV_private.index = pd.MultiIndex.from_tuples(cap_PV_private.index.str.split('_').tolist())
+        #     cap_PV_private = cap_PV_private.groupby(level=[2]).sum().to_frame()
+        #     cap_PV_private.index.name = 'sit'
+        #     cap_PV_private['pro'] = 'PV_private_rooftop'
+        #     cap_PV_private.set_index(['pro'], inplace=True, append=True)
+        #     cap_PV_private = cap_PV_private.squeeze()
+        #     cross_scenario_data['PV_cap_shift'] = cap_PV_private

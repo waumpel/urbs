@@ -146,6 +146,8 @@ class AdmmWorker:
         threads=None,
         ) -> None:
 
+        self._log('Creating model')
+
         self.model = self._create_model(
             data_all,
             timesteps,
@@ -163,6 +165,14 @@ class AdmmWorker:
             weighting_order=weighting_order,
             threads=threads,
         )
+
+        self._log('Model created')
+        self.output.put({'sender': self.ID, 'msg': 'model created'})
+
+        msg = self.receiving_queue.get(block=True)
+        if msg != 'start solving':
+            self._log('Did not receive start signal, terminating')
+            return
 
         self._log(f'Starting subproblem for regions {sites}.')
 
