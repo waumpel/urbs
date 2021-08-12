@@ -167,7 +167,6 @@ class AdmmWorker:
         )
 
         self._log(f'Starting subproblem for regions {sites}.')
-        input('Continue?')
 
         for nu in range(self.admmopt.max_iter):
             result = self._run_iteration(nu)
@@ -487,7 +486,6 @@ class AdmmWorker:
         shared_lines['neighbor_cluster'] = neighbor_cluster
 
         self._log('Creating UrbsAdmmModel')
-        input('Continue?')
 
         return UrbsAdmmModel(
             self.admmopt,
