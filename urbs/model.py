@@ -391,23 +391,6 @@ def create_model(
 
     # Variables
 
-    # ADMM variables # TODO: remove?
-    # if sites is not None:
-    #     m.flow_global = pyomo.Var(
-    #         m.tm,m.stf,m.sit,m.sit,
-    #         within=pyomo.Reals,
-    #         doc='flow global in')
-    #     m.lamda = pyomo.Var(
-    #         m.tm,m.stf,m.sit,m.sit,
-    #         within=pyomo.Reals,
-    #         doc='lambda in')
-    #     m.rho = pyomo.Param(
-    #         within=pyomo.Reals,
-    #         initialize=rho,
-    #         doc='rho in')
-
-    # log_mem(memlog, 'admm variables added')
-
     # costs
     m.costs = pyomo.Var(
         m.cost_type,
