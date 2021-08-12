@@ -12,6 +12,7 @@ from urbs.identify import identify_mode
 
 import numpy as np
 import pandas as pd
+import psutil as ps
 from pyomo.environ import SolverFactory
 
 import urbs.model
@@ -336,6 +337,19 @@ def run_regional(
             RuntimeWarning(f'Received unexpected msg')
 
     print('All workers have created their models. Starting ADMM')
+
+    memory = ps.Process().memory_info().vms
+    while True:
+        msg = input(f'Currently using {(memory / 10**9):.2f} GiB of memory (vms). Continue? [y/n] ')
+        if msg == 'y':
+            break
+        if msg == 'n':
+            for q in queues:
+                q.put('shutdown')
+            for proc in procs:
+                proc.join()
+            quit()
+
 
     for q in queues:
         q.put('start solving')
