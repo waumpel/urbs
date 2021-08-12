@@ -359,7 +359,7 @@ def create_model(
         within=pyomo.NonNegativeIntegers,
         doc='Number of newly installed capacity units')
 
-    log_mem(memlog, 'sets added')
+    log_mem(memlog, 'variables added')
 
     # Add additional features
     # called features are declared in distinct files in features folder
