@@ -339,17 +339,7 @@ def run_regional(
     print('All workers have created their models. Starting ADMM')
 
     memory = ps.Process().memory_info().vms
-    while True:
-        msg = input(f'Currently using {(memory / 10**9):.2f} GiB of memory (vms). Continue? [y/n] ')
-        if msg == 'y':
-            break
-        if msg == 'n':
-            for q in queues:
-                q.put('shutdown')
-            for proc in procs:
-                proc.join()
-            quit()
-
+    print(f'Currently using {(memory / 10**9):.2f} GiB of memory (vms)')
 
     for q in queues:
         q.put('start solving')
