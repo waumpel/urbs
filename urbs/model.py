@@ -110,11 +110,15 @@ def create_model(
     #       domain: set domain for tuple sets, a cartesian set product
     #       values: set values, a list or array of element tuples
 
+    setlog = open('temp/sets.log', 'w', encoding='utf8')
+
     # generate ordered time step sets
     m.t = pyomo.Set(
         initialize=m.timesteps,
         ordered=True,
         doc='Set of timesteps')
+
+    setlog.write(f'm.timesteps: {len(m.timesteps)}\n')
 
     # modelled (i.e. excluding init time step for storage) time steps
     m.tm = pyomo.Set(
@@ -124,74 +128,80 @@ def create_model(
         doc='Set of modelled timesteps')
 
     # support timeframes (e.g. 2020, 2030...)
-    indexlist = set()
+    stflist = set()
     for key in m.commodity_dict["price"]:
-        indexlist.add(tuple(key)[0])
+        stflist.add(tuple(key)[0])
     m.stf = pyomo.Set(
-        initialize=indexlist,
+        initialize=stflist,
         ordered=False,
         doc='Set of modeled support timeframes (e.g. years)')
 
+    setlog.write(f'indexlist: {len(stflist)}\n')
+
+    sitlist = [s for (_, s) in data['site_all'].index.values]
+
     # site (e.g. north, middle, south...)
     m.sit = pyomo.Set(
-        initialize = [s for (y,s) in data['site_all'].index.values],
+        initialize = sitlist,
         doc='Set of all sites')
 
+    setlog.write(f'sitlist: {len(sitlist)}\n')
+
+    sit_inside_list = m._data['commodity'].index.get_level_values('Site').unique()
+
     m.sit_inside = pyomo.Set(
-        initialize=m._data['commodity'].index.get_level_values('Site').unique(),
+        initialize=sit_inside_list,
         doc='Set of sites belonging to the cluster')
 
+    setlog.write(f'sit_inside_list: {len(sit_inside_list)}\n')
+
     # commodity (e.g. solar, wind, coal...)
-    indexlist = set()
+    comlist = set()
     for key in m.commodity_dict["price"]:
-        indexlist.add(tuple(key)[2])
+        comlist.add(tuple(key)[2])
     m.com = pyomo.Set(
-        initialize=indexlist,
+        initialize=comlist,
         ordered=False,
         doc='Set of commodities')
 
+    setlog.write(f'comlist: {len(comlist)}\n')
+
     # commodity type (i.e. SupIm, Demand, Stock, Env)
-    indexlist = set()
+    comtypelist = set()
     for key in m.commodity_dict["price"]:
-        indexlist.add(tuple(key)[3])
+        comtypelist.add(tuple(key)[3])
     m.com_type = pyomo.Set(
-        initialize=indexlist,
+        initialize=comtypelist,
         ordered=False,
         doc='Set of commodity types')
 
+    setlog.write(f'comtypelist: {len(comtypelist)}\n')
+
     # process (e.g. Wind turbine, Gas plant, Photovoltaics...)
-    indexlist = set()
+    processlist = set()
     for key in m.process_dict["inv-cost"]:
-        indexlist.add(tuple(key)[2])
+        processlist.add(tuple(key)[2])
     m.pro = pyomo.Set(
-        initialize=indexlist,
+        initialize=processlist,
         ordered=False,
         doc='Set of conversion processes')
 
-    if sites is not None:
-        m.flow_global = pyomo.Var(
-            m.tm,m.stf,m.sit,m.sit,
-            within=pyomo.Reals,
-            doc='flow global in')
-        m.lamda = pyomo.Var(
-            m.tm,m.stf,m.sit,m.sit,
-            within=pyomo.Reals,
-            doc='lambda in')
-        m.rho = pyomo.Param(
-            within=pyomo.Reals,
-            initialize=rho,
-            doc='rho in')
+    setlog.write(f'processlist: {len(processlist)}\n')
 
     # cost_type
     m.cost_type = pyomo.Set(
         initialize=m.cost_type_list,
         doc='Set of cost types (hard-coded)')
 
+    setlog.write(f'm.cost_type_list: {len(m.cost_type_list)}\n')
+
     # tuple sets
     m.sit_tuples = pyomo.Set(
         within=m.stf * m.sit,
         initialize=tuple(m.site_dict["area"].keys()),
         doc='Combinations of support timeframes and sites')
+
+    setlog.write(f'sit_tuples: {len(tuple(m.site_dict["area"].keys()))}\n')
 
     # tuple sets relevant for ac rules
     m.sit_tuples_ac = pyomo.Set(
@@ -200,6 +210,12 @@ def create_model(
                     for (stf, site) in m.sit_tuples
                     if m.site_dict['min-voltage'][(stf, site)] > 0],
         doc='Combinations of support timeframes and sites with ac characteristics')
+
+    sit_tuples_ac_len = len([(stf, site)
+                    for (stf, site) in m.sit_tuples
+                    if m.site_dict['min-voltage'][(stf, site)] > 0])
+    setlog.write(f'sit_tuples_ac: {sit_tuples_ac_len}\n')
+
     m.sit_slackbus = pyomo.Set(
         within=m.stf * m.sit,
         initialize=[(stf, site)
@@ -207,22 +223,36 @@ def create_model(
                     if m.site_dict['ref-node'][(stf, site)] == 1],
         doc='Set of all reference nodes in defined subsystems')
 
+    sit_slackbus_len = len([(stf, site)
+                    for (stf, site) in m.sit_tuples
+                    if m.site_dict['ref-node'][(stf, site)] == 1])
+    setlog.write(f'sit_slackbus: {sit_slackbus_len}\n')
+
     m.com_tuples = pyomo.Set(
         within=m.stf * m.sit * m.com * m.com_type,
         initialize=tuple(m.commodity_dict["price"].keys()),
         doc='Combinations of defined commodities, e.g. (2018,Mid,Elec,Demand)')
+
+    setlog.write(f'com_tuples: {len(tuple(m.commodity_dict["price"].keys()))}\n')
+
     m.pro_tuples = pyomo.Set(
         within=m.stf * m.sit * m.pro,
         initialize=tuple(m.process_dict["inv-cost"].keys()),
         doc='Combinations of possible processes, e.g. (2018,North,Coal plant)')
+
+    setlog.write(f'pro_tuples: {len(tuple(m.process_dict["inv-cost"].keys()))}\n')
+
     m.com_stock = pyomo.Set(
         within=m.com,
         initialize=commodity_subset(m.com_tuples, 'Stock'),
         ordered=False,
         doc='Commodities that can be purchased at some site(s)')
 
+    setlog.write(f'com_stock: {len(commodity_subset(m.com_tuples, "Stock"))}\n')
 
     if m.mode['int']:
+        print("intertemporal? I hardly know'er!")
+        quit()
         # tuples for operational status of technologies
         m.operational_pro_tuples = pyomo.Set(
             within=m.sit * m.pro * m.stf * m.stf,
@@ -247,22 +277,33 @@ def create_model(
         initialize=commodity_subset(m.com_tuples, 'SupIm'),
         ordered=False,
         doc='Commodities that have intermittent (timeseries) input')
+
+    setlog.write(f"com_supim: {len(commodity_subset(m.com_tuples, 'SupIm'))}\n")
+
     m.com_demand = pyomo.Set(
         within=m.com,
         initialize=commodity_subset(m.com_tuples, 'Demand'),
         ordered=False,
         doc='Commodities that have a demand (implies timeseries)')
+
+    setlog.write(f"com_demand: {len(commodity_subset(m.com_tuples, 'Demand'))}\n")
+
     m.com_env = pyomo.Set(
         within=m.com,
         initialize=commodity_subset(m.com_tuples, 'Env'),
         ordered=False,
         doc='Commodities that (might) have a maximum creation limit')
 
+    setlog.write(f"com_env: {len(commodity_subset(m.com_tuples, 'Env'))}\n")
+
     # process tuples for area rule
     m.pro_area_tuples = pyomo.Set(
         within=m.stf * m.sit * m.pro,
         initialize=tuple(m.proc_area_dict.keys()),
         doc='Processes and Sites with area Restriction')
+
+    setlog.write(f"pro_area_tuples: {len(tuple(m.proc_area_dict.keys()))}\n")
+
     # process tuples for building in blocks rule
     m.pro_cap_new_block_tuples = pyomo.Set(
         within=m.stf * m.sit * m.pro,
@@ -271,6 +312,12 @@ def create_model(
                     for (s, si, pro) in tuple(m.cap_block_dict.keys())
                     if process == pro and si == site and s == stf],
                     doc='Processes with new capacities built in blocks')
+
+    pro_cap_new_block_tuples_len = len([(stf, site, process)
+                    for (stf, site, process) in m.pro_tuples
+                    for (s, si, pro) in tuple(m.cap_block_dict.keys())
+                    if process == pro and si == site and s == stf])
+    setlog.write(f"pro_cap_new_block_tuples: {pro_cap_new_block_tuples_len}\n")
 
     # process input/output
     m.pro_input_tuples = pyomo.Set(
@@ -282,6 +329,12 @@ def create_model(
         doc='Commodities consumed by process by site,'
             'e.g. (2020,Mid,PV,Solar)')
 
+    pro_input_tuples_len = len([(stf, site, process, commodity)
+                    for (stf, site, process) in m.pro_tuples
+                    for (s, pro, commodity) in tuple(m.r_in_dict.keys())
+                    if process == pro and s == stf])
+    setlog.write(f"pro_input_tuples: {pro_input_tuples_len}\n")
+
     m.pro_output_tuples = pyomo.Set(
         within=m.stf * m.sit * m.pro * m.com,
         initialize=[(stf, site, process, commodity)
@@ -290,12 +343,23 @@ def create_model(
                     if process == pro and s == stf],
         doc='Commodities produced by process by site, e.g. (2020,Mid,PV,Elec)')
 
+    pro_output_tuples_len = len([(stf, site, process, commodity)
+                    for (stf, site, process) in m.pro_tuples
+                    for (s, pro, commodity) in tuple(m.r_out_dict.keys())
+                    if process == pro and s == stf])
+    setlog.write(f"pro_output_tuples: {pro_output_tuples_len}\n")
+
     m.pro_output_tuples_reactive = pyomo.Set(
         within=m.stf * m.sit * m.pro,
         initialize=[(stf, site, process)
                     for (stf, site, process) in m.pro_tuples
                     if m.process_dict['pf-min'][(stf, site, process)] > 0],
         doc='Commodities produced by process by site, e.g. (2020,Mid,PV,Elec-Reactive)')
+
+    pro_output_tuples_reactive_len = len([(stf, site, process)
+                    for (stf, site, process) in m.pro_tuples
+                    if m.process_dict['pf-min'][(stf, site, process)] > 0])
+    setlog.write(f"pro_output_tuples_reactive: {pro_output_tuples_reactive_len}\n")
 
     # process tuples for maximum gradient feature
     m.pro_rampupgrad_tuples = pyomo.Set(
@@ -304,6 +368,12 @@ def create_model(
                     for (stf, sit, pro) in m.pro_tuples
                     if m.process_dict['ramp-up-grad'][stf, sit, pro] < 1.0 / dt],
         doc='Processes with maximum ramp up gradient smaller than timestep length')
+
+    pro_rampupgrad_tuples_len = len([(stf, sit, pro)
+                    for (stf, sit, pro) in m.pro_tuples
+                    if m.process_dict['ramp-up-grad'][stf, sit, pro] < 1.0 / dt])
+    setlog.write(f"pro_rampupgrad_tuples: {pro_rampupgrad_tuples_len}\n")
+
     m.pro_rampdowngrad_tuples = pyomo.Set(
         within=m.stf * m.sit * m.pro,
         initialize=[(stf, sit, pro)
@@ -311,9 +381,32 @@ def create_model(
                     if m.process_dict['ramp-down-grad'][stf, sit, pro] < 1.0 / dt],
         doc='Processes with maximum ramp down gradient smaller than timestep length')
 
+    pro_rampdowngrad_tuples_len = len([(stf, sit, pro)
+                    for (stf, sit, pro) in m.pro_tuples
+                    if m.process_dict['ramp-down-grad'][stf, sit, pro] < 1.0 / dt])
+    setlog.write(f"pro_rampdowngrad_tuples: {pro_rampdowngrad_tuples_len}\n")
+
+    setlog.close()
     log_mem(memlog, 'sets added')
 
     # Variables
+
+    # ADMM variables
+    if sites is not None:
+        m.flow_global = pyomo.Var(
+            m.tm,m.stf,m.sit,m.sit,
+            within=pyomo.Reals,
+            doc='flow global in')
+        m.lamda = pyomo.Var(
+            m.tm,m.stf,m.sit,m.sit,
+            within=pyomo.Reals,
+            doc='lambda in')
+        m.rho = pyomo.Param(
+            within=pyomo.Reals,
+            initialize=rho,
+            doc='rho in')
+
+    log_mem(memlog, 'admm variables added')
 
     # costs
     m.costs = pyomo.Var(
