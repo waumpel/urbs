@@ -7,6 +7,7 @@ import pandas as pd
 from urbs.identify import *
 
 def create_transdist_data(data, microgrid_data_initial, cross_scenario_data):
+    print('Transdist preprocessing')
     mode = identify_mode(data)
     # read standard load profile from csv
     loadprofile_BEV = pd.read_csv(os.path.join(os.getcwd(), 'Input', 'Microgrid_types', 'loadprofile_BEV.csv'))

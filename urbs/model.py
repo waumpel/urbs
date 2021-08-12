@@ -48,6 +48,7 @@ def create_model(
     Return:
         A `pyomo.ConcreteModel` instance.
     """
+    print('Creating urbs model')
 
     # Optional
     if not timesteps:

@@ -8,6 +8,7 @@ from urbs.identify import *
 import os
 
 def run_tsam(data, noTypicalPeriods, hoursPerPeriod, cross_scenario_data):
+    print('Running TSAM')
     ###bring together all time series data
     time_series_data = pd.concat([data['demand'], data['supim'], data['buy_sell_price'], data['eff_factor']], axis=1, sort=True)
     # dict which allocates the first equal column of the dataframe to each column before droping duplicates of dataframe
