@@ -1,9 +1,17 @@
 import math
 from datetime import datetime
+from os import mkdir
+from os.path import isdir
 from .features import *
 from .features.transmission import *
 from .input import *
 import pyomo.environ as pyomo
+
+import psutil
+
+def log_mem(f, msg):
+    f.write(f'{msg}: {(psutil.Process().memory_info().vms / 10**6):.2f} MiB\n')
+
 
 def create_model(
     data_all,
@@ -49,6 +57,11 @@ def create_model(
         A `pyomo.ConcreteModel` instance.
     """
 
+    if not isdir('temp'):
+        mkdir('temp')
+    memlog = open('temp/memory.log', 'w', encoding='utf8')
+    log_mem(memlog, 'create_model start')
+
     # Optional
     if not timesteps:
         timesteps = data_all['demand'].index.tolist()
@@ -58,7 +71,7 @@ def create_model(
     else:
         m, data = pyomo_model_prep(data_all, timesteps, sites, pd.concat([shared_lines,internal_lines])) # prepare pyomo model
 
-    input('pyomo_model_prep is done. Continue?')
+    log_mem(memlog, 'pyomo_model_prep done')
 
     m.name = 'urbs'
     m.created = datetime.now().strftime('%Y%m%dT%H%M')
@@ -87,6 +100,8 @@ def create_model(
         initialize=objective,
         within=pyomo.Any,
         doc='Specification of minimized quantity, default: "cost"')
+
+    log_mem(memlog, 'parameters added')
 
     # Sets
     # ====
@@ -296,6 +311,7 @@ def create_model(
                     if m.process_dict['ramp-down-grad'][stf, sit, pro] < 1.0 / dt],
         doc='Processes with maximum ramp down gradient smaller than timestep length')
 
+    log_mem(memlog, 'sets added')
 
     # Variables
 
@@ -342,6 +358,8 @@ def create_model(
         m.pro_tuples,
         within=pyomo.NonNegativeIntegers,
         doc='Number of newly installed capacity units')
+
+    log_mem(memlog, 'sets added')
 
     # Add additional features
     # called features are declared in distinct files in features folder
@@ -414,6 +432,7 @@ def create_model(
             within=m.stf * m.sit * m.pro * m.com,
             doc='empty commodities with partial input ratio')
 
+    log_mem(memlog, 'additional features added')
 
     # Equation declarations
     # equation bodies are defined in separate functions, referred to here by
@@ -505,6 +524,8 @@ def create_model(
         rule=def_costs_rule if sites is None else def_costs_rule_sub,
         doc='main cost function by cost type')
 
+    log_mem(memlog, 'constraints added')
+
     # objective and global constraints
     if m.obj.value == 'cost':
         if sites is None:
@@ -564,8 +585,13 @@ def create_model(
                                   "either 'cost' or 'CO2' as the objective in "
                                   "runme.py!")
 
+    log_mem(memlog, 'objective and global constraint added')
+
     if dual:
         m.dual = pyomo.Suffix(direction=pyomo.Suffix.IMPORT)
+        log_mem(memlog, 'dual added')
+
+    memlog.close()
 
     return m
 
