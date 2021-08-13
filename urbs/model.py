@@ -122,8 +122,8 @@ def create_model(
         doc='Set of all sites')
 
     m.sit_inside = pyomo.Set(
-        initialize=m._data['commodity'].index.get_level_values('Site').unique(),
-        doc='Set of sites belonging to the cluster')
+        initialize = [s for (y,s) in data['site'].index.values],
+        doc='Set of all sites')
 
     # commodity (e.g. solar, wind, coal...)
     indexlist = set()

@@ -247,7 +247,7 @@ def add_transmission_dc(m, shared_lines):
         doc='Power flow out of transmission line (MW) per timestep')
 
     m.voltage_angle = pyomo.Var(
-        m.tm, m.stf, m.sit,
+        m.tm, m.stf, m.sit_inside,
         within=pyomo.Reals,
         doc='Voltage angle of a site')
 
@@ -431,7 +431,7 @@ def add_transmission_ac(m, shared_lines):
         doc='Power flow out of transmission line (MW) per timestep')
 
     m.voltage_angle = pyomo.Var(
-        m.tm, m.stf, m.sit,
+        m.tm, m.stf, m.sit_inside,
         within=pyomo.Reals,
         doc='Voltage angle of a site')
     m.voltage_squared = pyomo.Var(
