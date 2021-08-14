@@ -1,5 +1,3 @@
-# TODO the whole thing
-
 from os.path import join
 from typing import Dict, List
 
@@ -94,6 +92,16 @@ def beginning_of_the_end(series, threshold):
             return len(series) - i # not -1 because we want the index *after* the element that we found
 
     return 0
+
+
+def solver_times_dict(results: pd.DataFrame, n_clusters: int):
+    solver_times = { k: [] for k in range(n_clusters) }
+    for _, row in results.iterrows():
+        ID = row['process_id']
+        solver_time = row['stop_time'] - row['start_time']
+        solver_times[ID].append(solver_time)
+
+    return solver_times
 
 
 def plot_results(
@@ -216,6 +224,15 @@ def plot_results(
         fig_combined.savefig(join(result_dir, 'combined.svg'))
         plt.close(fig_combined)
 
+    solver_times = solver_times_dict(results, n_clusters)
+    avg_times = { ID: sum(times) / len(times) for ID, times in solver_times.items() }
+    avg_times = dict(sorted(avg_times.items(),key= lambda x:x[1], reverse=True))
+
+    fig, ax = fig_avg_times()
+    ax.bar(range(len(avg_times)), avg_times.values(), tick_label=list(avg_times.keys()))
+    fig.savefig(join(result_dir, 'avg_times.svg'))
+    plt.close(fig)
+
 
 def fig_primal():
     fig, ax = plt.subplots()
@@ -252,10 +269,19 @@ def fig_objective():
     ax.set_title('Objective Gap per Iteration')
     return fig, ax
 
+
 def fig_raw_dual():
     fig, ax = plt.subplots()
     ax.set_yscale('log')
     ax.set_xlabel('avg local iterations')
     ax.set_ylabel('raw dual gap')
     ax.set_title('Raw Dual Gap per Iteration')
+    return fig, ax
+
+
+def fig_avg_times():
+    fig, ax = plt.subplots()
+    ax.set_xlabel('cluster')
+    ax.set_ylabel('avg solver time (s)')
+    ax.set_title('Avg solver time per cluster')
     return fig, ax
