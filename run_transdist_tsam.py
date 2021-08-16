@@ -117,34 +117,34 @@ if __name__ == '__main__':
                 hoursPerPeriod=hoursPerPeriod,
             )
 
-        else:
-            solver = 'gurobi'
-            threads = 3
+    else:
+        solver = 'gurobi'
+        threads = 3
 
-            for scenario in scenarios:
-                prob, cross_scenario_data = urbs.run_scenario(
-                    input_path,
-                    solver,
-                    timesteps,
-                    scenario,
-                    result_dir,
-                    dt,
-                    objective,
-                    microgrid_files=microgrid_paths,
-                    cross_scenario_data=cross_scenario_data,
-                    noTypicalPeriods=noTypicalPeriods,
-                    hoursPerPeriod=hoursPerPeriod,
-                    threads=threads,
-                )
+        for scenario in scenarios:
+            prob, cross_scenario_data = urbs.run_scenario(
+                input_path,
+                solver,
+                timesteps,
+                scenario,
+                result_dir,
+                dt,
+                objective,
+                microgrid_files=microgrid_paths,
+                cross_scenario_data=cross_scenario_data,
+                noTypicalPeriods=noTypicalPeriods,
+                hoursPerPeriod=hoursPerPeriod,
+                threads=threads,
+            )
 
-                # TODO: how to port this to admm
-                # TODO: The capacities should be disjunct in the subproblems. We just need to read out the variables and store them for each cluster.
-                # if scenario.__name__ == 'transdist100':
-                #     cap_PV_private = prob._result['cap_pro'].loc[:, :, 'PV_private_rooftop'].droplevel(level=[0])
-                #     cap_PV_private.index = pd.MultiIndex.from_tuples(cap_PV_private.index.str.split('_').tolist())
-                #     cap_PV_private = cap_PV_private.groupby(level=[2]).sum().to_frame()
-                #     cap_PV_private.index.name = 'sit'
-                #     cap_PV_private['pro'] = 'PV_private_rooftop'
-                #     cap_PV_private.set_index(['pro'], inplace=True, append=True)
-                #     cap_PV_private = cap_PV_private.squeeze()
-                #     cross_scenario_data['PV_cap_shift'] = cap_PV_private
+            # TODO: how to port this to admm
+            # TODO: The capacities should be disjunct in the subproblems. We just need to read out the variables and store them for each cluster.
+            # if scenario.__name__ == 'transdist100':
+            #     cap_PV_private = prob._result['cap_pro'].loc[:, :, 'PV_private_rooftop'].droplevel(level=[0])
+            #     cap_PV_private.index = pd.MultiIndex.from_tuples(cap_PV_private.index.str.split('_').tolist())
+            #     cap_PV_private = cap_PV_private.groupby(level=[2]).sum().to_frame()
+            #     cap_PV_private.index.name = 'sit'
+            #     cap_PV_private['pro'] = 'PV_private_rooftop'
+            #     cap_PV_private.set_index(['pro'], inplace=True, append=True)
+            #     cap_PV_private = cap_PV_private.squeeze()
+            #     cross_scenario_data['PV_cap_shift'] = cap_PV_private
