@@ -1,4 +1,6 @@
-﻿import argparse
+﻿# TODO: the whole thing
+
+import argparse
 from multiprocessing import freeze_support
 import os
 import shutil

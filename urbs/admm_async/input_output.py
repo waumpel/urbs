@@ -1,5 +1,4 @@
 import io
-from os.path import join
 
 import pandas as pd
 
@@ -11,6 +10,9 @@ def words_in_line(line):
 
 
 def read_results(f: io.TextIOWrapper) -> pd.DataFrame:
+    """
+    Read `AdmmMetadata` objects persisted as strings from a file into a `DataFrame`.
+    """
     lines = f.readlines()
     n_headers = len(words_in_line(lines[0]))
     skiprows = []

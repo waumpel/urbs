@@ -7,8 +7,6 @@ import pandas as pd
 
 
 def index_lists(results: pd.DataFrame, n_clusters: int) -> List[List[int]]:
-    # TODO: docstring
-
     process_ids = results['process_id'].to_list()
     # Find the first iteration where all clusters have returned a result.
     first_full_iteration = max(
@@ -117,7 +115,15 @@ def plot_results(
     """
     Plot the results and save them to `result_dir`.
 
-    `results_dict` is a dict as returned by `.runfunctions_admm.run_regional`.
+    Args:
+        - `result_dir`: Output directory.
+        - `results`: `DataFrame` as returned by `input_output.read_results`.
+        - `metadata`: Dict resembling an `AdmmMetadata` object.
+        - `centralized_objective`: Centralized objective to compare against.
+        - `objective_tolerance`: Desired objective gap.
+        - `mode`: Save plots in `separate` plots, in a `combined` plot, or `both`.
+        - `colors`: Dict of colors for the different plots. Supported keys are:
+          primal, dual, mismatch, obj, rho.
     """
     if mode not in ['combined', 'separate', 'both']:
         raise ValueError('Invalid mode')
@@ -135,7 +141,7 @@ def plot_results(
         }
 
     admmopt = metadata['admmopt']
-    n_clusters = metadata['n_clusters']
+    n_clusters = len(metadata['clusters'])
     series = data_series(results, n_clusters, centralized_objective)
     series = series_cutoff(series, 10**(-4), 10**8)
 

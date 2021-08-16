@@ -8,6 +8,13 @@ from urbs.identify import *
 import os
 
 def run_tsam(data, noTypicalPeriods, hoursPerPeriod, cross_scenario_data):
+    """
+    Return:
+        - data input dict
+        - timesteps_new
+        - weighting_order
+        - cross_scenario_data
+    """
     print('Running TSAM')
     ###bring together all time series data
     time_series_data = pd.concat([data['demand'], data['supim'], data['buy_sell_price'], data['eff_factor']], axis=1, sort=True)

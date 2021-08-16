@@ -209,7 +209,7 @@ def pyomo_model_prep(
       Defaults to `None`.
 
     Return:
-        A rudimentary `ConcreteModel` instance.
+        A rudimentary `ConcreteModel` instance and the modified data dictionary.
     """
 
     m = ConcreteModel()

@@ -1,4 +1,6 @@
-﻿from multiprocessing import freeze_support
+﻿# TODO: the whole thing
+
+from multiprocessing import freeze_support
 from os.path import join
 import os
 import shutil

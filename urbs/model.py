@@ -24,26 +24,26 @@ def create_model(
     Create an urbs model from the given input data.
 
     Args:
-        - data_all: input data dict
-        - timesteps: optional list of timesteps, default: demand timeseries
-        - dt: timestep duration in hours (default: 1)
-        - objective: Either "cost" or "CO2" for choice of objective function,
+        - `data_all`: input data dict
+        - `timesteps`: optional list of timesteps, default: demand timeseries
+        - `dt`: timestep duration in hours (default: 1)
+        - `objective`: Either "cost" or "CO2" for choice of objective function,
             default: "cost"
-        - dual: set True to add dual variables to model output
+        - `dual`: set True to add dual variables to model output
             (marginally slower), default: False
 
     Args required for ADMM:
-        - sites: List of sites to select for this model. Pass `None` to
+        - `sites`: List of sites to select for this model. Pass `None` to
             include all sites. Defaults to `None`.
-        - shared_lines: `DataFrame` for transmissions shared with other clusters.
-        - internal_lines: `DataFrame` for transmissions used only by this cluster.
-        - flow_global: `pd.Series` of initial values for global flow variables.
-        - lamda: `pd.Series` of initial values for Lagrange multipliers.
-        - rho: Initial value for penalty parameter.
+        - `shared_lines`: `DataFrame` for transmissions shared with other clusters.
+        - `internal_lines`: `DataFrame` for transmissions used only by this cluster.
+        - `flow_global`: `pd.Series` of initial values for global flow variables.
+        - `lamda`: `pd.Series` of initial values for Lagrange multipliers.
+        - `rho`: Initial value for penalty parameter.
 
     Args required for type periods:
-        - hoursPerPeriod: TODO
-        - weighting_order: TODO
+        - `hoursPerPeriod`: Length of each typical period (TSAM parameter).
+        - `weighting_order`: TODO
 
     Return:
         A `pyomo.ConcreteModel` instance.

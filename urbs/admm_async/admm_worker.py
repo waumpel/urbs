@@ -1,6 +1,8 @@
 from math import ceil
 from multiprocessing import Queue
 from time import sleep
+from typing import Dict, Iterable, List, Set, Union
+from urbs.admm_async.admm_option import AdmmOption
 
 import numpy as np
 from numpy.linalg import norm
@@ -14,8 +16,41 @@ import urbs.model
 
 
 class AdmmWorker:
+    """
+    Manages a single `UrbsAdmmModel` in parallel ADMM.
 
-    def __init__(self, ID: int, output, admmopt, n_clusters, neighbors, queues) -> None:
+    Attributes:
+        - `ID`: ID of this worker. Same as `self.model.ID`.
+        - `log_prefix`: A string that is prefixed to all log messages.
+        - `output`: `mp.Queue` for sending objects to the parent process.
+        - `admmopt`: `AdmmOption` object
+        - `n_clusters`: Number of clusters in the ADMM algorithm.
+        - `neighbors`: Iterable of neighboring clusters.
+        - `n_neighbors`: Number of neighboring clusters.
+        - `n_wait`: Number of neighbors for which to wait before starting a new iteration.
+        - `receiving_queue`: `mp.Queue` for receiving objects from other workers and the
+          parent process.
+        - `sending_queues`: Dict of queues for sending objects to other workers.
+        - `messages`: Dict of the most recent messages received from other workers.
+        - `updated`: Set of neighboring clusters that have sent variable updates since the
+          start of the current local iteration.
+        - `status`: `List[AdmmStatus]` storing the current status of all clusters.
+        - `status_update`: Flag indicating that this worker's status has been changed since
+          the last status message was sent.
+        - `mismatches`: Dict of constraint mismatches with all neighbors.
+        - `model`: An `UrbsAdmmModel`.
+    """
+
+    def __init__(
+        self,
+        ID: int,
+        output: Queue,
+        admmopt: AdmmOption,
+        n_clusters: int,
+        neighbors: Iterable[str],
+        queues: List[Queue]
+        ) -> None:
+
         self.ID: int = ID
         self.log_prefix: str = f'AdmmWorker[{ID}]'
         self.output: Queue = output
@@ -38,21 +73,28 @@ class AdmmWorker:
         self.model: UrbsAdmmModel = None
 
 
-    def get_status(self):
+    def get_status(self) -> AdmmStatus:
+        """
+        Return this worker's current status.
+        """
         return self.status[self.ID]
 
 
-    def _set_status(self, value):
+    def _set_status(self, value: AdmmStatus):
+        """
+        Set this worker's status to value and set `status_update` if the value has changed.
+        Refuse status changes if the current status is `TERMINATED`.
+        """
         old_value = self.get_status()
         if old_value != AdmmStatus.TERMINATED and old_value != value:
             self.status[self.ID] = value
             self.status_update = True
 
 
-    def local_convergence(self):
+    def local_convergence(self) -> bool:
         """
         Return the current local convergence status.
-        Local convergence is reached if primal gap, dual gap, and constraint mismatch with
+        Local convergence is reached if primal gap and constraint mismatch with
         all neighbors are below their respective tolerance thresholds.
         """
         return self.get_status() in [
@@ -60,7 +102,7 @@ class AdmmWorker:
         ]
 
 
-    def all_converged(self):
+    def all_converged(self) -> bool:
         """
         Return whether this cluster and all neighbors who have sent a variable update during
         the current iteration have converged.
@@ -70,14 +112,17 @@ class AdmmWorker:
             for k in self.updated)
 
 
-    def all_global_convergence(self):
+    def all_global_convergence(self) -> bool:
         """
         Return whether all clusters have reached global convergence.
         """
         return all(s == AdmmStatus.GLOBAL_CONVERGENCE for s in self.status)
 
 
-    def max_mismatch(self):
+    def max_mismatch(self) -> float:
+        """
+        Return the maximum mismatch value with all neighbors.
+        """
         return np.nan if np.nan in self.mismatches.values() else \
                float(max(self.mismatches.values()))
 
@@ -106,7 +151,11 @@ class AdmmWorker:
         weighting_order=None,
         threads=None,
         ) -> None:
+        """
+        Create an `AdmmWorker` and call its `run` method.
 
+        Intended as the target function for `mp.Process`es.
+        """
         worker = AdmmWorker(ID, output, admmopt, n_clusters, neighbors, queues)
         worker.run(
             data_all,
@@ -145,7 +194,12 @@ class AdmmWorker:
         weighting_order=None,
         threads=None,
         ) -> None:
+        """
+        Start this `AdmmWorker`.
 
+        Create an `UrbsAdmmModel`, then start solving ADMM iterations once the start signal
+        has been received from the parent process.
+        """
         self._log('Creating model')
 
         self.model = self._create_model(
@@ -184,7 +238,17 @@ class AdmmWorker:
         self.output.put(AdmmStatusMessage(self.ID, self.status))
 
 
-    def _run_iteration(self, nu):
+    def _run_iteration(self, nu: int) -> Union[None, AdmmStatus]:
+        """
+        Run a single ADMM iteration.
+
+        Args:
+            - `nu`: Current local iteration counter.
+
+        Return:
+            `AdmmStatus.TERMINATED` or `AdmmStatus.GLOBAL_CONVERGENCE` if appropriate,
+            otherwise `None`.
+        """
         self._log(f'Iteration {nu}')
 
         self.updated = set()
@@ -267,7 +331,16 @@ class AdmmWorker:
         self.model.update_cost_rule()
 
 
-    def _receive(self):
+    def _receive(self) -> Union[Set[int], AdmmStatus]:
+        """
+        Check for new messages from other workers.
+
+        Update constraint mismatches with neighbors who have sent variable updates.
+        Update status.
+
+        Return `AdmmStatus.TERMINATED` if appropriate, otherwise a set of IDs of all workers
+        who have sent a message.
+        """
         variable_senders = set()
         status_msgs = {}
 
@@ -298,7 +371,7 @@ class AdmmWorker:
         return senders
 
 
-    def _send_variables(self):
+    def _send_variables(self) -> None:
         """
         Send an `AdmmMessage` with the current variables to all neighbors.
         """
@@ -320,9 +393,11 @@ class AdmmWorker:
             que.put(msg)
 
 
-    def _send_status(self):
+    def _send_status(self) -> None:
         """
         Send an `AdmmStatusMessage` with the current status to all other clusters.
+
+        Set the `status_update` flag to `False`.
         """
         msg = AdmmStatusMessage(
             sender = self.ID,
@@ -334,7 +409,7 @@ class AdmmWorker:
         self.status_update = False
 
 
-    def _update_status(self, status_msgs):
+    def _update_status(self, status_msgs: Dict) -> None:
         """
         Update `self.status` according to the received `status_msgs`, then call
         `_check_global_convergence`.
@@ -345,7 +420,7 @@ class AdmmWorker:
         self._check_global_convergence()
 
 
-    def _check_global_convergence(self):
+    def _check_global_convergence(self) -> None:
         """
         Check whether global convergence has been gained or lost and update `self.status`
         accordingly.
@@ -360,7 +435,7 @@ class AdmmWorker:
             self._set_status(AdmmStatus.LOCAL_CONVERGENCE)
 
 
-    def _update_mismatch(self, senders):
+    def _update_mismatch(self, senders: Iterable[int]) -> None:
         """
         Update the mismatch convergence status with `senders` to reflect the information
         received in new messages.
@@ -384,7 +459,7 @@ class AdmmWorker:
             self._update_convergence()
 
 
-    def _calc_mismatch(self, k):
+    def _calc_mismatch(self, k: int) -> float:
         """
         Calculate the current mismatch gap with neighbor `k`.
         """
@@ -408,7 +483,7 @@ class AdmmWorker:
         return mismatch_gap
 
 
-    def _update_convergence(self):
+    def _update_convergence(self) -> bool:
         """
         Check for local convergence, i.e. if primal gap, and constraint mismatch
         with all neighbors are below their respective tolerance thresholds.
@@ -453,7 +528,9 @@ class AdmmWorker:
         weighting_order=None,
         threads=None,
         ) -> UrbsAdmmModel:
-
+        """
+        Create this workers `UrbsAdmmModel`.
+        """
         index = shared_lines.index.to_frame()
 
         flow_global = pd.Series({
@@ -503,6 +580,6 @@ class AdmmWorker:
         )
 
 
-    def _log(self, *args):
+    def _log(self, *args) -> None:
         msg = f'Process[{self.ID}] {" ".join(str(arg) for arg in args)}'
         print(msg)

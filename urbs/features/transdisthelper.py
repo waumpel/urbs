@@ -7,6 +7,20 @@ import pandas as pd
 from urbs.identify import *
 
 def create_transdist_data(data, microgrid_data_initial, cross_scenario_data):
+    """
+    Combine main and microgrid data for transdist models.
+
+    Args:
+        - `data`: Main input dict.
+        - `microgrid_data_initial`: List of microgrid input dicts.
+        - `cross_scenario_data`: Dict for storing data across scenarios.
+
+    Return:
+        - Modified `data` dict
+        - Modified `cross_scenario_data`
+        - `pd.Series` of containing a list of nodes for each microgrid. The series has a
+          MultiIndex of `[top region, type, instance]`.
+    """
     print('Transdist preprocessing')
     mode = identify_mode(data)
     # read standard load profile from csv

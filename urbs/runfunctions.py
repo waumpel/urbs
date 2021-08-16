@@ -102,12 +102,13 @@ def run_scenario(
         - `report_sites_name`: (optional) dict of names for sites in
           report_tuples
         - `microgrid_files`: Filenames of input Excel spreadsheets for microgrid types.
-        - `cross_scenario_data`: TODO
-        - `noTypicalPeriods`: TODO
-        - `hoursPerPeriod`: TODO
+        - `cross_scenario_data`: Dict for storing data across scenarios.
+        - `noTypicalPeriods`: Number of typical periods (TSAM parameter).
+        - `hoursPerPeriod`: Length of each typical period (TSAM parameter).
+        - `threads`: Number of threads to use with Gurobi solver.
 
     Return:
-        A `pyomo.ConcreteModel` instance.
+        A `pyomo.ConcreteModel` instance and `cross_scenario_data`.
     """
 
     # sets a modeled year for non-intertemporal problems

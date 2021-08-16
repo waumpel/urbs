@@ -4,8 +4,8 @@ from.admm_option import AdmmOption
 
 class AdmmMetadata:
 
-    def __init__(self, n_clusters, admmopt: AdmmOption) -> None:
-        self.n_clusters = n_clusters
+    def __init__(self, clusters, admmopt: AdmmOption) -> None:
+        self.clusters = clusters
         self.admmopt: AdmmOption = admmopt
 
 
@@ -16,6 +16,6 @@ class AdmmMetadata:
         }
 
         return {
-            'n_clusters': self.n_clusters,
+            'clusters': self.clusters,
             'admmopt': admmopt_dict
         }

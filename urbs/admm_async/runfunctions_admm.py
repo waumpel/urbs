@@ -83,6 +83,7 @@ def setup_solver(solver, logfile='solver.log'):
     return solver
 
 
+# TODO: remove
 def run_centralized(
     data_all,
     timesteps,
@@ -143,7 +144,7 @@ def run_regional(
     cross_scenario_data=None,
     noTypicalPeriods=None,
     hoursPerPeriod=None,
-    threads=None,
+    threads=1,
     ):
     """
     Run an urbs model for given input, time steps and scenario with regional decomposition
@@ -158,12 +159,14 @@ def run_regional(
         - `clusters`: List of lists partitioning the sites of the problem into clusters.
         - `admmopt`: `AdmmOption` object.
         - `microgrid_files`: Filenames of input Excel spreadsheets for microgrid types.
-        - `cross_scenario_data`: TODO
-        - `noTypicalPeriods`: TODO
-        - `hoursPerPeriod`: TODO
+        - `microgrid_cluster_mode`: If `microgrid`, one cluster per microgrid is added.
+          If `all`, one cluster for ALL microgrid nodes is added. Default: `microgrid`.
+        - `cross_scenario_data`: Dict for storing data across scenarios
+        - `noTypicalPeriods`: Number of typical periods (TSAM parameter)
+        - `hoursPerPeriod`: Length of each typical period (TSAM parameter)
+        - `threads`: Number of Gurobi threads to use PER CLUSTER. Default: 1.
 
-    Return:
-        Result summary dict. (See `input_output.results_dict`)
+    Return the value of the objective function.
     """
     # hard-coded year. ADMM doesn't work with intertemporal models (yet)
     year = date.today().year
@@ -338,6 +341,7 @@ def run_regional(
 
     print('All workers have created their models. Starting ADMM')
 
+    # TODO: sum up memory of all processes (perhaps use rss)
     memory = ps.Process().memory_info().vms
     print(f'Currently using {(memory / 10**9):.2f} GiB of memory (vms)')
 
@@ -376,8 +380,8 @@ def run_regional(
     print(f'ADMM solver time: {solver_time:4.0f} s')
     print(f'ADMM objective  : {admm_objective:.4e}')
 
-    metadata = AdmmMetadata(n_clusters, admmopt)
-
+    # store metadata
+    metadata = AdmmMetadata(clusters, admmopt)
     with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
         json.dump(metadata.to_dict(), f, indent=4)
 

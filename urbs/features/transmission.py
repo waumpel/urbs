@@ -38,7 +38,15 @@ def remove_duplicate_transmission(transmission_keys):
 
 
 def add_transmission(m, shared_lines=None):
+    """
+    Add pyomo components for transmissions to the model.
 
+    Args:
+        - `m`: A pyomo `ConcreteModel`
+        - `shared_lines`: `DataFrame` for transmissions shared with other clusters.
+
+    Return `m`
+    """
     # tranmission (e.g. hvac, hvdc, pipeline...)
     indexlist = set()
     for key in m.transmission_dict["eff"]:
@@ -140,6 +148,15 @@ def add_transmission(m, shared_lines=None):
 
 # adds the transmission features to model with DCPF model features
 def add_transmission_dc(m, shared_lines):
+    """
+    Add pyomo components for dc transmissions to the model.
+
+    Args:
+        - `m`: A pyomo `ConcreteModel`
+        - `shared_lines`: `DataFrame` for transmissions shared with other clusters.
+
+    Return `m`
+    """
     # defining transmission tuple sets for transport and DCPF model separately
     tra_tuples = set()
     tra_tuples_dc = set()
@@ -304,6 +321,15 @@ def add_transmission_dc(m, shared_lines):
 
 # adds the transmission features to model with ACPF model features
 def add_transmission_ac(m, shared_lines):
+    """
+    Add pyomo components for ac transmissions to the model.
+
+    Args:
+        - `m`: A pyomo `ConcreteModel`
+        - `shared_lines`: `DataFrame` for transmissions shared with other clusters.
+
+    Return `m`
+    """
     # defining transmission tuple sets for transport and DCPF model separately
     tra_tuples = set()
     tra_tuples_dc = set()

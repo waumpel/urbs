@@ -7,6 +7,7 @@
 from copy import deepcopy
 from math import sqrt
 import time
+from typing import Dict, List, Tuple
 
 import numpy as np
 from numpy.linalg import norm
@@ -15,76 +16,52 @@ import pyomo.environ as pyomo
 from pyomo.environ import SolverFactory
 
 from urbs.model import cost_rule_sub
+from .admm_option import AdmmOption
 
 
 class UrbsAdmmModel(object):
     """
-    Encapsulates a local urbs subproblem and implements ADMM steps
-    including x-update(solving subproblem), send data to neighbors, receive data
-    from neighbors, z-update (global flows) and y-update (lambdas).
+    Encapsulates an urbs subproblem and implements ADMM steps.
 
-    ### Members
+    Attributes
+        - `admmopt`: `AdmmOption` object
+        - `dualgap`: Current dual gap
+        - `flow_global`: `pd.Series` containing the global flow values. Index is
+          `['t', 'stf', 'sit', 'sit_']`.
+        - `flows_all`: `pd.Series` containing the current values of the local flow variables.
+          Index is `['t', 'stf', 'sit', 'sit_']`.
+        - `flows_with_neighbor`: Dict containing containing the current values of the local
+          flow variables with each neighbor. Each entry is a `pd.Series` with index
+          ['t', 'stf', 'sit', 'sit_']`.
+        - `lamda`: `pd.Series` containing the Lagrange multipliers. Index is
+          `['t', 'stf', 'sit', 'sit_']`.
+        - `model`: `pyomo.ConcreteModel`
+        - `neighbors`: List of neighbor IDs
+        - `nu`: Current iteration
+        - `primalgap`: Current primal gap
+        - `primalgap_old`: Last primal gap
+        - `rho`: Quadratic penalty coefficient
+        - `shared_lines`: `pd.DataFrame` of inter-cluster transmission lines. A copy of a
+            slice of the 'Transmision' DataFrame, enlarged with the columns `cluster_from`,
+            `cluster_to` and `neighbor_cluster`.
+        - `shared_lines_index`: Index of `shared_lines` as a `DataFrame`
+        - `solver`: `GurobiPersistent` solver interface to `model`
 
-    TODO: update
-    `admmopt`: `AdmmOption` object.
-    `dualgaps`: List holding the dual gaps in each iteration (starts with a single `0`
-        entry).
-    `flow_global`: `pd.Series` holding the global flow values. Index is
-        `['t', 'stf', 'sit', 'sit_']`.
-    `flows_all`: `pd.Series` holding the values of the local flow variables after each
-        solver iteration. Index is `['t', 'stf', 'sit', 'sit_']`. Initial value is `None`.
-    `flows_with_neighbor`: `pd.Series` holding the values of the local flow variables
-        with each neighbor after each solver iteration. Index is
-        `['t', 'stf', 'sit', 'sit_']`.Initial value is `None`.
-    `lamda`: `pd.Series` holding the Lagrange multipliers. Index is
-        `['t', 'stf', 'sit', 'sit_']`.
-    `logfile`: Logfile for this cluster.
-    `max_mismatch_gaps`: List holding the maximal constraint mismatch in each iteration.
-    `messages`: Dict mapping each neighbor ID to the most recent message from that neighbor.
-    `mismatch_convergence`: Dict mapping each neighbor ID to a flag indicating the current
-        mismatch convergence status.
-    `model`: `pyomo.ConcreteModel`.
-    `n_clusters`: Total number of clusters.
-    `n_neighbors`: Number of neighbors.
-    `n_wait`: Number of updated neighbors required for the next iteration.
-    `neighbor_queues`: Dict mapping neighbor IDs to `mp.Queue`s for sending messages
-        to that neighbor.
-    `neighbors`: List of neighbor IDs.
-    `nu`: Current iteration.
-    `objective_values`: List of objective function values after each iteration.
-    `primalgaps`: List of primal gaps after each iteration.
-    `receiving_queue`: `mp.Queue` for receiving messages from neighbors.
-    `regions`: List of region names in this subproblem.
-    `result_dir`: Result directory.
-    `rho`: Quadratic penalty coefficient.
-    `rhos`: List holding the penalty parameter of each iteration.
-    `sending_queues`: Dict mapping each cluster ID (except `self.ID`) to a `mp.Queue` for
-        sending messages to that cluster.
-    `shared_lines`: `pd.DataFrame` of inter-cluster transmission lines. A copy of a slice of
-        the 'Transmision' DataFrame, enriched with the columns `cluster_from`, `cluster_to`
-        and `neighbor_cluster`. Index is
-        `['support_timeframe', 'Site In', 'Site Out', 'Transmission', 'Commodity']`.
-    `shared_lines_index`: `shared_lines.index.to_frame()`.
-    `solver`: `GurobiPersistent` solver interface to `model`.
-    `status`: List holding the currently known `AdmmStatus` of a cluster, as received
-        through messages.
-    `status_update`: Flag indicating whether `self.status` has been updated since
-        the last time a status message has been sent.
-    `updated`: List of sets holding the neighbors who have sent new variables before
-        the start of each iteration (starts with an empty set as the single entry).
+    See also: `AdmmWorker`
     """
 
     def __init__(
         self,
-        admmopt,
-        flow_global,
-        lamda,
-        model,
-        neighbors,
-        shared_lines,
-        shared_lines_index,
-        threads=None,
-    ):
+        admmopt: AdmmOption,
+        flow_global: pd.Series,
+        lamda: pd.Series,
+        model: pyomo.ConcreteModel,
+        neighbors: List[int],
+        shared_lines: pd.DataFrame,
+        shared_lines_index: pd.DataFrame,
+        threads: int=1,
+    ) -> None:
+
         self.admmopt = admmopt
         self.dualgap = np.nan
         self.flow_global = flow_global
@@ -100,8 +77,6 @@ class UrbsAdmmModel(object):
         self.shared_lines = shared_lines
         self.shared_lines_index = shared_lines_index
 
-        if threads is None:
-            threads = 1
         self.solver = SolverFactory('gurobi_persistent')
         self.solver.set_instance(model, symbolic_solver_labels=False)
         self.solver.set_options("NumericFocus=3")
@@ -110,9 +85,12 @@ class UrbsAdmmModel(object):
         self.solver.set_options(f"Threads={threads}")
 
 
-    def solve_iteration(self):
+    def solve_iteration(self) -> Tuple:
         """
         Start a new iteration and solve the optimization problem.
+
+        Return the objective value, primal gap, dual gap, penalty parameter (rho),
+        start time and stop time.
         """
         self.nu += 1
 
@@ -127,16 +105,16 @@ class UrbsAdmmModel(object):
         return objective, self.primalgap, self.dualgap, self.rho, solver_start, solver_stop
 
 
-    def update_lamda(self):
+    def update_lamda(self) -> None:
         """
         Calculate the new Lagrangian multipliers.
         """
         self.lamda = self.lamda + self.rho * (self.flows_all - self.flow_global)
 
 
-    def update_flow_global(self, updates):
+    def update_flow_global(self, updates: Dict) -> None:
         """
-        Update `self.flow_global` for all neighbors from which a msg was received, then
+        Update `self.flow_global` for all neighbor => msg pairs in `updates`, then
         update the dual gap.
         """
         flow_global_old = deepcopy(self.flow_global)
@@ -155,9 +133,9 @@ class UrbsAdmmModel(object):
         self._update_dualgap(flow_global_old)
 
 
-    def update_rho(self, neighbor_rhos):
+    def update_rho(self, neighbor_rhos: List[float]) -> None:
         """
-        Increase `self.rho` if the primal gap does not decrease sufficiently.
+        Update the penalty parameter according to the strategy stored in `self.admmopt`.
         """
         if self.admmopt.penalty_mode == 'increasing':
             if (self.nu > 0 and
@@ -190,7 +168,7 @@ class UrbsAdmmModel(object):
                     self.rho = self.rho / mult
 
 
-    def update_cost_rule(self):
+    def update_cost_rule(self) -> None:
         """
         Update those components of `self.model` that use `cost_rule_sub` to reflect
         changes to `self.flow_global`, `self.lamda` and `self.rho`.
@@ -212,7 +190,7 @@ class UrbsAdmmModel(object):
             raise NotImplementedError("Objectives other than 'cost' are not supported.")
 
 
-    def _retrieve_boundary_flows(self):
+    def _retrieve_boundary_flows(self) -> None:
         """
         Retrieve optimized flow values for shared lines from the solver and store them in
         `self.flows_all` and `self.flows_with_neighbor`.
@@ -242,7 +220,10 @@ class UrbsAdmmModel(object):
         self.flows_with_neighbor = flows_with_neighbor
 
 
-    def _update_primalgap(self):
+    def _update_primalgap(self) -> None:
+        """
+        Calculate the new primal gap.
+        """
         self.primalgap_old = self.primalgap
 
         raw_primalgap = norm(self.flows_all - self.flow_global)
@@ -260,7 +241,7 @@ class UrbsAdmmModel(object):
         self.primalgap = primalgap
 
 
-    def _update_dualgap(self, flow_global_old):
+    def _update_dualgap(self, flow_global_old: pd.Series) -> None:
         """
         Calculate the new dual gap.
         """
@@ -276,7 +257,10 @@ class UrbsAdmmModel(object):
         self.dualgap = dualgap
 
 
-    def _calc_multiplier(self):
+    def _calc_multiplier(self) -> float:
+        """
+        Calculate the multiplier for the penalty update in `adaptive_multiplier` mode.
+        """
         dualgap = self.dualgap
         if dualgap == 0:
             dualgap = 1
