@@ -208,45 +208,47 @@ def add_typeperiod(m):
             ordered=True,
             doc='start and end of each modeled typeperiod as tuple')
 
-        ###variable to describe storage SOC
-        m.deltaSOC = pyomo.Var(
-            m.t_endofperiod, m.sto_tuples,
-            within=pyomo.Reals,
-            doc='Variable to describe the delta of a storage within each period')
+        if m.mode['sto']:
+            ###variable to describe storage SOC
+            m.deltaSOC = pyomo.Var(
+                m.t_endofperiod, m.sto_tuples,
+                within=pyomo.Reals,
+                doc='Variable to describe the delta of a storage within each period')
 
-        ###constraint to describe the difference of a storage within a repeating period
-        m.res_delta_SOC = pyomo.Constraint(
-            m.start_end_typeperiods, m.sto_tuples,
-            rule=res_delta_SOC,
-            doc='delta SOC = weight * (state(end) - state(start)) of a period')
+            ###constraint to describe the difference of a storage within a repeating period
+            m.res_delta_SOC = pyomo.Constraint(
+                m.start_end_typeperiods, m.sto_tuples,
+                rule=res_delta_SOC,
+                doc='delta SOC = weight * (state(end) - state(start)) of a period')
 
-        ###SOC constraint for consecutive typeperiods
-        m.res_typeperiod_delta_SOC = pyomo.Constraint(
-            m.subsequent_typeperiods, m.sto_tuples,
-            rule=res_typeperiod_deltaSOC_rule,
-            doc='Constraint to ensure that the transition between typeperiods includes the seasonal SOC delta to'
-                'allow consideration of seasonal storage')
+            ###SOC constraint for consecutive typeperiods
+            m.res_typeperiod_delta_SOC = pyomo.Constraint(
+                m.subsequent_typeperiods, m.sto_tuples,
+                rule=res_typeperiod_deltaSOC_rule,
+                doc='Constraint to ensure that the transition between typeperiods includes the seasonal SOC delta to'
+                    'allow consideration of seasonal storage')
 
-        ### delete old ciclycity rule to enable typeperiod simulation
-        del m.res_storage_state_cyclicity
-        ### adjusted ciclycity constraint for typeperiods
-        m.res_storage_state_cyclicity_typeperiod = pyomo.Constraint(
-            m.sto_tuples,
-            rule=res_storage_state_cyclicity_rule_typeperiod,
-            doc='storage content end >= storage content start - deltaSOC[last_typeperiod]')
+            ### delete old ciclycity rule to enable typeperiod simulation
+            del m.res_storage_state_cyclicity
+            ### adjusted ciclycity constraint for typeperiods
+            m.res_storage_state_cyclicity_typeperiod = pyomo.Constraint(
+                m.sto_tuples,
+                rule=res_storage_state_cyclicity_rule_typeperiod,
+                doc='storage content end >= storage content start - deltaSOC[last_typeperiod]')
 
     else:
-        ###original timeset for cyclicity rule
-        m.t_endofperiod = pyomo.Set(
-            within=m.t,
-            initialize=t_endofperiod_list,
-            ordered=True,
-            doc='timestep at the end of each timeperiod')
-        ###cyclicity contraint
-        m.res_storage_state_cyclicity_typeperiod = pyomo.Constraint(
-            m.t_endofperiod, m.sto_tuples,
-            rule=res_storage_state_cyclicity_typeperiod_rule,
-            doc='storage content initial == storage content at the end of each timeperiod')
+        if m.mode['sto']:
+            ###original timeset for cyclicity rule
+            m.t_endofperiod = pyomo.Set(
+                within=m.t,
+                initialize=t_endofperiod_list,
+                ordered=True,
+                doc='timestep at the end of each timeperiod')
+            ###cyclicity contraint
+            m.res_storage_state_cyclicity_typeperiod = pyomo.Constraint(
+                m.t_endofperiod, m.sto_tuples,
+                rule=res_storage_state_cyclicity_typeperiod_rule,
+                doc='storage content initial == storage content at the end of each timeperiod')
 
     return m
 
