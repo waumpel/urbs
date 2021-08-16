@@ -235,7 +235,7 @@ class AdmmWorker:
             if result in [AdmmStatus.TERMINATED, AdmmStatus.GLOBAL_CONVERGENCE]:
                 break
 
-        self.output.put(AdmmStatusMessage(self.ID, self.status))
+        self.output.put(AdmmStatusMessage(self.ID, self.get_status()))
 
 
     def _run_iteration(self, nu: int) -> Union[None, AdmmStatus]:
@@ -249,12 +249,10 @@ class AdmmWorker:
             `AdmmStatus.TERMINATED` or `AdmmStatus.GLOBAL_CONVERGENCE` if appropriate,
             otherwise `None`.
         """
-        self._log(f'Iteration {nu}')
 
         self.updated = set()
 
         objective, primalgap, dualgap, penalty, start, stop = self.model.solve_iteration()
-        self._log(f'Iteration {nu} solved in {(stop - start):.2f} s')
         self._update_convergence()
 
         self._receive()

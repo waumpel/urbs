@@ -3,9 +3,9 @@ import json
 import multiprocessing as mp
 import os
 from os.path import join
-from time import time
+import time
 from urbs.admm_async.admm_worker import AdmmWorker
-from urbs.admm_async.admm_messages import AdmmStatusMessage, AdmmIterationResult
+from urbs.admm_async.admm_messages import AdmmStatus, AdmmStatusMessage, AdmmIterationResult
 from urbs.features.typeperiod import run_tsam
 from urbs.features.transdisthelper import *
 from urbs.identify import identify_mode
@@ -279,7 +279,7 @@ def run_regional(
 
     print('Spawning worker processes')
 
-    solver_start = time()
+    solver_start = time.time()
     for proc in procs:
         proc.start()
 
@@ -301,8 +301,8 @@ def run_regional(
     for q in queues:
         q.put('start solving')
 
-    terminated = { ID: False for ID in range(n_clusters) }
-    results = {}
+    status = [ None ] * n_clusters
+    results = [ None ] * n_clusters
 
     with open(join(result_dir, 'iteration_results.txt'), 'w', encoding='utf8') as logfile:
         logfile.write(' '.join(AdmmIterationResult._HEADERS) + '\n')
@@ -313,9 +313,12 @@ def run_regional(
                 logfile.write(str(msg) + '\n')
                 logfile.flush()
                 results[msg.process_id] = msg
+                print_status(results, status)
             elif isinstance(msg, AdmmStatusMessage):
-                terminated[msg.sender] = True
-                if all(terminated.values()):
+                status[msg.sender] = msg.status
+                if all(s in [AdmmStatus.TERMINATED, AdmmStatus.GLOBAL_CONVERGENCE]
+                       for s in status):
+                    print_status(results, status)
                     break
             else:
                 RuntimeWarning(f'Received item of unexpected type, ' +
@@ -324,10 +327,10 @@ def run_regional(
     for proc in procs:
         proc.join()
 
-    ttime = time()
+    ttime = time.time()
     solver_time = ttime - solver_start
 
-    admm_objective = sum(result.objective for result in results.values())
+    admm_objective = sum(result.objective for result in results)
 
     # print results
     print(f'ADMM solver time: {solver_time:4.0f} s')
@@ -339,3 +342,23 @@ def run_regional(
         json.dump(metadata.to_dict(), f, indent=4)
 
     return admm_objective
+
+
+def print_status(results, status):
+    status_map = {
+        AdmmStatus.TERMINATED: 'terminated',
+        AdmmStatus.GLOBAL_CONVERGENCE: 'converged',
+        None: 'running',
+    }
+    df = pd.DataFrame(
+        columns=['iteration', 'time', 'status'],
+        data=[
+            [
+                result.local_iteration if result else '-',
+                result.stop_time - result.start_time if result else '-',
+                status_map[value]
+            ]
+            for result, value in zip(results, status)
+        ]
+    )
+    print('\n' + df.to_string())
