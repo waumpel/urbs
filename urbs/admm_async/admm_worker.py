@@ -275,7 +275,7 @@ class AdmmWorker:
                 stop,
                 primalgap,
                 dualgap,
-                self.max_mismatch(), # was updated in last call to `_receive` # TODO: rename
+                self.max_mismatch(), # was updated in last call to `_receive`
                 objective,
                 penalty,
             ))
@@ -299,7 +299,7 @@ class AdmmWorker:
                         stop,
                         primalgap,
                         dualgap,
-                        self.max_mismatch(), # was updated in last call to `_receive` # TODO: rename
+                        self.max_mismatch(), # was updated in last call to `_receive`
                         objective,
                         penalty,
                     ))
@@ -312,7 +312,7 @@ class AdmmWorker:
             stop,
             primalgap,
             dualgap,
-            self.max_mismatch(), # was updated in last call to `_receive` # TODO: rename
+            self.max_mismatch(), # was updated in last call to `_receive`
             objective,
             penalty,
         ))
