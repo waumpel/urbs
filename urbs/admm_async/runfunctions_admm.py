@@ -293,9 +293,10 @@ def run_regional(
 
     print('All workers have created their models. Starting ADMM')
 
-    # TODO: sum up memory of all processes (perhaps use rss)
-    memory = ps.Process().memory_info().vms
-    print(f'Currently using {(memory / 10**9):.2f} GiB of memory (vms)')
+    memory = ps.Process().memory_info().rss + sum(
+        ps.Process(proc.pid).memory_info().rss for proc in procs
+    )
+    print(f'Currently using {(memory / 10**9):.2f} GiB of memory (rss)')
 
     for q in queues:
         q.put('start solving')
