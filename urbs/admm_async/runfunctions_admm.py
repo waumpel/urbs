@@ -83,54 +83,6 @@ def setup_solver(solver, logfile='solver.log'):
     return solver
 
 
-# TODO: remove
-def run_centralized(
-    data_all,
-    timesteps,
-    scenario_name,
-    result_dir,
-    dt,
-    objective,
-    hoursPerPeriod,
-    weighting_oder,
-    ):
-
-    prob = urbs.model.create_model(
-        data_all,
-        timesteps,
-        dt,
-        objective,
-        hoursPerPeriod=hoursPerPeriod,
-        weighting_order=weighting_oder,
-    )
-
-    # refresh time stamp string and create filename for logfile
-    log_filename = os.path.join(result_dir, f'{scenario_name}.log')
-
-    # setup solver
-    solver_name = 'gurobi'
-    solver = SolverFactory(solver_name)  # cplex, glpk, gurobi, ...
-    solver = setup_solver(solver, logfile=log_filename)
-
-    start = time()
-    result = solver.solve(prob, tee=False)
-    ttime = time() - start
-
-    # flows_from_original_problem = pd.DataFrame.from_dict(
-    #     {name: entity.value for name, entity in prob.e_tra_in.items()},
-    #     orient='index',
-    #     columns=['Original']
-    # )
-
-    objective = result['Problem'][0]['Lower bound']
-
-    return {
-        'time': ttime,
-        'objective': objective,
-        # 'flows': flows_from_original_problem,
-    }
-
-
 def run_regional(
     data_all,
     timesteps,
