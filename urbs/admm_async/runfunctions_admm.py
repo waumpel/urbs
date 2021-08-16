@@ -253,6 +253,7 @@ def run_regional(
             target=AdmmWorker.run_worker,
             args=(
                 ID,
+                result_dir,
                 output,
                 data_all,
                 timesteps,

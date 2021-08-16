@@ -6,6 +6,7 @@
 
 from copy import deepcopy
 from math import sqrt
+from os.path import join
 import time
 from typing import Dict, List, Tuple
 
@@ -52,6 +53,8 @@ class UrbsAdmmModel(object):
 
     def __init__(
         self,
+        ID: int,
+        result_dir: str,
         admmopt: AdmmOption,
         flow_global: pd.Series,
         lamda: pd.Series,
@@ -83,6 +86,8 @@ class UrbsAdmmModel(object):
         self.solver.set_options("Crossover=0")
         self.solver.set_options("Method=2")
         self.solver.set_options(f"Threads={threads}")
+        self.solver.set_options(f"LogToConsole=0")
+        self.solver.set_options(f"LogFile={join(result_dir, f'solver-{ID}.log'),}")
 
 
     def solve_iteration(self) -> Tuple:
@@ -95,7 +100,8 @@ class UrbsAdmmModel(object):
         self.nu += 1
 
         solver_start = time.time()
-        self.solver.solve(save_results=False, load_solutions=False, warmstart=True)
+        self.solver.solve(save_results=False, load_solutions=False, warmstart=True,
+                          tee=True, report_timing=False)
         solver_stop = time.time()
 
         objective = self.solver._solver_model.objval

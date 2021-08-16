@@ -21,6 +21,7 @@ class AdmmWorker:
 
     Attributes:
         - `ID`: ID of this worker. Same as `self.model.ID`.
+        - `result_dir`: Output directory
         - `log_prefix`: A string that is prefixed to all log messages.
         - `output`: `mp.Queue` for sending objects to the parent process.
         - `admmopt`: `AdmmOption` object
@@ -44,6 +45,7 @@ class AdmmWorker:
     def __init__(
         self,
         ID: int,
+        result_dir: str,
         output: Queue,
         admmopt: AdmmOption,
         n_clusters: int,
@@ -53,6 +55,7 @@ class AdmmWorker:
 
         self.ID: int = ID
         self.log_prefix: str = f'AdmmWorker[{ID}]'
+        self.result_dir = result_dir
         self.output: Queue = output
         self.admmopt = admmopt
         self.n_clusters = n_clusters
@@ -130,6 +133,7 @@ class AdmmWorker:
     @staticmethod
     def run_worker(
         ID,
+        result_dir,
         output,
         data_all,
         timesteps,
@@ -156,7 +160,7 @@ class AdmmWorker:
 
         Intended as the target function for `mp.Process`es.
         """
-        worker = AdmmWorker(ID, output, admmopt, n_clusters, neighbors, queues)
+        worker = AdmmWorker(ID, result_dir, output, admmopt, n_clusters, neighbors, queues)
         worker.run(
             data_all,
             timesteps,
@@ -567,6 +571,8 @@ class AdmmWorker:
         shared_lines['neighbor_cluster'] = neighbor_cluster
 
         return UrbsAdmmModel(
+            self.ID,
+            self.result_dir,
             self.admmopt,
             flow_global,
             lamda,
