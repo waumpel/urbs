@@ -167,6 +167,11 @@ def run_regional(
         clusters.append(['Carbon_site'])
         print("Added carbon supplier cluster.")
 
+    # store metadata
+    metadata = AdmmMetadata(clusters, admmopt)
+    with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
+        json.dump(metadata.to_dict(), f, indent=4)
+
     n_clusters = len(clusters)
 
     # map site -> cluster_idx
@@ -336,11 +341,6 @@ def run_regional(
     # print results
     print(f'ADMM solver time: {solver_time:4.0f} s')
     print(f'ADMM objective  : {admm_objective:.4e}')
-
-    # store metadata
-    metadata = AdmmMetadata(clusters, admmopt)
-    with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
-        json.dump(metadata.to_dict(), f, indent=4)
 
     return admm_objective
 
