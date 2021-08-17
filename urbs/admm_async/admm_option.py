@@ -118,8 +118,8 @@ class AdmmOption(object):
             raise ValueError("dual_tolerance must be larger than 0")
         if mismatch_tolerance <= 0:
             raise ValueError("mismatch_tolerance must be larger than 0")
-        if rho <= 0:
-            raise ValueError("rho must be larger than 0")
+        if rho < 0:
+            raise ValueError("rho must be non-negative")
         if async_correction < 0:
             raise ValueError("async_correction must be larger than or equal to 0")
         if wait_percent <= 0 or wait_percent > 1:

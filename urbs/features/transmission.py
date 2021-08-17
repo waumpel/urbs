@@ -600,8 +600,9 @@ def def_ac_power_flow_rule(m, tm, stf, sin, sout, tra, com):
                  * m.e_tra_in[tm, stf, sin, sout, tra, 'electricity-reactive']))
 
 def def_transmission_input_by_apparent_power_rule(m, tm, stf, sin, sout, tra, com):
-    return (m.e_tra_in[tm, stf, sin, sout, tra, 'electricity'] ** 2 + m.e_tra_in[tm, stf, sin, sout, tra, 'electricity-reactive'] ** 2
-            <= (m.dt * m.cap_tra[stf, sin, sout, tra, com]) ** 2)
+    return (-m.dt * m.cap_tra[stf, sin, sout, tra, com],
+            m.e_tra_in[tm, stf, sin, sout, tra, 'electricity'],
+            m.dt * m.cap_tra[stf, sin, sout, tra, com])
 
 def def_voltage_limit_rule(m, tm, stf, sin):
     return ((m.site_dict['base-voltage'][(stf, sin)] * m.site_dict['min-voltage'][(stf, sin)]) ** 2,
