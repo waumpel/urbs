@@ -121,6 +121,14 @@ if __name__ == '__main__':
         solver = 'gurobi'
         threads = 3
 
+        report_tuples = []
+        report_sites_name = {}
+        plot_tuples = []
+        plot_sites_name = {}
+        plot_periods = {
+            'all': timesteps[1:]
+        }
+
         for scenario in scenarios:
             prob, cross_scenario_data = urbs.run_scenario(
                 input_path,
@@ -135,6 +143,11 @@ if __name__ == '__main__':
                 noTypicalPeriods=noTypicalPeriods,
                 hoursPerPeriod=hoursPerPeriod,
                 threads=threads,
+                report_tuples=report_tuples,
+                report_sites_name=report_sites_name,
+                plot_tuples=plot_tuples,
+                plot_sites_name=plot_sites_name,
+                plot_periods=plot_periods,
             )
 
             # TODO: how to port this to admm
