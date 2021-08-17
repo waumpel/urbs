@@ -80,7 +80,7 @@ if __name__ == '__main__':
             primal_tolerance = 0.01,
             dual_tolerance = 0.01,
             mismatch_tolerance = 0.01,
-            rho = 1,
+            rho = 0,
             max_penalty = 10**8,
             penalty_mult = 1.1,
             primal_decrease = 0.9,
