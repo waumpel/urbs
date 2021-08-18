@@ -522,7 +522,12 @@ def add_transmission_ac(m, shared_lines):
 
     m.res_transmission_input_by_apparent_power = pyomo.Constraint(
         m.tm, m.tra_tuples_ac,
-        rule=def_transmission_input_by_apparent_power_rule,
+        rule=def_transmission_input_by_apparent_power_rule1,
+        doc='transmission.flow(active)^2+transmission.flow(active)^2)<= transmission.cap-up^2')
+
+    m.res_transmission_input_by_apparent_power = pyomo.Constraint(
+        m.tm, m.tra_tuples_ac,
+        rule=def_transmission_input_by_apparent_power_rule2,
         doc='transmission.flow(active)^2+transmission.flow(active)^2)<= transmission.cap-up^2')
 
 
@@ -599,9 +604,13 @@ def def_ac_power_flow_rule(m, tm, stf, sin, sout, tra, com):
             m.transmission_dict['reactance'][(stf, sin, sout, tra, 'electricity-reactive')]
                  * m.e_tra_in[tm, stf, sin, sout, tra, 'electricity-reactive']))
 
-def def_transmission_input_by_apparent_power_rule(m, tm, stf, sin, sout, tra, com):
-    return (m.e_tra_in[tm, stf, sin, sout, tra, 'electricity'] ** 2 + m.e_tra_in[tm, stf, sin, sout, tra, 'electricity-reactive'] ** 2
-            <= (m.dt * m.cap_tra[stf, sin, sout, tra, com]) ** 2)
+def def_transmission_input_by_apparent_power_rule1(m, tm, stf, sin, sout, tra, com):
+    return (m.e_tra_in[tm, stf, sin, sout, tra, 'electricity']
+            <= (m.dt * m.cap_tra[stf, sin, sout, tra, com]))
+
+def def_transmission_input_by_apparent_power_rule2(m, tm, stf, sin, sout, tra, com):
+    return (m.e_tra_in[tm, stf, sin, sout, tra, 'electricity']
+            >= -(m.dt * m.cap_tra[stf, sin, sout, tra, com]))
 
 def def_voltage_limit_rule(m, tm, stf, sin):
     return ((m.site_dict['base-voltage'][(stf, sin)] * m.site_dict['min-voltage'][(stf, sin)]) ** 2,
