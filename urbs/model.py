@@ -1052,7 +1052,7 @@ def cost_rule_sub(flow_global, lamda, rho):
     def cost_rule(m):
             return (pyomo.summation(m.costs) + 0.5 * rho *
                     sum((m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] -
-                        flow_global[(tm, stf, sit_in, sit_out)])
+                        flow_global[(tm, stf, sit_in, sit_out)])**2
                         for tm in m.tm
                         for stf, sit_in, sit_out, tra, com in m.tra_tuples_shared) +
                     sum(lamda[(tm, stf, sit_in, sit_out)] *
