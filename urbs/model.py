@@ -324,7 +324,7 @@ def create_model(
 
     # process new capacity expansion unit
     m.pro_cap_unit = pyomo.Var(
-        m.pro_tuples,
+        m.pro_cap_new_block_tuples,
         within=pyomo.NonNegativeIntegers,
         doc='Number of newly installed capacity units')
 
