@@ -330,9 +330,6 @@ class AdmmWorker:
         self._update_mismatch((k for k in self.neighbors if k in self.messages))
         self.model.update_rho([msg.rho for msg in self.messages.values()])
 
-        self._log(f'flow_global range: [{min(self.model.flow_global):.2e}:{max(self.model.flow_global):.2e}]')
-        self._log(f'lamda range: [{min(self.model.lamda):.2e}:{max(self.model.lamda):.2e}]')
-        self._log(f'rho: {self.model.rho:.2f}')
         self.model.update_cost_rule()
 
 
