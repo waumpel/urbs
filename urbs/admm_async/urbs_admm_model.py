@@ -83,14 +83,14 @@ class UrbsAdmmModel(object):
         self.shared_lines_index = shared_lines_index
 
         self.solver = SolverFactory('gurobi_persistent')
-        self.solver.set_instance(model, symbolic_solver_labels=False)
+        self.solver.set_options(f"LogFile={join(result_dir, f'solver-{ID}.log')}")
+        self.solver.set_options(f"LogToConsole=0")
         self.solver.set_options("NumericFocus=3")
         self.solver.set_options("Crossover=0")
         self.solver.set_options("Method=2")
         self.solver.set_options("BarHomogeneous=1")
         self.solver.set_options(f"Threads={threads}")
-        self.solver.set_options(f"LogToConsole=0")
-        self.solver.set_options(f"LogFile={join(result_dir, f'solver-{ID}.log')}")
+        self.solver.set_instance(model, symbolic_solver_labels=False)
 
 
     def solve_iteration(self) -> Tuple:
