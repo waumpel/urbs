@@ -31,7 +31,7 @@ if __name__ == '__main__':
         for file in microgrid_files
     ]
 
-    result_name = 'transdist-full-tsam'
+    result_name = 'transdist-barhomogeneous-zero-supim'
     if args.admm:
         result_name += '-admm'
     result_dir = prepare_result_directory(result_name)  # name + time stamp
