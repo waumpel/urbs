@@ -1059,7 +1059,8 @@ def cost_rule_sub(flow_global, lamda, rho):
                         (m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] -
                         flow_global[(tm, stf, sit_in, sit_out)])
                         for tm in m.tm
-                        for stf, sit_in, sit_out, tra, com in m.tra_tuples_shared))
+                        for stf, sit_in, sit_out, tra, com in m.tra_tuples_shared
+                        if lamda[(tm, stf, sit_in, sit_out)] > 0.01))
 
     return cost_rule
 
