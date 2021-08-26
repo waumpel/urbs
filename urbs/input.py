@@ -100,9 +100,6 @@ def read_input(input_files, year):
             supim = pd.concat([supim], keys=[support_timeframe],
                               names=['support_timeframe'])
             supim.columns = split_columns(supim.columns, '.')
-
-            supim = supim.applymap(lambda x: 0 if x < 0.01 else x)
-
             sup.append(supim)
 
             # collect data for the additional features
