@@ -58,15 +58,15 @@ def create_transdist_data(data, microgrid_data_initial, cross_scenario_data):
                 microgrid_nodes.loc[top_region_name, type_nr, quantity_nr] = nodes
                 n += 1
                 # scale capacities, commodities, demand, areas and the loadprofile with multiplicator number of the microgrid
-                microgrid_data_input, demand_shift = multiplicator_scaling(mode, data, microgrid_data_input,
+                demand_shift = multiplicator_scaling(mode, data, microgrid_data_input,
                                                                            microgrid_multiplicator_list, set_number, type_nr)
                 # copy SupIm data from respective state to the microgrid within that state
                 copy_SupIm_data(data, microgrid_data_input, top_region_name)
                 # shift demand from transmission level to distribution level
-                data, mobility_transmission_shift, heat_transmission_shift = shift_demand(data, microgrid_data_input, set_number,
-                                                                                          type_nr, demand_shift, loadprofile_BEV,
-                                                                                          top_region_name, mobility_transmission_shift,
-                                                                                          heat_transmission_shift, transdist_eff)
+                shift_demand(data, microgrid_data_input, set_number,
+                             type_nr, demand_shift, loadprofile_BEV,
+                             top_region_name, mobility_transmission_shift,
+                             heat_transmission_shift, transdist_eff)
                 # model additional transmission lines for the reactive power
                 add_reactive_transmission_lines(microgrid_data_input)
                 # add reactive output ratios for ac sites
@@ -75,7 +75,7 @@ def create_transdist_data(data, microgrid_data_initial, cross_scenario_data):
                 concatenate_with_micros(data, microgrid_data_input)
     if data['transdist_share'].values[0] == 1:
         store_additional_demand(cross_scenario_data, mobility_transmission_shift, heat_transmission_shift)
-    return data, cross_scenario_data, microgrid_nodes
+    return microgrid_nodes
 
 def build_set_list(data):
     transdist_dict = data['site'].drop(columns=['base-voltage','area'], axis=1).to_dict()
@@ -145,7 +145,7 @@ def multiplicator_scaling(mode, data, microgrid_data_input, microgrid_multiplica
     if mode['tsam'] == False:
         microgrid_data_input['demand'] *= multi
         demand_shift = microgrid_data_input['demand']
-    return microgrid_data_input, demand_shift
+    return demand_shift
 
 def shift_demand(data, microgrid_data_input, set_number, type_nr, demand_shift, loadprofile_BEV, top_region_name,
                  mobility_transmission_shift, heat_transmission_shift, transdist_eff):
@@ -156,7 +156,6 @@ def shift_demand(data, microgrid_data_input, set_number, type_nr, demand_shift, 
         mobility_transmission_shift[(top_region_name, type_nr)] = loadprofile_BEV * demand_shift.loc[:, pd.IndexSlice[:, 'mobility']].sum().sum() / transdist_eff
         COP_ts = microgrid_data_input['eff_factor'].loc[:, pd.IndexSlice[:, 'heatpump_air']].iloc[:,0].squeeze()
         heat_transmission_shift[(top_region_name, type_nr)] = demand_shift.loc[:, pd.IndexSlice[:, 'heat']].sum(axis=1).divide(COP_ts).fillna(0) / transdist_eff
-    return data, mobility_transmission_shift, heat_transmission_shift
 
 def copy_SupIm_data(data, microgrid_data_input, top_region_name):
     for col in microgrid_data_input['supim'].columns:

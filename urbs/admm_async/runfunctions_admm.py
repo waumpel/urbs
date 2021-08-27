@@ -131,7 +131,7 @@ def run_regional(
             microgrid_data_initial.append(read_input(microgrid_file, year))
             validate_input(microgrid_data_initial[i])
         # join microgrid data to model data
-        data_all, cross_scenario_data, microgrid_nodes = create_transdist_data(data_all, microgrid_data_initial, cross_scenario_data)
+        microgrid_nodes = create_transdist_data(data_all, microgrid_data_initial, cross_scenario_data)
 
         if microgrid_cluster_mode == 'all':
             # put ALL microgrid nodes into one cluster
