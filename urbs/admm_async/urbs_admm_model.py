@@ -102,8 +102,7 @@ class UrbsAdmmModel(object):
         """
         self.nu += 1
 
-        if self.ID != 0:
-            self.model.write(join(self.result_dir, 'model', f'{self.ID}-{self.nu}.lp'))
+        self.model.write(join(self.result_dir, 'model', f'{self.ID}-{self.nu}.lp'))
 
         solver_start = time.time()
         self.solver.solve(save_results=False, load_solutions=False, warmstart=True,
