@@ -154,7 +154,7 @@ def run_regional(
         add_reactive_output_ratios(data_all)
 
     if mode['tsam']:
-        data_all, timesteps, weighting_order, cross_scenario_data = run_tsam(
+        timesteps, weighting_order = run_tsam(
             data_all, noTypicalPeriods, hoursPerPeriod, cross_scenario_data)
     else:
         weighting_order = None

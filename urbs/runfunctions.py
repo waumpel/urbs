@@ -137,7 +137,7 @@ def run_scenario(
         add_reactive_output_ratios(data)
 
     if mode['tsam']:
-        data, timesteps, weighting_order, cross_scenario_data = run_tsam(
+        timesteps, weighting_order = run_tsam(
             data, noTypicalPeriods, hoursPerPeriod, cross_scenario_data)
         # create model
         tt = time.time()

@@ -155,7 +155,7 @@ def run_tsam(data, noTypicalPeriods, hoursPerPeriod, cross_scenario_data):
     ###return new timestep range
     timesteps_new = range(0, timeframe)
 
-    return data, timesteps_new, weighting_order, cross_scenario_data
+    return timesteps_new, weighting_order
 
 ###function to store relevant parameters from other modules in model
 def store_typeperiod_parameter(m, hoursPerPeriod, weighting_order):
