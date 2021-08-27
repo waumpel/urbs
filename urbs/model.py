@@ -1,5 +1,6 @@
 import math
 from datetime import datetime
+
 from .features import *
 from .features.transmission import *
 from .input import *
@@ -1051,23 +1052,30 @@ def cost_rule_sub(flow_global: pd.Series, lamda: pd.Series, rho: float):
     """
     def cost_rule(m):
         cost = pyomo.summation(m.costs)
-        fg_quantile = flow_global.quantile(0.1, 'higher')
-        l_quantile = lamda.quantile(0.1, 'higher')
+        fg_threshold = flow_global.mean() / 100
+        l_threshold = lamda.mean() / 100
 
         fg_sum = 0
         l_sum = 0
 
+        fg_rounded = 0
+        l_rounded = 0
+
         for tm in m.tm:
             for stf, sit_in, sit_out, tra, com in m.tra_tuples_shared:
                 fg = flow_global[(tm, stf, sit_in, sit_out)]
-                if fg < fg_quantile:
+                if fg < fg_threshold:
+                    fg_rounded += 1
                     fg = 0
                 fg_sum += (m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] - fg) ** 2
 
                 l = lamda[(tm, stf, sit_in, sit_out)]
-                if l < l_quantile:
+                if l < l_threshold:
+                    l_rounded += 1
                     l = 0
                 l_sum += (l * (m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] - fg))
+
+        print(f'Rounded {fg_rounded} fgs, {l_rounded} ls')
 
         return cost + 0.5 * rho * fg_sum + l_sum
 
