@@ -57,7 +57,7 @@ if __name__ == '__main__':
     dt = 1  # length of each time step (unit: hours)
 
     # input data for tsam method
-    noTypicalPeriods = 4 if args.tsam else None
+    noTypicalPeriods = 1 if args.tsam else None
     hoursPerPeriod = 168 if args.tsam else None
 
     # select scenarios to be run
