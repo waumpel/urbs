@@ -70,14 +70,12 @@ class UrbsAdmmModel(object):
         self.flow_global = flow_global
         self.flows_all = None
         self.flows_with_neighbor = None
-        self.ID = ID
         self.lamda = lamda
         self.model = model
         self.neighbors = neighbors
         self.nu = -1
         self.primalgap = None
         self.primalgap_old = None
-        self.result_dir = result_dir
         self.rho = admmopt.rho
         self.shared_lines = shared_lines
         self.shared_lines_index = shared_lines_index
@@ -92,6 +90,8 @@ class UrbsAdmmModel(object):
         self.solver.set_options(f"Threads={threads}")
         self.solver.set_instance(model, symbolic_solver_labels=False)
 
+        self.model.write(join(result_dir, f'model-{ID}.lp'))
+
 
     def solve_iteration(self) -> Tuple:
         """
@@ -101,8 +101,6 @@ class UrbsAdmmModel(object):
         start time and stop time.
         """
         self.nu += 1
-
-        self.model.write(join(self.result_dir, 'model', f'{self.ID}-{self.nu}.lp'))
 
         solver_start = time.time()
         self.solver.solve(save_results=False, load_solutions=False, warmstart=True,

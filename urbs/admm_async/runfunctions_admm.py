@@ -251,8 +251,6 @@ def run_regional(
     # Queue for collecting the results from each subproblem after convergence
     output = manager.Queue()
 
-    os.mkdir(join(result_dir, 'model'))
-
     procs = []
     for ID in range(n_clusters):
         proc = mp.Process(
