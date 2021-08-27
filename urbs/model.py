@@ -1043,24 +1043,33 @@ def cost_rule(m):
     return pyomo.summation(m.costs)
 
 
-def cost_rule_sub(flow_global, lamda, rho):
+def cost_rule_sub(flow_global: pd.Series, lamda: pd.Series, rho: float):
     """
     Cost rule defined as the augmented Lagrangian for ADMM subproblems.
 
     Return a rule function for use with pyomo.
     """
     def cost_rule(m):
-            return (pyomo.summation(m.costs) + 0.5 * rho *
-                    sum((m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] -
-                        flow_global[(tm, stf, sit_in, sit_out)])**2
-                        for tm in m.tm
-                        for stf, sit_in, sit_out, tra, com in m.tra_tuples_shared) +
-                    sum(lamda[(tm, stf, sit_in, sit_out)] *
-                        (m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] -
-                        flow_global[(tm, stf, sit_in, sit_out)])
-                        for tm in m.tm
-                        for stf, sit_in, sit_out, tra, com in m.tra_tuples_shared
-                        if lamda[(tm, stf, sit_in, sit_out)] > 0.01))
+        cost = pyomo.summation(m.costs)
+        fg_quantile = flow_global.quantile(0.1, 'higher')
+        l_quantile = lamda.quantile(0.1, 'higher')
+
+        fg_sum = 0
+        l_sum = 0
+
+        for tm in m.tm:
+            for stf, sit_in, sit_out, tra, com in m.tra_tuples_shared:
+                fg = flow_global[(tm, stf, sit_in, sit_out)]
+                if fg < fg_quantile:
+                    fg = 0
+                fg_sum += (m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] - fg) ** 2
+
+                l = lamda[(tm, stf, sit_in, sit_out)]
+                if l < l_quantile:
+                    l = 0
+                l_sum += (l * (m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] - fg))
+
+        return cost + 0.5 * rho * fg_sum + l_sum
 
     return cost_rule
 
