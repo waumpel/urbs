@@ -13,9 +13,7 @@ from urbs.identify import identify_mode
 import numpy as np
 import pandas as pd
 import psutil as ps
-from pyomo.environ import SolverFactory
 
-import urbs.model
 from urbs.input import read_input, add_carbon_supplier
 from urbs.validation import validate_input
 from.admm_metadata import AdmmMetadata
