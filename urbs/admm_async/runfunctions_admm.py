@@ -81,20 +81,15 @@ def setup_solver(solver, logfile='solver.log'):
     return solver
 
 
-def run_regional(
+def prepare_admm(
     data_all,
     timesteps,
-    result_dir,
-    dt,
-    objective,
     clusters,
-    admmopt,
     microgrid_files=None,
     microgrid_cluster_mode='microgrid',
     cross_scenario_data=None,
     noTypicalPeriods=None,
     hoursPerPeriod=None,
-    threads=1,
     ):
     """
     Run an urbs model for given input, time steps and scenario with regional decomposition
@@ -103,18 +98,13 @@ def run_regional(
     Args:
         - `data_all`: Input data dict, after applying scenario and validation.
         - `timesteps`: List of timesteps, e.g. range(0,8761).
-        - `result_dir`: Directory name for result spreadsheet and plots.
-        - `dt`: Length of each time step in hours.
-        - `objective`: Objective function, either "cost" or "CO2".
         - `clusters`: List of lists partitioning the sites of the problem into clusters.
-        - `admmopt`: `AdmmOption` object.
         - `microgrid_files`: Filenames of input Excel spreadsheets for microgrid types.
         - `microgrid_cluster_mode`: If `microgrid`, one cluster per microgrid is added.
           If `all`, one cluster for ALL microgrid nodes is added. Default: `microgrid`.
         - `cross_scenario_data`: Dict for storing data across scenarios
         - `noTypicalPeriods`: Number of typical periods (TSAM parameter)
         - `hoursPerPeriod`: Length of each typical period (TSAM parameter)
-        - `threads`: Number of Gurobi threads to use PER CLUSTER. Default: 1.
 
     Return the value of the objective function.
     """
@@ -152,8 +142,8 @@ def run_regional(
         add_reactive_output_ratios(data_all)
 
     if mode['tsam']:
-        timesteps, weighting_order = run_tsam(
-            data_all, noTypicalPeriods, hoursPerPeriod, cross_scenario_data)
+        timesteps, weighting_order = run_tsam(data_all, noTypicalPeriods, hoursPerPeriod,
+                                              cross_scenario_data)
     else:
         weighting_order = None
 
@@ -164,11 +154,6 @@ def run_regional(
         add_carbon_supplier(data_all, clusters)
         clusters.append(['Carbon_site'])
         print("Added carbon supplier cluster.")
-
-    # store metadata
-    metadata = AdmmMetadata(clusters, admmopt)
-    with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
-        json.dump(metadata.to_dict(), f, indent=4)
 
     n_clusters = len(clusters)
 
@@ -231,14 +216,92 @@ def run_regional(
         for cluster_idx in range(0, n_clusters)
     ]
 
-    pd.options.display.max_rows = 999
-    pd.options.display.max_columns = 999
-
     initial_values = InitialValues(
         flow=0,
         flow_global=0,
         lamda=0,
     )
+
+    return (
+        timesteps,
+        year,
+        initial_values,
+        clusters,
+        neighbors,
+        shared_lines,
+        internal_lines,
+        cluster_from,
+        cluster_to,
+        neighbor_cluster,
+        weighting_order,
+    )
+
+
+def print_status(results, status):
+    status_map = {
+        AdmmStatus.TERMINATED: 'terminated',
+        AdmmStatus.GLOBAL_CONVERGENCE: 'converged',
+        None: 'running',
+    }
+    df = pd.DataFrame(
+        columns=['iteration', 'time', 'status'],
+        data=[
+            [
+                result.local_iteration if result else '-',
+                result.stop_time - result.start_time if result else '-',
+                status_map[value]
+            ]
+            for result, value in zip(results, status)
+        ]
+    )
+    print('\n' + df.to_string())
+
+
+def run_parallel(
+    data_all,
+    timesteps,
+    result_dir,
+    dt,
+    objective,
+    clusters,
+    admmopt,
+    microgrid_files=None,
+    microgrid_cluster_mode='microgrid',
+    cross_scenario_data=None,
+    noTypicalPeriods=None,
+    hoursPerPeriod=None,
+    threads=1,
+    ):
+
+    (
+        timesteps,
+        year,
+        initial_values,
+        clusters,
+        neighbors,
+        shared_lines,
+        internal_lines,
+        cluster_from,
+        cluster_to,
+        neighbor_cluster,
+        weighting_order,
+    ) = prepare_admm(
+        data_all,
+        timesteps,
+        clusters,
+        microgrid_files,
+        microgrid_cluster_mode,
+        cross_scenario_data,
+        noTypicalPeriods,
+        hoursPerPeriod,
+    )
+
+    n_clusters = len(clusters)
+
+    # store metadata
+    metadata = AdmmMetadata(clusters, admmopt)
+    with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
+        json.dump(metadata.to_dict(), f, indent=4)
 
     # Manager object for creating Queues
     manager = mp.Manager()
@@ -341,23 +404,3 @@ def run_regional(
     print(f'ADMM objective  : {admm_objective:.4e}')
 
     return admm_objective
-
-
-def print_status(results, status):
-    status_map = {
-        AdmmStatus.TERMINATED: 'terminated',
-        AdmmStatus.GLOBAL_CONVERGENCE: 'converged',
-        None: 'running',
-    }
-    df = pd.DataFrame(
-        columns=['iteration', 'time', 'status'],
-        data=[
-            [
-                result.local_iteration if result else '-',
-                result.stop_time - result.start_time if result else '-',
-                status_map[value]
-            ]
-            for result, value in zip(results, status)
-        ]
-    )
-    print('\n' + df.to_string())
