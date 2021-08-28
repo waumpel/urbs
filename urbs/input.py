@@ -817,4 +817,3 @@ def add_carbon_supplier(data_all, clusters):
     #with pd.ExcelWriter('master.xlsx') as writer:
     #    for key, val in data_all.items():
     #       val.to_excel(writer, sheet_name=key)
-    return data_all
