@@ -17,8 +17,9 @@ if __name__ == '__main__':
     freeze_support()
 
     options = argparse.ArgumentParser()
-    options.add_argument('--tsam', action='store_true')
-    options.add_argument('--admm', action='store_true')
+    options.add_argument('-t', '--tsam', action='store_true')
+    options.add_argument('-a', '--admm', action='store_true')
+    options.add_argument('-s', '--sequential', action='store_true')
     args = options.parse_args()
 
     input_files = 'transdist-1state-tsam.xlsx' if args.tsam else 'transdist-1state.xlsx'
@@ -37,6 +38,8 @@ if __name__ == '__main__':
         result_name += '-tsam'
     if args.admm:
         result_name += '-admm'
+    if args.sequential:
+        result_name += '-seq'
     result_dir = prepare_result_directory(result_name)  # name + time stamp
 
     # #copy input file to result directory
@@ -103,20 +106,36 @@ if __name__ == '__main__':
             validate_input(data_all)
             validate_dc_objective(data_all, objective)
 
-            admm_objective = admm_async.run_parallel(
-                data_all,
-                timesteps,
-                scenario_dir,
-                dt,
-                objective,
-                clusters,
-                admmopt,
-                microgrid_files=microgrid_paths,
-                microgrid_cluster_mode='microgrid',
-                cross_scenario_data=cross_scenario_data,
-                noTypicalPeriods=noTypicalPeriods,
-                hoursPerPeriod=hoursPerPeriod,
-            )
+            if args.sequential:
+                admm_async.run_sequential(
+                    data_all,
+                    timesteps,
+                    scenario_dir,
+                    dt,
+                    objective,
+                    clusters,
+                    admmopt,
+                    microgrid_files=microgrid_paths,
+                    microgrid_cluster_mode='microgrid',
+                    cross_scenario_data=cross_scenario_data,
+                    noTypicalPeriods=noTypicalPeriods,
+                    hoursPerPeriod=hoursPerPeriod,
+                )
+            else:
+                admm_objective = admm_async.run_parallel(
+                    data_all,
+                    timesteps,
+                    scenario_dir,
+                    dt,
+                    objective,
+                    clusters,
+                    admmopt,
+                    microgrid_files=microgrid_paths,
+                    microgrid_cluster_mode='microgrid',
+                    cross_scenario_data=cross_scenario_data,
+                    noTypicalPeriods=noTypicalPeriods,
+                    hoursPerPeriod=hoursPerPeriod,
+                )
 
     else:
         solver = 'gurobi'

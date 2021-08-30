@@ -3,7 +3,8 @@ import json
 import multiprocessing as mp
 import os
 from os.path import join
-import time
+import pickle
+from time import time
 
 import numpy as np
 import pandas as pd
@@ -423,7 +424,7 @@ def run_parallel(
 
     print('Spawning worker processes')
 
-    solver_start = time.time()
+    solver_start = time()
     for proc in procs:
         proc.start()
 
@@ -471,7 +472,7 @@ def run_parallel(
     for proc in procs:
         proc.join()
 
-    ttime = time.time()
+    ttime = time()
     solver_time = ttime - solver_start
 
     admm_objective = sum(result.objective for result in results)
@@ -481,3 +482,101 @@ def run_parallel(
     print(f'ADMM objective  : {admm_objective:.4e}')
 
     return admm_objective
+
+
+def run_sequential(
+    data_all,
+    timesteps,
+    result_dir,
+    dt,
+    objective,
+    clusters,
+    admmopt,
+    microgrid_files=None,
+    microgrid_cluster_mode='microgrid',
+    cross_scenario_data=None,
+    noTypicalPeriods=None,
+    hoursPerPeriod=None,
+    threads=1,
+    ):
+
+    (
+        timesteps,
+        year,
+        initial_values,
+        clusters,
+        neighbors,
+        shared_lines,
+        internal_lines,
+        cluster_from,
+        cluster_to,
+        neighbor_cluster,
+        weighting_order,
+    ) = prepare_admm(
+        data_all,
+        timesteps,
+        clusters,
+        microgrid_files,
+        microgrid_cluster_mode,
+        cross_scenario_data,
+        noTypicalPeriods,
+        hoursPerPeriod,
+    )
+
+    n_clusters = len(clusters)
+
+    # store metadata
+    metadata = AdmmMetadata(clusters, admmopt)
+    with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
+        json.dump(metadata.to_dict(), f, indent=4)
+
+    model_dir = join(result_dir, 'models')
+    os.mkdir(model_dir)
+    model_files = []
+    for ID in range(n_clusters):
+        model_start = time()
+        model = create_model(
+            ID,
+            result_dir,
+            data_all,
+            timesteps,
+            dt,
+            objective,
+            year,
+            initial_values,
+            admmopt,
+            clusters[ID],
+            neighbors[ID],
+            shared_lines[ID],
+            internal_lines[ID],
+            cluster_from[ID],
+            cluster_to[ID],
+            neighbor_cluster[ID],
+            hoursPerPeriod,
+            weighting_order,
+            threads,
+        )
+        model_time = time() - model_start
+        print(f'model_time: {model_time}')
+        # model_file = join(model_dir, f'{ID}.pickle')
+        # model_files.append(model_file)
+        # with open(model_file, 'wb') as f:
+        #     pickle_start = time()
+        #     pickle.dump(model, f)
+        #     pickle_time = time() - pickle_start()
+        #     print(f'pickle_time: {pickle_time}')
+
+    # for model_file in model_files:
+    #     with open(model_file, 'rb') as f:
+    #         unpickle_start = time()
+    #         model = pickle.load(f)
+    #         unpickle_time = time() - unpickle_start
+    #         print(f'unpickle_time: {unpickle_time}')
+
+    # admm_objective = sum(result.objective for result in results)
+
+    # # print results
+    # print(f'ADMM solver time: {solver_time:4.0f} s')
+    # print(f'ADMM objective  : {admm_objective:.4e}')
+
+    # return admm_objective
