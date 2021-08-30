@@ -7,7 +7,7 @@
 from copy import deepcopy
 from math import sqrt
 from os.path import join
-import time
+from time import time
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -80,8 +80,11 @@ class UrbsAdmmModel(object):
         self.shared_lines = shared_lines
         self.shared_lines_index = shared_lines_index
 
+        solver_start = time()
         self.solver = SolverFactory('gurobi_persistent')
         self.solver.set_instance(model, symbolic_solver_labels=False)
+        solver_time = time() - solver_start
+        print(f'solver_time: {solver_time}')
         self.solver.set_options("NumericFocus=3")
         self.solver.set_options("Crossover=0")
         self.solver.set_options("Method=2")
@@ -101,10 +104,10 @@ class UrbsAdmmModel(object):
         """
         self.nu += 1
 
-        solver_start = time.time()
+        solver_start = time()
         self.solver.solve(save_results=False, load_solutions=False, warmstart=True,
                           tee=True, report_timing=False)
-        solver_stop = time.time()
+        solver_stop = time()
 
         objective = self.solver._solver_model.objval
         self._retrieve_boundary_flows()
