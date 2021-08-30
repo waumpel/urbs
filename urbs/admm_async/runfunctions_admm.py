@@ -4,16 +4,18 @@ import multiprocessing as mp
 import os
 from os.path import join
 import time
-from urbs.admm_async.admm_worker import AdmmWorker
-from urbs.admm_async.admm_messages import AdmmStatus, AdmmStatusMessage, AdmmIterationResult
-from urbs.features.typeperiod import run_tsam
-from urbs.features.transdisthelper import *
-from urbs.identify import identify_mode
 
 import numpy as np
 import pandas as pd
 import psutil as ps
 
+import urbs
+from urbs.admm_async.urbs_admm_model import UrbsAdmmModel
+from urbs.admm_async.admm_worker import AdmmWorker
+from urbs.admm_async.admm_messages import AdmmStatus, AdmmStatusMessage, AdmmIterationResult
+from urbs.features.typeperiod import run_tsam
+from urbs.features.transdisthelper import *
+from urbs.identify import identify_mode
 from urbs.input import read_input, add_carbon_supplier
 from urbs.validation import validate_input
 from.admm_metadata import AdmmMetadata
@@ -255,6 +257,81 @@ def print_status(results, status):
         ]
     )
     print('\n' + df.to_string())
+
+
+def create_model(
+    ID,
+    result_dir,
+    data_all,
+    timesteps,
+    dt,
+    objective,
+    year,
+    initial_values,
+    admmopt,
+    sites,
+    neighbors,
+    shared_lines,
+    internal_lines,
+    cluster_from,
+    cluster_to,
+    neighbor_cluster,
+    hoursPerPeriod=None,
+    weighting_order=None,
+    threads=None,
+    ) -> UrbsAdmmModel:
+    """
+    Create this workers `UrbsAdmmModel`.
+    """
+    index = shared_lines.index.to_frame()
+
+    flow_global = pd.Series({
+        (t, year, source, target): initial_values.flow_global
+        for t in timesteps[1:]
+        for source, target in zip(index['Site In'], index['Site Out'])
+    })
+
+    flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+
+    lamda = pd.Series({
+        (t, year, source, target): initial_values.lamda
+        for t in timesteps[1:]
+        for source, target in zip(index['Site In'], index['Site Out'])
+    })
+    lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+
+    model = urbs.model.create_model(
+        data_all,
+        timesteps,
+        dt,
+        objective,
+        sites=sites,
+        shared_lines=shared_lines,
+        internal_lines=internal_lines,
+        flow_global=flow_global,
+        lamda=lamda,
+        rho=admmopt.rho,
+        hoursPerPeriod=hoursPerPeriod,
+        weighting_order=weighting_order,
+    )
+
+    # enlarge shared_lines (copies of slices of data_all['transmission'])
+    shared_lines['cluster_from'] = cluster_from
+    shared_lines['cluster_to'] = cluster_to
+    shared_lines['neighbor_cluster'] = neighbor_cluster
+
+    return UrbsAdmmModel(
+        ID,
+        result_dir,
+        admmopt,
+        flow_global,
+        lamda,
+        model,
+        neighbors,
+        shared_lines,
+        index,
+        threads=threads,
+    )
 
 
 def run_parallel(

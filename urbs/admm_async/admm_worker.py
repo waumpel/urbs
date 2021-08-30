@@ -6,13 +6,12 @@ from urbs.admm_async.admm_option import AdmmOption
 
 import numpy as np
 from numpy.linalg import norm
-import pandas as pd
 
+from . import runfunctions_admm
 from urbs.admm_async.admm_messages import (
     AdmmIterationResult, AdmmVariableMessage, AdmmStatusMessage, AdmmStatus
 )
 from .urbs_admm_model import UrbsAdmmModel
-import urbs.model
 
 
 class AdmmWorker:
@@ -206,22 +205,26 @@ class AdmmWorker:
         """
         self._log('Creating model')
 
-        self.model = self._create_model(
+        self.model = runfunctions_admm.create_model(
+            self.ID,
+            self.result_dir,
             data_all,
             timesteps,
             dt,
             objective,
             year,
             initial_values,
+            self.admmopt,
             sites,
+            self.neighbors,
             shared_lines,
             internal_lines,
             cluster_from,
             cluster_to,
             neighbor_cluster,
-            hoursPerPeriod=hoursPerPeriod,
-            weighting_order=weighting_order,
-            threads=threads,
+            hoursPerPeriod,
+            weighting_order,
+            threads,
         )
 
         self._log('Model created')
@@ -510,78 +513,6 @@ class AdmmWorker:
                 self._set_status(AdmmStatus.NO_CONVERGENCE)
 
         return new_value
-
-
-    def _create_model(
-        self,
-        data_all,
-        timesteps,
-        dt,
-        objective,
-        year,
-        initial_values,
-        sites,
-        shared_lines,
-        internal_lines,
-        cluster_from,
-        cluster_to,
-        neighbor_cluster,
-        hoursPerPeriod=None,
-        weighting_order=None,
-        threads=None,
-        ) -> UrbsAdmmModel:
-        """
-        Create this workers `UrbsAdmmModel`.
-        """
-        index = shared_lines.index.to_frame()
-
-        flow_global = pd.Series({
-            (t, year, source, target): initial_values.flow_global
-            for t in timesteps[1:]
-            for source, target in zip(index['Site In'], index['Site Out'])
-        })
-
-        flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-
-        lamda = pd.Series({
-            (t, year, source, target): initial_values.lamda
-            for t in timesteps[1:]
-            for source, target in zip(index['Site In'], index['Site Out'])
-        })
-        lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-
-        model = urbs.model.create_model(
-            data_all,
-            timesteps,
-            dt,
-            objective,
-            sites=sites,
-            shared_lines=shared_lines,
-            internal_lines=internal_lines,
-            flow_global=flow_global,
-            lamda=lamda,
-            rho=self.admmopt.rho,
-            hoursPerPeriod=hoursPerPeriod,
-            weighting_order=weighting_order,
-        )
-
-        # enlarge shared_lines (copies of slices of data_all['transmission'])
-        shared_lines['cluster_from'] = cluster_from
-        shared_lines['cluster_to'] = cluster_to
-        shared_lines['neighbor_cluster'] = neighbor_cluster
-
-        return UrbsAdmmModel(
-            self.ID,
-            self.result_dir,
-            self.admmopt,
-            flow_global,
-            lamda,
-            model,
-            self.neighbors,
-            shared_lines,
-            index,
-            threads=threads,
-        )
 
 
     def _log(self, *args) -> None:
