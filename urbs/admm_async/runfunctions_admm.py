@@ -560,7 +560,7 @@ def run_sequential(
         del model
         model_time = time() - model_start
         model_times.append(model_time)
-        print(f'model_time: {model_time}')
+        print(f'model_time: {model_time:.2f}')
         # model_file = join(model_dir, f'{ID}.pickle')
         # model_files.append(model_file)
         # with open(model_file, 'wb') as f:
@@ -570,7 +570,7 @@ def run_sequential(
         #     print(f'pickle_time: {pickle_time}')
 
     avg_model_time = sum(model_times) / len(model_times)
-    print(f'avg_model_time: {avg_model_time}')
+    print(f'avg_model_time: {avg_model_time:.2f}')
 
     # for model_file in model_files:
     #     with open(model_file, 'rb') as f:

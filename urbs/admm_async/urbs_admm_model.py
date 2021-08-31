@@ -84,7 +84,7 @@ class UrbsAdmmModel(object):
         self.solver = SolverFactory('gurobi_persistent')
         self.solver.set_instance(model, symbolic_solver_labels=False)
         solver_time = time() - solver_start
-        print(f'solver_time: {solver_time}')
+        print(f'solver_time: {solver_time:.2f}')
         self.solver.set_options("NumericFocus=3")
         self.solver.set_options("Crossover=0")
         self.solver.set_options("Method=2")
