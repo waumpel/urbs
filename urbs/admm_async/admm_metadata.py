@@ -16,6 +16,6 @@ class AdmmMetadata:
         }
 
         return {
+            'admmopt': admmopt_dict,
             'clusters': self.clusters,
-            'admmopt': admmopt_dict
         }
