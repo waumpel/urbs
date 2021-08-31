@@ -104,7 +104,7 @@ if __name__ == '__main__':
             sub_dir = os.path.join(result_dir, name)
             os.mkdir(sub_dir)
 
-            admm_results = admm_async.run_regional(
+            admm_results = admm_async.run_parallel(
                 data_all = data_all,
                 timesteps = timesteps,
                 scenario = scenario.__name__,

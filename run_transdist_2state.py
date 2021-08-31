@@ -103,7 +103,7 @@ if __name__ == '__main__':
             validate_input(data_all)
             validate_dc_objective(data_all, objective)
 
-            admm_objective = admm_async.run_regional(
+            admm_objective = admm_async.run_parallel(
                 data_all,
                 timesteps,
                 scenario_dir,

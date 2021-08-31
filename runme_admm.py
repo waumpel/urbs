@@ -95,7 +95,7 @@ if __name__ == '__main__':
     for scenario in scenarios:
         data_all, ttime = admm_async.read(input_path, scenario, objective)
 
-        admm_results = admm_async.run_regional(
+        admm_results = admm_async.run_parallel(
             data_all = data_all,
             timesteps = timesteps,
             scenario = scenario.__name__,
