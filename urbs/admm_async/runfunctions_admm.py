@@ -532,6 +532,7 @@ def run_sequential(
 
     model_dir = join(result_dir, 'models')
     os.mkdir(model_dir)
+    model_times = []
     model_files = []
     for ID in range(n_clusters):
         model_start = time()
@@ -556,7 +557,9 @@ def run_sequential(
             weighting_order,
             threads,
         )
+        del model
         model_time = time() - model_start
+        model_times.append(model_time)
         print(f'model_time: {model_time}')
         # model_file = join(model_dir, f'{ID}.pickle')
         # model_files.append(model_file)
@@ -565,6 +568,9 @@ def run_sequential(
         #     pickle.dump(model, f)
         #     pickle_time = time() - pickle_start()
         #     print(f'pickle_time: {pickle_time}')
+
+    avg_model_time = sum(model_times) / len(model_times)
+    print(f'avg_model_time: {avg_model_time}')
 
     # for model_file in model_files:
     #     with open(model_file, 'rb') as f:
