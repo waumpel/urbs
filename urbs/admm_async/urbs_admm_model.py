@@ -92,8 +92,6 @@ class UrbsAdmmModel(object):
         self.solver.set_options(f"LogToConsole=0")
         self.solver.set_options(f"LogFile={join(result_dir, f'solver-{ID}.log')}")
 
-        self.model.write(join(result_dir, f'model-{ID}.lp'))
-
 
     def solve_iteration(self) -> Tuple:
         """
