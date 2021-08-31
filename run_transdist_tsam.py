@@ -17,7 +17,7 @@ if __name__ == '__main__':
     freeze_support()
 
     options = argparse.ArgumentParser()
-    options.add_argument('--admm', action='store_true')
+    options.add_argument('-a', '--admm', action='store_true')
     args = options.parse_args()
 
     input_files = 'Transmission_Level.xlsx'
@@ -31,7 +31,7 @@ if __name__ == '__main__':
         for file in microgrid_files
     ]
 
-    result_name = 'transdist-full-tsam'
+    result_name = 'transdist-tsam'
     if args.admm:
         result_name += '-admm'
     result_dir = prepare_result_directory(result_name)  # name + time stamp

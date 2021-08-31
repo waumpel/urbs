@@ -17,7 +17,7 @@ if __name__ == '__main__':
     freeze_support()
 
     options = argparse.ArgumentParser()
-    options.add_argument('--admm', action='store_true')
+    options.add_argument('-a', '--admm', action='store_true')
     args = options.parse_args()
 
     input_files = 'Transmission_Level_Co2.xlsx'

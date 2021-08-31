@@ -17,8 +17,8 @@ if __name__ == '__main__':
     freeze_support()
 
     options = argparse.ArgumentParser()
-    options.add_argument('--tsam', action='store_true')
-    options.add_argument('--admm', action='store_true')
+    options.add_argument('-t', '--tsam', action='store_true')
+    options.add_argument('-a', '--admm', action='store_true')
     args = options.parse_args()
 
     input_files = 'transdist-2state-tsam.xlsx' if args.tsam else 'transdist-2state.xlsx'
