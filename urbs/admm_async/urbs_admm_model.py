@@ -81,7 +81,7 @@ class UrbsAdmmModel(object):
         self.shared_lines_index = shared_lines_index
 
         solver_start = time()
-        self.solver = SolverFactory('gurobi_persistent')
+        self.solver = SolverFactory('gurobi_persistent') # TODO: need non-persistent option
         self.solver.set_instance(model, symbolic_solver_labels=False)
         solver_time = time() - solver_start
         print(f'solver_time: {solver_time:.2f}')

@@ -260,6 +260,30 @@ def print_status(results, status):
     print('\n' + df.to_string())
 
 
+def fill_flow_global(year, timesteps, shared_lines_index, value):
+    flow_global = pd.Series({
+        (t, year, source, target): value
+        for t in timesteps[1:]
+        for source, target in zip(
+            shared_lines_index['Site In'], shared_lines_index['Site Out']
+        )
+    })
+    flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+    return flow_global
+
+
+def fill_lamda(year, timesteps, shared_lines_index, value):
+    lamda = pd.Series({
+        (t, year, source, target): value
+        for t in timesteps[1:]
+        for source, target in zip(
+            shared_lines_index['Site In'], shared_lines_index['Site Out']
+        )
+    })
+    lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+    return lamda
+
+
 def create_model(
     ID,
     result_dir,
@@ -267,12 +291,13 @@ def create_model(
     timesteps,
     dt,
     objective,
-    year,
-    initial_values,
     admmopt,
+    flow_global,
+    lamda,
     sites,
     neighbors,
     shared_lines,
+    shared_lines_index,
     internal_lines,
     cluster_from,
     cluster_to,
@@ -284,23 +309,6 @@ def create_model(
     """
     Create this workers `UrbsAdmmModel`.
     """
-    index = shared_lines.index.to_frame()
-
-    flow_global = pd.Series({
-        (t, year, source, target): initial_values.flow_global
-        for t in timesteps[1:]
-        for source, target in zip(index['Site In'], index['Site Out'])
-    })
-
-    flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-
-    lamda = pd.Series({
-        (t, year, source, target): initial_values.lamda
-        for t in timesteps[1:]
-        for source, target in zip(index['Site In'], index['Site Out'])
-    })
-    lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-
     model = urbs.model.create_model(
         data_all,
         timesteps,
@@ -315,6 +323,7 @@ def create_model(
         hoursPerPeriod=hoursPerPeriod,
         weighting_order=weighting_order,
     )
+    return model
 
     # enlarge shared_lines (copies of slices of data_all['transmission'])
     shared_lines['cluster_from'] = cluster_from
@@ -330,7 +339,7 @@ def create_model(
         model,
         neighbors,
         shared_lines,
-        index,
+        shared_lines_index,
         threads=threads,
     )
 
@@ -530,10 +539,32 @@ def run_sequential(
     with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
         json.dump(metadata.to_dict(), f, indent=4)
 
+    model_times = []
+    pickle_times = []
+    unpickle_times = []
+
     model_dir = join(result_dir, 'models')
     os.mkdir(model_dir)
-    model_times = []
     model_files = []
+
+    shared_lines_index = []
+    flow_global = []
+    lamda = []
+    for ID in range(n_clusters):
+        index = shared_lines[ID].index.to_frame()
+        shared_lines_index.append(index)
+        flow_global.append(fill_flow_global(
+            year, timesteps, index, initial_values.flow_global
+        ))
+        lamda.append(fill_lamda(
+            year, timesteps, index, initial_values.lamda
+        ))
+
+    # TODO:
+    # what about state stored in urbsadmmmodels?
+    # can we pickle now? no, objective is still an anonymous function
+    # only replace model attribute in urbsadmmmodels? but they are deleted in-between
+
     for ID in range(n_clusters):
         model_start = time()
         model = create_model(
@@ -543,12 +574,13 @@ def run_sequential(
             timesteps,
             dt,
             objective,
-            year,
-            initial_values,
             admmopt,
+            flow_global[ID],
+            lamda[ID],
             clusters[ID],
             neighbors[ID],
             shared_lines[ID],
+            shared_lines_index[ID],
             internal_lines[ID],
             cluster_from[ID],
             cluster_to[ID],
@@ -557,27 +589,36 @@ def run_sequential(
             weighting_order,
             threads,
         )
-        del model
         model_time = time() - model_start
         model_times.append(model_time)
         print(f'model_time: {model_time:.2f}')
-        # model_file = join(model_dir, f'{ID}.pickle')
-        # model_files.append(model_file)
-        # with open(model_file, 'wb') as f:
-        #     pickle_start = time()
-        #     pickle.dump(model, f)
-        #     pickle_time = time() - pickle_start()
-        #     print(f'pickle_time: {pickle_time}')
+
+        model_file = join(model_dir, f'{ID}.pickle')
+        model_files.append(model_file)
+        with open(model_file, 'wb') as f:
+            pickle_start = time()
+            pickle.dump(model, f)
+            pickle_time = time() - pickle_start
+            pickle_times.append(pickle_time)
+            print(f'pickle_time: {pickle_time}')
+        del model
+
+    for model_file in model_files:
+        with open(model_file, 'rb') as f:
+            unpickle_start = time()
+            model = pickle.load(f)
+            unpickle_time = time() - unpickle_start
+            unpickle_times.append(unpickle_time)
+            print(f'unpickle_time: {unpickle_time}')
 
     avg_model_time = sum(model_times) / len(model_times)
     print(f'avg_model_time: {avg_model_time:.2f}')
 
-    # for model_file in model_files:
-    #     with open(model_file, 'rb') as f:
-    #         unpickle_start = time()
-    #         model = pickle.load(f)
-    #         unpickle_time = time() - unpickle_start
-    #         print(f'unpickle_time: {unpickle_time}')
+    avg_pickle_time = sum(pickle_times) / len(pickle_times)
+    print(f'avg_pickle_time: {avg_pickle_time:.2f}')
+
+    avg_unpickle_time = sum(unpickle_times) / len(unpickle_times)
+    print(f'avg_unpickle_time: {avg_unpickle_time:.2f}')
 
     # admm_objective = sum(result.objective for result in results)
 

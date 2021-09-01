@@ -205,6 +205,14 @@ class AdmmWorker:
         """
         self._log('Creating model')
 
+        shared_lines_index = shared_lines.index.to_frame()
+        flow_global = runfunctions_admm.fill_flow_global(
+            year, timesteps, shared_lines_index, initial_values.flow_global
+        )
+        lamda = runfunctions_admm.fill_lamda(
+            year, timesteps, shared_lines_index, initial_values.lamda
+        )
+
         self.model = runfunctions_admm.create_model(
             self.ID,
             self.result_dir,
@@ -212,12 +220,13 @@ class AdmmWorker:
             timesteps,
             dt,
             objective,
-            year,
-            initial_values,
             self.admmopt,
+            flow_global,
+            lamda,
             sites,
             self.neighbors,
             shared_lines,
+            shared_lines_index,
             internal_lines,
             cluster_from,
             cluster_to,

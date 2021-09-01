@@ -513,13 +513,13 @@ def create_model(
                 sense=pyomo.minimize,
                 doc='minimize(cost = sum of all cost types)')
 
-        else:
-            m.objective_function = pyomo.Objective(
-                rule=cost_rule_sub(flow_global=flow_global,
-                                   lamda=lamda,
-                                   rho=rho),
-                sense=pyomo.minimize,
-                doc='minimize(cost = sum of all cost types)')
+        # else:
+        #     m.objective_function = pyomo.Objective(
+        #         rule=cost_rule_sub(flow_global=flow_global,
+        #                            lamda=lamda,
+        #                            rho=rho),
+        #         sense=pyomo.minimize,
+        #         doc='minimize(cost = sum of all cost types)')
 
     elif m.obj.value == 'CO2':
         if sites is None:
