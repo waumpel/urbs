@@ -346,7 +346,6 @@ def run_parallel(
 
     print('Spawning worker processes')
 
-    solver_start = time.time()
     for proc in procs:
         proc.start()
 
@@ -357,13 +356,14 @@ def run_parallel(
             model_creation_status[msg['sender']] = True
         else:
             RuntimeWarning(f'Received unexpected msg')
-
-    print('All workers have created their models. Starting ADMM')
-
     memory = ps.Process().memory_info().rss + sum(
         ps.Process(proc.pid).memory_info().rss for proc in procs
     )
     print(f'Currently using {(memory / 10**9):.2f} GiB of memory (rss)')
+
+
+    print('All workers have created their models. Starting ADMM')
+    solver_start = time.time()
 
     for q in queues:
         q.put('start solving')
