@@ -5,13 +5,16 @@ import os
 from os.path import join
 import pickle
 from time import time
+from urbs.model import cost_rule_sub
+from urbs.runfunctions import setup_solver
 
 import numpy as np
 import pandas as pd
 import psutil as ps
+import pyomo.environ as pyomo
 
 import urbs
-from urbs.admm_async.urbs_admm_model import UrbsAdmmModel
+from urbs.admm_async.admm_model import AdmmModel
 from urbs.admm_async.admm_worker import AdmmWorker
 from urbs.admm_async.admm_messages import AdmmStatus, AdmmStatusMessage, AdmmIterationResult
 from urbs.features.typeperiod import run_tsam
@@ -20,24 +23,6 @@ from urbs.identify import identify_mode
 from urbs.input import read_input, add_carbon_supplier
 from urbs.validation import validate_input
 from.admm_metadata import AdmmMetadata
-
-
-class InitialValues:
-    """
-    Holds the initial values for several variables and parameters.
-    Intended use: Each member holds a scalar value that is used for all values in a
-    `pd.Series` or `pd.DataFrame`.
-
-    ### Members:
-    * `flow`
-    * `flow_global`
-    * `lamda`
-    """
-
-    def __init__(self, flow, flow_global, lamda):
-        self.flow = flow
-        self.flow_global = flow_global
-        self.lamda = lamda
 
 
 def prepare_result_directory(result_name):
@@ -59,29 +44,6 @@ def prepare_result_directory(result_name):
         os.makedirs(result_dir)
 
     return result_dir
-
-
-def setup_solver(solver, logfile='solver.log'):
-    """ """
-    if solver.name == 'gurobi':
-        # reference with list of option names
-        # http://www.gurobi.com/documentation/5.6/reference-manual/parameters
-        solver.set_options("logfile={}".format(logfile))
-        solver.set_options("method=2")
-        # solver.set_options("timelimit=7200")  # seconds
-        # solver.set_options("mipgap=5e-4")  # default = 1e-4
-    elif solver.name == 'glpk':
-        # reference with list of options
-        # execute 'glpsol --help'
-        solver.set_options("log={}".format(logfile))
-        # solver.set_options("tmlim=7200")  # seconds
-        # solver.set_options("mipgap=.0005")
-    elif solver.name == 'cplex':
-        solver.set_options("log={}".format(logfile))
-    else:
-        print("Warning from setup_solver: no options set for solver "
-              "'{}'!".format(solver.name))
-    return solver
 
 
 def prepare_admm(
@@ -160,11 +122,11 @@ def prepare_admm(
 
     n_clusters = len(clusters)
 
-    # map site -> cluster_idx
+    # map site -> cluster ID
     site_cluster_map = {}
-    for cluster, cluster_idx in zip(clusters, range(n_clusters)):
+    for cluster, ID in zip(clusters, range(n_clusters)):
         for site in cluster:
-            site_cluster_map[site] = cluster_idx
+            site_cluster_map[site] = ID
 
     # Note:
     # data_all['transmission'].index:
@@ -184,7 +146,7 @@ def prepare_admm(
     # Set of neighbors for each cluster
     neighbors = [set() for _ in range(n_clusters)]
 
-    for row, (_, site_in, site_out, tra, com) in zip(range(0, data_all['transmission'].shape[0]), data_all['transmission'].index):
+    for row, (_, site_in, site_out, tra, com) in enumerate(data_all['transmission'].index):
         from_cluster_idx = site_cluster_map[site_in]
         to_cluster_idx = site_cluster_map[site_out]
 
@@ -203,39 +165,56 @@ def prepare_admm(
             internal_lines_logic[from_cluster_idx, row] = True
             internal_lines_logic[to_cluster_idx, row] = True
 
-    # map cluster_idx -> slice of data_all['transmission'] (copies)
-    shared_lines = [
-        data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]].copy(deep=True)
-        for cluster_idx in range(0, n_clusters)
-    ]
-    # map cluster_idx -> slice of data_all['transmission'] (copies)
+    # map ID -> slice of data_all['transmission'] (copies)
     internal_lines = [
-        data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]].copy(deep=True)
-        for cluster_idx in range(0, n_clusters)
-    ]
-    # neighbouring cluster of each shared line for each cluster
-    neighbor_cluster = [
-        np.array(cluster_from[cluster_idx]) + np.array(cluster_to[cluster_idx]) - cluster_idx
-        for cluster_idx in range(0, n_clusters)
+        data_all['transmission'].loc[internal_lines_logic[ID, :]].copy(deep=True)
+        for ID in range(n_clusters)
     ]
 
-    initial_values = InitialValues(
-        flow=0,
-        flow_global=0,
-        lamda=0,
-    )
+    # neighbouring cluster of each shared line for each cluster
+    neighbor_cluster = [
+        np.array(cluster_from[ID]) + np.array(cluster_to[ID]) - ID
+        for ID in range(n_clusters)
+    ]
+
+    # map ID -> slice of data_all['transmission'] (copies)
+    shared_lines = [
+        data_all['transmission'].loc[shared_lines_logic[ID, :]].copy(deep=True)
+        for ID in range(n_clusters)
+    ]
+    # enlarge shared_lines (copies of slices of data_all['transmission'])
+    for ID in range(n_clusters):
+        shared_lines[ID]['cluster_from'] = cluster_from[ID]
+        shared_lines[ID]['cluster_to'] = cluster_to[ID]
+        shared_lines[ID]['neighbor_cluster'] = neighbor_cluster[ID]
+
+    shared_lines_index = [
+        shared_lines[ID].index.to_frame()
+        for ID in range(n_clusters)
+    ]
+
+    initial_flow_global = 0
+    initial_lamda = 0
+
+    flow_global = [
+        fill_flow_global(year, timesteps, shared_lines_index[ID], initial_flow_global)
+        for ID in range(n_clusters)
+    ]
+
+    lamda = [
+        fill_lamda(year, timesteps, shared_lines_index[ID], initial_lamda)
+        for ID in range(n_clusters)
+    ]
 
     return (
         timesteps,
-        year,
-        initial_values,
         clusters,
         neighbors,
-        shared_lines,
         internal_lines,
-        cluster_from,
-        cluster_to,
-        neighbor_cluster,
+        shared_lines,
+        shared_lines_index,
+        flow_global,
+        lamda,
         weighting_order,
     )
 
@@ -284,66 +263,6 @@ def fill_lamda(year, timesteps, shared_lines_index, value):
     return lamda
 
 
-def create_model(
-    ID,
-    result_dir,
-    data_all,
-    timesteps,
-    dt,
-    objective,
-    admmopt,
-    flow_global,
-    lamda,
-    sites,
-    neighbors,
-    shared_lines,
-    shared_lines_index,
-    internal_lines,
-    cluster_from,
-    cluster_to,
-    neighbor_cluster,
-    hoursPerPeriod=None,
-    weighting_order=None,
-    threads=None,
-    ) -> UrbsAdmmModel:
-    """
-    Create this workers `UrbsAdmmModel`.
-    """
-    model = urbs.model.create_model(
-        data_all,
-        timesteps,
-        dt,
-        objective,
-        sites=sites,
-        shared_lines=shared_lines,
-        internal_lines=internal_lines,
-        flow_global=flow_global,
-        lamda=lamda,
-        rho=admmopt.rho,
-        hoursPerPeriod=hoursPerPeriod,
-        weighting_order=weighting_order,
-    )
-    return model
-
-    # enlarge shared_lines (copies of slices of data_all['transmission'])
-    shared_lines['cluster_from'] = cluster_from
-    shared_lines['cluster_to'] = cluster_to
-    shared_lines['neighbor_cluster'] = neighbor_cluster
-
-    return UrbsAdmmModel(
-        ID,
-        result_dir,
-        admmopt,
-        flow_global,
-        lamda,
-        model,
-        neighbors,
-        shared_lines,
-        shared_lines_index,
-        threads=threads,
-    )
-
-
 def run_parallel(
     data_all,
     timesteps,
@@ -362,15 +281,13 @@ def run_parallel(
 
     (
         timesteps,
-        year,
-        initial_values,
         clusters,
         neighbors,
-        shared_lines,
         internal_lines,
-        cluster_from,
-        cluster_to,
-        neighbor_cluster,
+        shared_lines,
+        shared_lines_index,
+        flow_global,
+        lamda,
         weighting_order,
     ) = prepare_admm(
         data_all,
@@ -412,17 +329,15 @@ def run_parallel(
                 timesteps,
                 dt,
                 objective,
-                year,
-                initial_values,
                 admmopt,
                 n_clusters,
                 clusters[ID],
                 neighbors[ID],
-                shared_lines[ID],
                 internal_lines[ID],
-                cluster_from[ID],
-                cluster_to[ID],
-                neighbor_cluster[ID],
+                shared_lines[ID],
+                shared_lines_index[ID],
+                flow_global[ID],
+                lamda[ID],
                 queues,
                 hoursPerPeriod,
                 weighting_order,
@@ -506,20 +421,19 @@ def run_sequential(
     cross_scenario_data=None,
     noTypicalPeriods=None,
     hoursPerPeriod=None,
-    threads=1,
+    threads=8,
     ):
 
+    # admm preprocessing
     (
         timesteps,
-        year,
-        initial_values,
         clusters,
         neighbors,
-        shared_lines,
         internal_lines,
-        cluster_from,
-        cluster_to,
-        neighbor_cluster,
+        shared_lines,
+        shared_lines_index,
+        flow_global,
+        lamda,
         weighting_order,
     ) = prepare_admm(
         data_all,
@@ -534,65 +448,49 @@ def run_sequential(
 
     n_clusters = len(clusters)
 
-    # store metadata
+    # store metadata (now that all clusters are created)
     metadata = AdmmMetadata(clusters, admmopt)
     with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
         json.dump(metadata.to_dict(), f, indent=4)
 
+    # ADMM fields to be indexed by cluster ID. Values are updated in each iteration.
+    obj = [None] * n_clusters
+    flows_all = [None] * n_clusters
+    flows_with_neighbor = [None] * n_clusters
+    primalgap = [None] * n_clusters
+    dualgap = [None] * n_clusters
+
+    # place to store models on disk
+    model_dir = join(result_dir, 'models')
+    os.mkdir(model_dir)
+
+    # measurements
     model_times = []
     pickle_times = []
     unpickle_times = []
 
-    model_dir = join(result_dir, 'models')
-    os.mkdir(model_dir)
+    # Create base models, without objective function, and pickle them.
     model_files = []
-
-    shared_lines_index = []
-    flow_global = []
-    lamda = []
-    for ID in range(n_clusters):
-        index = shared_lines[ID].index.to_frame()
-        shared_lines_index.append(index)
-        flow_global.append(fill_flow_global(
-            year, timesteps, index, initial_values.flow_global
-        ))
-        lamda.append(fill_lamda(
-            year, timesteps, index, initial_values.lamda
-        ))
-
-    # TODO:
-    # what about state stored in urbsadmmmodels?
-    # can we pickle now? no, objective is still an anonymous function
-    # only replace model attribute in urbsadmmmodels? but they are deleted in-between
-
     for ID in range(n_clusters):
         model_start = time()
-        model = create_model(
-            ID,
-            result_dir,
+
+        model = urbs.model.create_model(
             data_all,
             timesteps,
             dt,
             objective,
-            admmopt,
-            flow_global[ID],
-            lamda[ID],
-            clusters[ID],
-            neighbors[ID],
-            shared_lines[ID],
-            shared_lines_index[ID],
-            internal_lines[ID],
-            cluster_from[ID],
-            cluster_to[ID],
-            neighbor_cluster[ID],
-            hoursPerPeriod,
-            weighting_order,
-            threads,
+            sites=clusters[ID],
+            shared_lines=shared_lines,
+            internal_lines=internal_lines[ID],
+            hoursPerPeriod=hoursPerPeriod,
+            weighting_order=weighting_order,
         )
+
         model_time = time() - model_start
         model_times.append(model_time)
         print(f'model_time: {model_time:.2f}')
 
+        # pickle
         model_file = join(model_dir, f'{ID}.pickle')
         model_files.append(model_file)
         with open(model_file, 'wb') as f:
@@ -603,6 +501,7 @@ def run_sequential(
             print(f'pickle_time: {pickle_time}')
         del model
 
+    # unpickle test (TODO: remove)
     for model_file in model_files:
         with open(model_file, 'rb') as f:
             unpickle_start = time()
@@ -619,6 +518,40 @@ def run_sequential(
 
     avg_unpickle_time = sum(unpickle_times) / len(unpickle_times)
     print(f'avg_unpickle_time: {avg_unpickle_time:.2f}')
+
+
+
+    solver = setup_solver(threads=threads)
+    rho = admmopt.rho
+
+    while True:
+        for ID in range(n_clusters):
+            solver.set_options(f"LogFile={join(result_dir, f'solver-{ID}.log')}")
+            with open(model_files[ID], 'rb') as f:
+                model = pickle.load(f)
+
+            model.objective_function = pyomo.Objective(
+                rule=cost_rule_sub(flow_global[ID], lamda[ID], rho),
+                sense=pyomo.minimize,
+                doc='minimize(cost = sum of all cost types) + penalty'
+            )
+
+            solver.solve(model, tee=True, report_timing=True)
+
+            obj[ID] = pyomo.value(model.obj)
+            flows_all[ID], flows_with_neighbor[ID] = AdmmModel.retrieve_boundary_flows(
+                model.e_tra_in,
+                neighbors[ID],
+                shared_lines[ID],
+                shared_lines_index[ID]
+            )
+            # primalgap
+            # dualgap
+
+        # check convergence
+
+
+
 
     # admm_objective = sum(result.objective for result in results)
 

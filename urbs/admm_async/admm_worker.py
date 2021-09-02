@@ -2,6 +2,7 @@ from math import ceil
 from multiprocessing import Queue
 from time import sleep
 from typing import Dict, Iterable, List, Set, Union
+import urbs
 from urbs.admm_async.admm_option import AdmmOption
 
 import numpy as np
@@ -11,12 +12,12 @@ from . import runfunctions_admm
 from urbs.admm_async.admm_messages import (
     AdmmIterationResult, AdmmVariableMessage, AdmmStatusMessage, AdmmStatus
 )
-from .urbs_admm_model import UrbsAdmmModel
+from .admm_model_persistent import AdmmModelPersistent
 
 
 class AdmmWorker:
     """
-    Manages a single `UrbsAdmmModel` in parallel ADMM.
+    Manages a single `AdmmModelPersistent` in parallel ADMM.
 
     Attributes:
         - `ID`: ID of this worker. Same as `self.model.ID`.
@@ -38,7 +39,7 @@ class AdmmWorker:
         - `status_update`: Flag indicating that this worker's status has been changed since
           the last status message was sent.
         - `mismatches`: Dict of constraint mismatches with all neighbors.
-        - `model`: An `UrbsAdmmModel`.
+        - `model`: An `AdmmModelPersistent`.
     """
 
     def __init__(
@@ -72,7 +73,7 @@ class AdmmWorker:
         self.status = [AdmmStatus.NO_CONVERGENCE] * n_clusters
         self.status_update = False
         self.mismatches = {k: np.nan for k in neighbors}
-        self.model: UrbsAdmmModel = None
+        self.model: AdmmModelPersistent = None
 
 
     def get_status(self) -> AdmmStatus:
@@ -138,17 +139,15 @@ class AdmmWorker:
         timesteps,
         dt,
         objective,
-        year,
-        initial_values,
         admmopt,
         n_clusters,
         sites,
         neighbors,
-        shared_lines,
         internal_lines,
-        cluster_from,
-        cluster_to,
-        neighbor_cluster,
+        shared_lines,
+        shared_lines_index,
+        flow_global,
+        lamda,
         queues,
         hoursPerPeriod=None,
         weighting_order=None,
@@ -165,14 +164,12 @@ class AdmmWorker:
             timesteps,
             dt,
             objective,
-            year,
-            initial_values,
             sites,
-            shared_lines,
             internal_lines,
-            cluster_from,
-            cluster_to,
-            neighbor_cluster,
+            shared_lines,
+            shared_lines_index,
+            flow_global,
+            lamda,
             hoursPerPeriod,
             weighting_order,
             threads,
@@ -185,14 +182,12 @@ class AdmmWorker:
         timesteps,
         dt,
         objective,
-        year,
-        initial_values,
         sites,
-        shared_lines,
         internal_lines,
-        cluster_from,
-        cluster_to,
-        neighbor_cluster,
+        shared_lines,
+        shared_lines_index,
+        flow_global,
+        lamda,
         hoursPerPeriod=None,
         weighting_order=None,
         threads=None,
@@ -200,40 +195,34 @@ class AdmmWorker:
         """
         Start this `AdmmWorker`.
 
-        Create an `UrbsAdmmModel`, then start solving ADMM iterations once the start signal
+        Create an `AdmmModelPersistent`, then start solving ADMM iterations once the start signal
         has been received from the parent process.
         """
         self._log('Creating model')
 
-        shared_lines_index = shared_lines.index.to_frame()
-        flow_global = runfunctions_admm.fill_flow_global(
-            year, timesteps, shared_lines_index, initial_values.flow_global
-        )
-        lamda = runfunctions_admm.fill_lamda(
-            year, timesteps, shared_lines_index, initial_values.lamda
-        )
-
-        self.model = runfunctions_admm.create_model(
-            self.ID,
-            self.result_dir,
+        urbs_model = urbs.model.create_model(
             data_all,
             timesteps,
             dt,
             objective,
+            sites=sites,
+            shared_lines=shared_lines,
+            internal_lines=internal_lines,
+            hoursPerPeriod=hoursPerPeriod,
+            weighting_order=weighting_order,
+        )
+
+        self.model = AdmmModelPersistent(
+            self.ID,
+            self.result_dir,
             self.admmopt,
-            flow_global,
-            lamda,
-            sites,
+            urbs_model,
             self.neighbors,
             shared_lines,
             shared_lines_index,
-            internal_lines,
-            cluster_from,
-            cluster_to,
-            neighbor_cluster,
-            hoursPerPeriod,
-            weighting_order,
-            threads,
+            flow_global,
+            lamda,
+            threads=threads,
         )
 
         self._log('Model created')
@@ -341,8 +330,6 @@ class AdmmWorker:
         self.model.update_flow_global({k: self.messages[k] for k in self.updated})
         self._update_mismatch((k for k in self.neighbors if k in self.messages))
         self.model.update_rho([msg.rho for msg in self.messages.values()])
-
-        self.model.update_cost_rule()
 
 
     def _receive(self) -> Union[Set[int], AdmmStatus]:

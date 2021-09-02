@@ -67,17 +67,17 @@ def add_transmission(m, shared_lines=None):
         initialize=[(stf, sit, sit_, tra, com)
                     for (stf, sit, sit_, tra, com) in tuple(m.tra_block_dict.keys())],
         doc='Transmission with new block capacities')
-    if shared_lines is not None: # TODO: is this set?
+    if shared_lines is not None:
         m.tra_tuples_shared = pyomo.Set(
-                within=m.stf * m.sit * m.sit * m.tra * m.com,
-                initialize=shared_lines.index,
-                doc='Combinations of possibel transmissions on the boundary, e.g. '
-                '(South,Mid,hvac,Elec)')
+            within=m.stf * m.sit * m.sit * m.tra * m.com,
+            initialize=shared_lines.index,
+            doc='Combinations of possibel transmissions on the boundary, e.g. '
+            '(South,Mid,hvac,Elec)')
         m.tra_tuples_internal = pyomo.Set(
-                within=m.stf * m.sit * m.sit * m.tra * m.com,
-                initialize=m.tra_tuples - m.tra_tuples_shared,
-                doc='Combinations of possibel internal transmissions, e.g. '
-                '(South,Mid,hvac,Elec)')
+            within=m.stf * m.sit * m.sit * m.tra * m.com,
+            initialize=m.tra_tuples - m.tra_tuples_shared,
+            doc='Combinations of possibel internal transmissions, e.g. '
+            '(South,Mid,hvac,Elec)')
 
     if m.mode['int']:
         m.operational_tra_tuples = pyomo.Set(
