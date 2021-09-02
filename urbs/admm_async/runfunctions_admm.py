@@ -403,4 +403,12 @@ def run_parallel(
     print(f'ADMM solver time: {solver_time:4.0f} s')
     print(f'ADMM objective  : {admm_objective:.4e}')
 
+    result = {
+        'objective': admm_objective,
+        'time': solver_time,
+    }
+
+    with open(join(result_dir, 'result.json'), 'w', encoding='utf8') as f:
+        json.dump(result, f, indent=4)
+
     return admm_objective
