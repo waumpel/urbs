@@ -1052,7 +1052,7 @@ def cost_rule_sub(flow_global: pd.Series, lamda: pd.Series, rho: float):
     def cost_rule(m):
         cost = pyomo.summation(m.costs)
         fg_threshold = flow_global.abs().mean() / 100
-        # l_threshold = lamda.abs().mean() / 100
+        l_threshold = lamda.abs().mean() / 100
 
         fg_sum = 0
         l_sum = 0
@@ -1069,9 +1069,9 @@ def cost_rule_sub(flow_global: pd.Series, lamda: pd.Series, rho: float):
                 fg_sum += (m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] - fg) ** 2
 
                 l = lamda[(tm, stf, sit_in, sit_out)]
-                # if abs(l) < l_threshold:
-                #     l_rounded += 1
-                #     l = 0
+                if abs(l) < l_threshold:
+                    l_rounded += 1
+                    l = 0
                 l_sum += (l * (m.e_tra_in[(tm, stf, sit_in, sit_out, tra, com)] - fg))
         print(f'Rounded {fg_rounded} fgs, {l_rounded} ls')
 
