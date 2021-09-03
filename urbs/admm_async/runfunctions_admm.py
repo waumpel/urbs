@@ -453,12 +453,25 @@ def run_sequential(
     with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
         json.dump(metadata.to_dict(), f, indent=4)
 
+    # TODO: remove
     # ADMM fields to be indexed by cluster ID. Values are updated in each iteration.
-    obj = [None] * n_clusters
-    flows_all = [None] * n_clusters
-    flows_with_neighbor = [None] * n_clusters
-    primalgap = [None] * n_clusters
-    dualgap = [None] * n_clusters
+    # obj = [None] * n_clusters
+    # flows_all = [None] * n_clusters
+    # flows_with_neighbor = [None] * n_clusters
+    # primalgap = [None] * n_clusters
+    # dualgap = [None] * n_clusters
+
+    models = [
+        AdmmModel(
+            admmopt,
+            neighbors[ID],
+            shared_lines[ID],
+            shared_lines_index[ID],
+            flow_global[ID],
+            lamda[ID],
+        )
+        for ID in range(n_clusters)
+    ]
 
     # place to store models on disk
     model_dir = join(result_dir, 'models')
@@ -474,7 +487,7 @@ def run_sequential(
     for ID in range(n_clusters):
         model_start = time()
 
-        model = urbs.model.create_model(
+        urbs_model = urbs.model.create_model(
             data_all,
             timesteps,
             dt,
@@ -495,20 +508,21 @@ def run_sequential(
         model_files.append(model_file)
         with open(model_file, 'wb') as f:
             pickle_start = time()
-            pickle.dump(model, f)
+            pickle.dump(urbs_model, f)
             pickle_time = time() - pickle_start
             pickle_times.append(pickle_time)
             print(f'pickle_time: {pickle_time}')
-        del model
+        del urbs_model
 
     # unpickle test (TODO: remove)
     for model_file in model_files:
         with open(model_file, 'rb') as f:
             unpickle_start = time()
-            model = pickle.load(f)
+            urbs_model = pickle.load(f)
             unpickle_time = time() - unpickle_start
             unpickle_times.append(unpickle_time)
             print(f'unpickle_time: {unpickle_time}')
+            del urbs_model
 
     avg_model_time = sum(model_times) / len(model_times)
     print(f'avg_model_time: {avg_model_time:.2f}')
@@ -522,31 +536,16 @@ def run_sequential(
 
 
     solver = setup_solver(threads=threads)
-    rho = admmopt.rho
 
     while True:
-        for ID in range(n_clusters):
-            solver.set_options(f"LogFile={join(result_dir, f'solver-{ID}.log')}")
+        for model, model_file in zip(models, model_files):
             with open(model_files[ID], 'rb') as f:
-                model = pickle.load(f)
+                urbs_model = pickle.load(f)
 
-            model.objective_function = pyomo.Objective(
-                rule=cost_rule_sub(flow_global[ID], lamda[ID], rho),
-                sense=pyomo.minimize,
-                doc='minimize(cost = sum of all cost types) + penalty'
-            )
+            objective, primalgap, dualgap, rho, solver_start, solver_stop = \
+                model.solve_iteration(solver, urbs_model)
 
-            solver.solve(model, tee=True, report_timing=True)
-
-            obj[ID] = pyomo.value(model.obj)
-            flows_all[ID], flows_with_neighbor[ID] = AdmmModel.retrieve_boundary_flows(
-                model.e_tra_in,
-                neighbors[ID],
-                shared_lines[ID],
-                shared_lines_index[ID]
-            )
-            # primalgap
-            # dualgap
+            del model
 
         # check convergence
 

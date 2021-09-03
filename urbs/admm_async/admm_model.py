@@ -6,7 +6,10 @@
 
 from copy import deepcopy
 from math import sqrt
-from typing import Dict, List
+from os.path import join
+from time import time
+from typing import Dict, List, Tuple
+from urbs.model import cost_rule_sub
 
 import numpy as np
 from numpy.linalg import norm
@@ -16,8 +19,8 @@ import pyomo.environ as pyomo
 from .admm_option import AdmmOption
 
 
-# TODO: needed? merge back with persistent?
-class AdmmModel(object):
+# TODO: docstrings
+class AdmmModel:
     """
     Encapsulates an urbs subproblem and implements ADMM steps.
 
@@ -47,8 +50,9 @@ class AdmmModel(object):
 
     def __init__(
         self,
+        ID,
+        result_dir,
         admmopt: AdmmOption,
-        model: pyomo.ConcreteModel,
         neighbors: List[int],
         shared_lines: pd.DataFrame,
         shared_lines_index: pd.DataFrame,
@@ -56,13 +60,14 @@ class AdmmModel(object):
         lamda: pd.Series,
         ) -> None:
 
+        self.logfile = join(result_dir, f'solver-{ID}.log')
+
         self.admmopt = admmopt
         self.dualgap = np.nan
         self.flow_global = flow_global
         self.flows_all = None
         self.flows_with_neighbor = None
         self.lamda = lamda
-        self.model = model
         self.neighbors = neighbors
         self.nu = -1
         self.primalgap = None
@@ -70,6 +75,29 @@ class AdmmModel(object):
         self.rho = admmopt.rho
         self.shared_lines = shared_lines
         self.shared_lines_index = shared_lines_index
+
+
+    def solve_iteration(self, solver, model) -> Tuple:
+        """
+        Start a new iteration and solve the optimization problem.
+
+        Return the objective value, primal gap, dual gap, penalty parameter (rho),
+        start time and stop time.
+        """
+        self.nu += 1
+        self._update_cost_rule(model)
+        solver.set_options(f"LogFile={self.logfile}")
+
+        solver_start = time()
+        solver.solve(model, save_results=False, load_solutions=False, warmstart=True,
+                     tee=True, report_timing=False)
+        solver_stop = time()
+
+        objective = pyomo.value(model.obj)
+        self._retrieve_boundary_flows(model.e_tra_in)
+        self._update_primalgap()
+
+        return objective, self.primalgap, self.dualgap, self.rho, solver_start, solver_stop
 
 
     def update_lamda(self) -> None:
@@ -190,12 +218,20 @@ class AdmmModel(object):
             return self.admmopt.max_mult
 
 
-    @staticmethod
-    def retrieve_boundary_flows(
+    def _update_cost_rule(self, model):
+        if model.obj.value == 'cost':
+            model.objective_function = pyomo.Objective(
+                rule=cost_rule_sub(self.flow_global, self.lamda, self.rho),
+                sense=pyomo.minimize,
+                doc='minimize(cost = sum of all cost types) + penalty'
+            )
+        else:
+            raise NotImplementedError("Objectives other than 'cost' are not supported.")
+
+
+    def _retrieve_boundary_flows(
+        self,
         e_tra_in,
-        neighbors,
-        shared_lines,
-        shared_lines_index,
         ) -> None:
         """
         Retrieve optimized flow values for shared lines from the `solver` and store them in
@@ -205,14 +241,15 @@ class AdmmModel(object):
             - `model: AdmmModel
             - `solver`: pyomo solver
         """
+        index = self.shared_lines_index
 
         flows_all = {}
-        flows_with_neighbor = {k: {} for k in neighbors}
+        flows_with_neighbor = {k: {} for k in self.neighbors}
 
         for (tm, stf, sit_in, sit_out, tra, com), v in e_tra_in.items():
-            if (sit_in, sit_out) in zip(shared_lines_index['Site In'], shared_lines_index['Site Out']):
+            if (sit_in, sit_out) in zip(index['Site In'], index['Site Out']):
                 flows_all[(tm, stf, sit_in, sit_out)] = v.value
-                k = shared_lines.loc[(stf, sit_in, sit_out, tra, com), 'neighbor_cluster']
+                k = self.shared_lines.loc[(stf, sit_in, sit_out, tra, com), 'neighbor_cluster']
                 flows_with_neighbor[k][(tm, stf, sit_in, sit_out)] = v.value
 
         flows_all = pd.Series(flows_all)
@@ -223,4 +260,5 @@ class AdmmModel(object):
             flows.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
             flows_with_neighbor[k] = flows
 
-        return flows_all, flows_with_neighbor
+        self.flows_all = flows_all
+        self.flows_with_neighbor = flows_with_neighbor

@@ -4,7 +4,6 @@
 # Package Pypower 5.1.3 is used in this application
 ############################################################################
 
-from os.path import join
 from time import time
 from typing import List, Tuple
 
@@ -12,11 +11,11 @@ import pandas as pd
 import pyomo.environ as pyomo
 from pyomo.environ import SolverFactory
 
-from urbs.model import cost_rule_sub
 from .admm_model import AdmmModel
 from .admm_option import AdmmOption
 
 
+# TODO: docstrings
 class AdmmModelPersistent(AdmmModel):
     """
     Encapsulates an urbs subproblem and implements ADMM steps.
@@ -63,8 +62,9 @@ class AdmmModelPersistent(AdmmModel):
     ) -> None:
 
         super().__init__(
+            ID,
+            result_dir,
             admmopt,
-            model,
             neighbors,
             shared_lines,
             shared_lines_index,
@@ -72,16 +72,19 @@ class AdmmModelPersistent(AdmmModel):
             lamda,
         )
 
+        self.model = model
+
         self.solver = SolverFactory('gurobi_persistent')
         self.solver.set_instance(model, symbolic_solver_labels=False)
         self.solver.set_options(f"LogToConsole=0")
-        self.solver.set_options(f"LogFile={join(result_dir, f'solver-{ID}.log')}")
+        self.solver.set_options(f"LogFile={self.logfile}")
         self.solver.set_options("NumericFocus=3")
         self.solver.set_options("Crossover=0")
         self.solver.set_options("Method=2")
         self.solver.set_options(f"Threads={threads}")
 
 
+    # override
     def solve_iteration(self) -> Tuple:
         """
         Start a new iteration and solve the optimization problem.
@@ -90,8 +93,8 @@ class AdmmModelPersistent(AdmmModel):
         start time and stop time.
         """
         self.nu += 1
-
         self._update_cost_rule()
+
         solver_start = time()
         self.solver.solve(save_results=False, load_solutions=False, warmstart=True,
                           tee=True, report_timing=False)
@@ -104,6 +107,7 @@ class AdmmModelPersistent(AdmmModel):
         return objective, self.primalgap, self.dualgap, self.rho, solver_start, solver_stop
 
 
+    # override
     def _update_cost_rule(self) -> None:
         """
         Update those components of `self.model` that use `cost_rule_sub` to reflect
@@ -111,28 +115,11 @@ class AdmmModelPersistent(AdmmModel):
         Currently only supports models with `cost` objective, i.e. only the objective
         function is updated.
         """
-        m = self.model
-        if m.obj.value == 'cost':
-            if hasattr(m, 'objective_function'):
-                m.del_component(m.objective_function) # TODO: error on 1st iteration?
-            m.objective_function = pyomo.Objective(
-                rule=cost_rule_sub(flow_global=self.flow_global,
-                                   lamda=self.lamda,
-                                   rho=self.rho),
-                sense=pyomo.minimize,
-                doc='minimize(cost = sum of all cost types + penalty)')
-
-            self.solver.set_objective(m.objective_function)
-        else:
-            raise NotImplementedError("Objectives other than 'cost' are not supported.")
+        super()._update_cost_rule()
+        self.solver.set_objective(self.model.objective_function)
 
 
-    def _retrieve_boundary_flows(self):
+    # override
+    def _retrieve_boundary_flows(self) -> None:
         self.solver.load_vars(self.model.e_tra_in[:, :, :, :, :, :])
-
-        self.flows_all, self.flows_with_neighbor = AdmmModel.retrieve_boundary_flows(
-            self.model.e_tra_in,
-            self.neighbors,
-            self.shared_lines,
-            self.shared_lines_index,
-        )
+        super()._retrieve_boundary_flows(self.model.e_tra_in)
