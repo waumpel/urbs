@@ -16,7 +16,7 @@ import pyomo.environ as pyomo
 import urbs
 from urbs.admm_async.admm_model import AdmmModel
 from urbs.admm_async.admm_worker import AdmmWorker
-from urbs.admm_async.admm_messages import AdmmStatus, AdmmStatusMessage, AdmmIterationResult
+from urbs.admm_async.admm_messages import AdmmStatus, AdmmStatusMessage, AdmmIterationResult, AdmmVariableMessage
 from urbs.features.typeperiod import run_tsam
 from urbs.features.transdisthelper import *
 from urbs.identify import identify_mode
@@ -409,6 +409,7 @@ def run_parallel(
 
 
 def run_sequential(
+    solver_name,
     data_all,
     timesteps,
     result_dir,
@@ -421,7 +422,7 @@ def run_sequential(
     cross_scenario_data=None,
     noTypicalPeriods=None,
     hoursPerPeriod=None,
-    threads=8,
+    threads=1,
     ):
 
     # admm preprocessing
@@ -463,6 +464,8 @@ def run_sequential(
 
     models = [
         AdmmModel(
+            ID,
+            result_dir,
             admmopt,
             neighbors[ID],
             shared_lines[ID],
@@ -493,7 +496,7 @@ def run_sequential(
             dt,
             objective,
             sites=clusters[ID],
-            shared_lines=shared_lines,
+            shared_lines=shared_lines[ID],
             internal_lines=internal_lines[ID],
             hoursPerPeriod=hoursPerPeriod,
             weighting_order=weighting_order,
@@ -533,29 +536,81 @@ def run_sequential(
     avg_unpickle_time = sum(unpickle_times) / len(unpickle_times)
     print(f'avg_unpickle_time: {avg_unpickle_time:.2f}')
 
+    solver = pyomo.SolverFactory(solver_name)
+    solver.set_options(f"LogToConsole=0")
+    setup_solver(solver, threads=threads)
+    global_convergence = False
+    solver_start = time()
 
+    print(f"iter {'primalgap'.ljust(12)} time")
 
-    solver = setup_solver(threads=threads)
-
-    while True:
+    for nu in range(admmopt.max_iter):
+        objectives = []
         for model, model_file in zip(models, model_files):
             with open(model_files[ID], 'rb') as f:
                 urbs_model = pickle.load(f)
 
-            objective, primalgap, dualgap, rho, solver_start, solver_stop = \
+            objective, _, _, _, _, _ = \
                 model.solve_iteration(solver, urbs_model)
+
+            objectives.append(objective)
 
             del model
 
         # check convergence
+        # TODO: perhaps compute in a centralized fashion
+        max_primalgap = max(model.primalgap for model in models)
+        # max_mismatch = max(
+        #     model.mismatch(k, models[k].flow_global)
+        #     for model in models
+        #     for k in model.neighbors
+        # )
 
+        for ID, model in enumerate(models):
+            # TODO: not all fields are needed here
+            model.update_flow_global({
+                k: AdmmVariableMessage(
+                    k,
+                    flow = models[k].flows_with_neighbor[ID],
+                    lamda = models[k].lamda[
+                        models[k].lamda.index.isin(models[k].flows_with_neighbor[ID].index)
+                    ],
+                    rho = models[k].rho,
+                    flow_global = models[k].flow_global.loc[
+                        models[k].flow_global.index.isin(
+                            models[k].flows_with_neighbor[ID].index
+                        )
+                    ],
+                )
+                for k in model.neighbors
+            })
+            model.update_lamda()
+            # TODO: update rho
 
+        iter_time = time() - solver_start
+        print(f"{str(nu).rjust(4)} {max_primalgap:.6e} {int(iter_time)}s")
 
+        if max_primalgap < admmopt.primal_tolerance:
+            global_convergence = True
+            break
 
-    # admm_objective = sum(result.objective for result in results)
+    if global_convergence:
+        print('Global convergence!')
+    else:
+        print('Timeout')
 
-    # # print results
-    # print(f'ADMM solver time: {solver_time:4.0f} s')
-    # print(f'ADMM objective  : {admm_objective:.4e}')
+    solver_time = time() - solver_start
+    admm_objective = sum(objectives)
 
-    # return admm_objective
+    print(f'ADMM solver time: {solver_time:4.0f} s')
+    print(f'ADMM objective  : {admm_objective:.4e}')
+
+    result = {
+        'objective': admm_objective,
+        'time': solver_time,
+    }
+
+    with open(join(result_dir, 'result.json'), 'w', encoding='utf8') as f:
+        json.dump(result, f, indent=4)
+
+    return admm_objective

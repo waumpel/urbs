@@ -328,6 +328,7 @@ class AdmmWorker:
 
         self.model.update_lamda()
         self.model.update_flow_global({k: self.messages[k] for k in self.updated})
+        # update mismatch again after updating our own flow_global values
         self._update_mismatch((k for k in self.neighbors if k in self.messages))
         self.model.update_rho([msg.rho for msg in self.messages.values()])
 
@@ -450,7 +451,7 @@ class AdmmWorker:
         )
 
         for k in senders:
-            self.mismatches[k] = self._calc_mismatch(k)
+            self.mismatches[k] = self.model.mismatch(k, self.messages[k].flow_global)
 
         new_value = all(
             mismatch < self.admmopt.mismatch_tolerance
@@ -458,30 +459,6 @@ class AdmmWorker:
         )
         if new_value != old_value:
             self._update_convergence()
-
-
-    def _calc_mismatch(self, k: int) -> float:
-        """
-        Calculate the current mismatch gap with neighbor `k`.
-        """
-        msg = self.messages[k]
-        flow_global_with_k = self.model.flow_global.loc[
-            self.model.flow_global.index.isin(
-                self.model.flows_with_neighbor[k].index
-            )
-        ]
-        raw_mismatch_gap = norm(flow_global_with_k - msg.flow_global)
-
-        if self.admmopt.tolerance_mode == 'absolute':
-            mismatch_gap = raw_mismatch_gap / min(1, len(self.model.flow_global))
-
-        elif self.admmopt.tolerance_mode == 'relative':
-            normalizer = max(norm(flow_global_with_k), norm(msg.flow_global))
-            if normalizer == 0:
-                normalizer = 1
-            mismatch_gap = norm(flow_global_with_k - msg.flow_global) / normalizer
-
-        return mismatch_gap
 
 
     def _update_convergence(self) -> bool:

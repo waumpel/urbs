@@ -107,6 +107,7 @@ if __name__ == '__main__':
 
             if args.sequential:
                 admm_async.run_sequential(
+                    'gurobi',
                     data_all,
                     timesteps,
                     scenario_dir,

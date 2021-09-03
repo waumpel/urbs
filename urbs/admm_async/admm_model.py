@@ -60,8 +60,8 @@ class AdmmModel:
         lamda: pd.Series,
         ) -> None:
 
+        self.ID = ID
         self.logfile = join(result_dir, f'solver-{ID}.log')
-
         self.admmopt = admmopt
         self.dualgap = np.nan
         self.flow_global = flow_global
@@ -89,8 +89,7 @@ class AdmmModel:
         solver.set_options(f"LogFile={self.logfile}")
 
         solver_start = time()
-        solver.solve(model, save_results=False, load_solutions=False, warmstart=True,
-                     tee=True, report_timing=False)
+        solver.solve(model, tee=True, report_timing=False)
         solver_stop = time()
 
         objective = pyomo.value(model.obj)
@@ -107,6 +106,7 @@ class AdmmModel:
         self.lamda = self.lamda + self.rho * (self.flows_all - self.flow_global)
 
 
+    # synchronous ADMM version
     def update_flow_global(self, updates: Dict) -> None:
         """
         Update `self.flow_global` for all neighbor => msg pairs in `updates`, then
@@ -114,16 +114,8 @@ class AdmmModel:
         """
         flow_global_old = deepcopy(self.flow_global)
         for k, msg in updates.items():
-            lamda = msg.lamda
-            flow = msg.flow
-            rho = msg.rho
-
-            # TODO: can the indexing be improved?
-            self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = (
-                (self.lamda.loc[self.lamda.index.isin(self.flows_with_neighbor[k].index)] +
-                 lamda + self.flows_with_neighbor[k] * self.rho + flow * rho +
-                 self.admmopt.async_correction * self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)]) /
-                (self.rho + rho + self.admmopt.async_correction))
+            self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = \
+                (self.flows_with_neighbor[k] + msg.flow) / 2
 
         self._update_dualgap(flow_global_old)
 
@@ -161,6 +153,26 @@ class AdmmModel:
                      / self.admmopt.mult_adapt:
                     mult = self._calc_multiplier()
                     self.rho = self.rho / mult
+
+
+    def mismatch(self, k: int, flow_global: pd.Series) -> float:
+        flow_global_with_k = self.flow_global.loc[
+            self.flow_global.index.isin(
+                self.flows_with_neighbor[k].index
+            )
+        ]
+        raw_mismatch_gap = norm(flow_global_with_k - flow_global)
+
+        if self.admmopt.tolerance_mode == 'absolute':
+            mismatch_gap = raw_mismatch_gap / min(1, len(self.model.flow_global))
+
+        elif self.admmopt.tolerance_mode == 'relative':
+            normalizer = max(norm(flow_global_with_k), norm(flow_global))
+            if normalizer == 0:
+                normalizer = 1
+            mismatch_gap = norm(flow_global_with_k - flow_global) / normalizer
+
+        return mismatch_gap
 
 
     def _update_primalgap(self) -> None:
@@ -220,6 +232,8 @@ class AdmmModel:
 
     def _update_cost_rule(self, model):
         if model.obj.value == 'cost':
+            if hasattr(model, 'objective_function'):
+                model.del_component(model.objective_function)
             model.objective_function = pyomo.Objective(
                 rule=cost_rule_sub(self.flow_global, self.lamda, self.rho),
                 sense=pyomo.minimize,
@@ -241,21 +255,27 @@ class AdmmModel:
             - `model: AdmmModel
             - `solver`: pyomo solver
         """
+        print(f'model {self.ID}')
+        print(f'neighbors: {self.neighbors}')
         index = self.shared_lines_index
 
         flows_all = {}
         flows_with_neighbor = {k: {} for k in self.neighbors}
 
         for (tm, stf, sit_in, sit_out, tra, com), v in e_tra_in.items():
+            print(f'{sit_in}-{sit_out}')
             if (sit_in, sit_out) in zip(index['Site In'], index['Site Out']):
-                flows_all[(tm, stf, sit_in, sit_out)] = v.value
                 k = self.shared_lines.loc[(stf, sit_in, sit_out, tra, com), 'neighbor_cluster']
+                print(f'shared with {k}')
+                flows_all[(tm, stf, sit_in, sit_out)] = v.value
                 flows_with_neighbor[k][(tm, stf, sit_in, sit_out)] = v.value
 
         flows_all = pd.Series(flows_all)
         flows_all.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
 
         for k in flows_with_neighbor:
+            print(f'flows_with_neighbor[{k}]')
+            print(flows_with_neighbor[k])
             flows = pd.Series(flows_with_neighbor[k])
             flows.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
             flows_with_neighbor[k] = flows

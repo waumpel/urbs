@@ -4,8 +4,9 @@
 # Package Pypower 5.1.3 is used in this application
 ############################################################################
 
+from copy import deepcopy
 from time import time
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import pandas as pd
 import pyomo.environ as pyomo
@@ -108,6 +109,28 @@ class AdmmModelPersistent(AdmmModel):
 
 
     # override
+    def update_flow_global(self, updates: Dict) -> None:
+        """
+        Update `self.flow_global` for all neighbor => msg pairs in `updates`, then
+        update the dual gap.
+        """
+        flow_global_old = deepcopy(self.flow_global)
+        for k, msg in updates.items():
+            lamda = msg.lamda
+            flow = msg.flow
+            rho = msg.rho
+
+            # TODO: can the indexing be improved?
+            self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)] = (
+                (self.lamda.loc[self.lamda.index.isin(self.flows_with_neighbor[k].index)] +
+                 lamda + self.flows_with_neighbor[k] * self.rho + flow * rho +
+                 self.admmopt.async_correction * self.flow_global.loc[self.flow_global.index.isin(self.flows_with_neighbor[k].index)]) /
+                (self.rho + rho + self.admmopt.async_correction))
+
+        self._update_dualgap(flow_global_old)
+
+
+    # override
     def _update_cost_rule(self) -> None:
         """
         Update those components of `self.model` that use `cost_rule_sub` to reflect
@@ -115,7 +138,7 @@ class AdmmModelPersistent(AdmmModel):
         Currently only supports models with `cost` objective, i.e. only the objective
         function is updated.
         """
-        super()._update_cost_rule()
+        super()._update_cost_rule(self.model)
         self.solver.set_objective(self.model.objective_function)
 
 
