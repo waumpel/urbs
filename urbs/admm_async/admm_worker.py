@@ -1,5 +1,6 @@
 from math import ceil
 from multiprocessing import Queue
+from os.path import join
 from time import sleep
 from typing import Dict, Iterable, List, Set, Union
 import urbs
@@ -211,6 +212,9 @@ class AdmmWorker:
             hoursPerPeriod=hoursPerPeriod,
             weighting_order=weighting_order,
         )
+
+        with open(join(self.result_dir, f'e_tra_in-{self.ID}.log'), 'w', encoding='utf8') as f:
+            urbs_model.e_tra_in.display(ostream=f)
 
         self.model = AdmmModelPersistent(
             self.ID,

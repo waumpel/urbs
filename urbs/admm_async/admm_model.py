@@ -92,7 +92,7 @@ class AdmmModel:
         solver.solve(model, tee=True, report_timing=False)
         solver_stop = time()
 
-        objective = pyomo.value(model.obj)
+        objective = pyomo.value(model.objective_function)
         self._retrieve_boundary_flows(model.e_tra_in)
         self._update_primalgap()
 
@@ -255,18 +255,18 @@ class AdmmModel:
             - `model: AdmmModel
             - `solver`: pyomo solver
         """
-        print(f'model {self.ID}')
-        print(f'neighbors: {self.neighbors}')
+        # print(f'model {self.ID}')
+        # print(f'neighbors: {self.neighbors}')
         index = self.shared_lines_index
 
         flows_all = {}
         flows_with_neighbor = {k: {} for k in self.neighbors}
 
         for (tm, stf, sit_in, sit_out, tra, com), v in e_tra_in.items():
-            print(f'{sit_in}-{sit_out}')
+            # print(f'{sit_in}-{sit_out}')
             if (sit_in, sit_out) in zip(index['Site In'], index['Site Out']):
                 k = self.shared_lines.loc[(stf, sit_in, sit_out, tra, com), 'neighbor_cluster']
-                print(f'shared with {k}')
+                # print(f'shared with {k}')
                 flows_all[(tm, stf, sit_in, sit_out)] = v.value
                 flows_with_neighbor[k][(tm, stf, sit_in, sit_out)] = v.value
 
@@ -274,8 +274,8 @@ class AdmmModel:
         flows_all.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
 
         for k in flows_with_neighbor:
-            print(f'flows_with_neighbor[{k}]')
-            print(flows_with_neighbor[k])
+            # print(f'flows_with_neighbor[{k}]')
+            # print(flows_with_neighbor[k])
             flows = pd.Series(flows_with_neighbor[k])
             flows.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
             flows_with_neighbor[k] = flows

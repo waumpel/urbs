@@ -502,6 +502,9 @@ def run_sequential(
             weighting_order=weighting_order,
         )
 
+        with open(join(result_dir, f'e_tra_in-{ID}.log'), 'w', encoding='utf8') as f:
+            urbs_model.e_tra_in.display(ostream=f)
+
         model_time = time() - model_start
         model_times.append(model_time)
         print(f'model_time: {model_time:.2f}')
@@ -543,11 +546,10 @@ def run_sequential(
     solver_start = time()
 
     print(f"iter {'primalgap'.ljust(12)} time")
-
     for nu in range(admmopt.max_iter):
         objectives = []
         for model, model_file in zip(models, model_files):
-            with open(model_files[ID], 'rb') as f:
+            with open(model_file, 'rb') as f:
                 urbs_model = pickle.load(f)
 
             objective, _, _, _, _, _ = \
@@ -555,7 +557,7 @@ def run_sequential(
 
             objectives.append(objective)
 
-            del model
+            del urbs_model
 
         # check convergence
         # TODO: perhaps compute in a centralized fashion
@@ -600,6 +602,8 @@ def run_sequential(
         print('Timeout')
 
     solver_time = time() - solver_start
+    print('objectives')
+    print(objectives)
     admm_objective = sum(objectives)
 
     print(f'ADMM solver time: {solver_time:4.0f} s')

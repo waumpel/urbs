@@ -34,19 +34,19 @@ def prepare_result_directory(result_name):
     return result_dir
 
 
-def setup_solver(optim, logfile='solver.log', threads=None):
+def setup_solver(optim, logfile=None, threads=None):
     if optim.name == 'gurobi':
         # reference with list of option names
         # http://www.gurobi.com/documentation/5.6/reference-manual/parameters
-        optim.set_options("logfile={}".format(logfile))
+        if logfile is not None:
+            optim.set_options("logfile={logfile}")
         optim.set_options("NumericFocus=3")
         optim.set_options("Crossover=0")
         optim.set_options("Method=2") # ohne method concurrent optimization
         #optim.set_options("QCPDual=0")
         #optim.set_options("BarConvTol=1e-7")
         if threads is None:
-            threads = 8
-        optim.set_options(f"Threads={threads}")
+            optim.set_options(f"Threads={threads}")
         # optim.set_options("timelimit=7200")  # seconds
         # optim.set_options("mipgap=5e-4")  # default = 1e-4
     elif optim.name == 'glpk':
