@@ -9,6 +9,7 @@ from urbs.model import cost_rule_sub
 from urbs.runfunctions import setup_solver
 
 import numpy as np
+from numpy.linalg import norm
 import pandas as pd
 import psutil as ps
 import pyomo.environ as pyomo
@@ -454,14 +455,6 @@ def run_sequential(
     with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
         json.dump(metadata.to_dict(), f, indent=4)
 
-    # TODO: remove
-    # ADMM fields to be indexed by cluster ID. Values are updated in each iteration.
-    # obj = [None] * n_clusters
-    # flows_all = [None] * n_clusters
-    # flows_with_neighbor = [None] * n_clusters
-    # primalgap = [None] * n_clusters
-    # dualgap = [None] * n_clusters
-
     models = [
         AdmmModel(
             ID,
@@ -539,10 +532,17 @@ def run_sequential(
     avg_unpickle_time = sum(unpickle_times) / len(unpickle_times)
     print(f'avg_unpickle_time: {avg_unpickle_time:.2f}')
 
+
+
+    rho = admmopt.rho
+    objectives = []
+    global_convergence = False
+    primalgap_old = None
+    flow_globals = pd.concat(model.flow_global for model in models)
+
     solver = pyomo.SolverFactory(solver_name)
     solver.set_options(f"LogToConsole=0")
     setup_solver(solver, threads=threads)
-    global_convergence = False
     solver_start = time()
 
     print(f"iter {'primalgap'.ljust(12)} time")
@@ -552,25 +552,28 @@ def run_sequential(
             with open(model_file, 'rb') as f:
                 urbs_model = pickle.load(f)
 
-            objective, _, _, _, _, _ = \
+            objective, _, _ = \
                 model.solve_iteration(solver, urbs_model)
 
             objectives.append(objective)
 
             del urbs_model
 
-        # check convergence
-        # TODO: perhaps compute in a centralized fashion
-        max_primalgap = max(model.primalgap for model in models)
-        # max_mismatch = max(
-        #     model.mismatch(k, models[k].flow_global)
-        #     for model in models
-        #     for k in model.neighbors
-        # )
+        raw_primalgap = sum(
+            norm(model.flows_all - model.flow_global)
+            for model in models
+        )
+        normalizer = max(
+            norm(pd.concat(model.flows_all for model in models)),
+            norm(flow_globals),
+        )
+        if normalizer == 0:
+            normalizer = 1
+        primalgap = raw_primalgap / normalizer
 
         for ID, model in enumerate(models):
-            # TODO: not all fields are needed here
             model.update_flow_global({
+                # TODO: not all fields are needed here
                 k: AdmmVariableMessage(
                     k,
                     flow = models[k].flows_with_neighbor[ID],
@@ -586,13 +589,34 @@ def run_sequential(
                 )
                 for k in model.neighbors
             })
+
             model.update_lamda()
-            # TODO: update rho
+
+        flow_globals_new = pd.concat(model.flow_global for model in models)
+        raw_dualgap = rho * norm(flow_globals_new - flow_globals)
+        flow_globals = flow_globals_new
+        normalizer = norm(pd.concat(model.lamda for model in models))
+        if normalizer == 0:
+            normalizer = 1
+        dualgap = raw_dualgap / normalizer
+
+        rho = AdmmModel.calc_rho(
+            nu,
+            admmopt,
+            rho,
+            primalgap,
+            primalgap_old,
+            dualgap,
+        )
+        for model in models:
+            model.rho = rho
+
+        primalgap_old = primalgap
 
         iter_time = time() - solver_start
-        print(f"{str(nu).rjust(4)} {max_primalgap:.6e} {int(iter_time)}s")
+        print(f"{str(nu).rjust(4)} {primalgap:.6e} {int(iter_time)}s")
 
-        if max_primalgap < admmopt.primal_tolerance:
+        if primalgap < admmopt.primal_tolerance:
             global_convergence = True
             break
 
@@ -602,8 +626,6 @@ def run_sequential(
         print('Timeout')
 
     solver_time = time() - solver_start
-    print('objectives')
-    print(objectives)
     admm_objective = sum(objectives)
 
     print(f'ADMM solver time: {solver_time:4.0f} s')

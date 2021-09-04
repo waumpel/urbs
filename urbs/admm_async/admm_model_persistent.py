@@ -8,6 +8,8 @@ from copy import deepcopy
 from time import time
 from typing import Dict, List, Tuple
 
+import numpy as np
+from numpy.linalg import norm
 import pandas as pd
 import pyomo.environ as pyomo
 from pyomo.environ import SolverFactory
@@ -75,6 +77,10 @@ class AdmmModelPersistent(AdmmModel):
 
         self.model = model
 
+        self.dualgap = np.nan
+        self.primalgap = None
+        self.primalgap_old = None
+
         self.solver = SolverFactory('gurobi_persistent')
         self.solver.set_instance(model, symbolic_solver_labels=False)
         self.solver.set_options(f"LogToConsole=0")
@@ -128,6 +134,54 @@ class AdmmModelPersistent(AdmmModel):
                 (self.rho + rho + self.admmopt.async_correction))
 
         self._update_dualgap(flow_global_old)
+
+
+    def update_rho(self, neighbor_rhos: List[float]) -> None:
+        """
+        Update the penalty parameter according to the strategy stored in `self.admmopt`.
+        """
+        self.rho = AdmmModel.calc_rho(
+            self.nu, self.admmopt, self.rho, self.primalgap, self.primalgap_old, self.dualgap
+        )
+        if self.admmopt.penalty_mode == 'increasing':
+            self.rho = max(self.rho, *neighbor_rhos)
+
+
+    def _update_primalgap(self) -> None:
+        """
+        Calculate the new primal gap.
+        """
+        self.primalgap_old = self.primalgap
+
+        raw_primalgap = norm(self.flows_all - self.flow_global)
+        if self.admmopt.tolerance_mode == 'absolute':
+            primalgap = raw_primalgap / min(1, len(self.flow_global))
+        elif self.admmopt.tolerance_mode == 'relative':
+            normalizer = max(
+                norm(self.flows_all),
+                norm(self.flow_global)
+            )
+            if normalizer == 0:
+                normalizer = 1
+            primalgap = raw_primalgap / normalizer
+
+        self.primalgap = primalgap
+
+
+    def _update_dualgap(self, flow_global_old: pd.Series) -> None:
+        """
+        Calculate the new dual gap.
+        """
+        raw_dualgap = self.rho * norm(self.flow_global - flow_global_old)
+
+        if self.admmopt.tolerance_mode == 'absolute':
+            dualgap = raw_dualgap / min(1, len(self.flow_global))
+        elif self.admmopt.tolerance_mode == 'relative':
+            normalizer = norm(self.lamda)
+            if normalizer == 0:
+                normalizer = 1
+            dualgap = raw_dualgap / normalizer
+        self.dualgap = dualgap
 
 
     # override
