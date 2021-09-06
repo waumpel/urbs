@@ -3,38 +3,26 @@ import json
 import multiprocessing as mp
 import os
 from os.path import join
-import time
+import pickle
+from time import time
+
+import numpy as np
+from numpy.linalg import norm
+import pandas as pd
+import psutil as ps
+import pyomo.environ as pyomo
+
+import urbs
+from.admm_metadata import AdmmMetadata
+from urbs.admm_async.admm_model import AdmmModel
 from urbs.admm_async.admm_worker import AdmmWorker
-from urbs.admm_async.admm_messages import AdmmStatus, AdmmStatusMessage, AdmmIterationResult
+from urbs.admm_async.admm_messages import AdmmStatus, AdmmStatusMessage, AdmmIterationResult, AdmmVariableMessage
 from urbs.features.typeperiod import run_tsam
 from urbs.features.transdisthelper import *
 from urbs.identify import identify_mode
-
-import numpy as np
-import pandas as pd
-import psutil as ps
-
 from urbs.input import read_input, add_carbon_supplier
+from urbs.runfunctions import setup_solver
 from urbs.validation import validate_input
-from.admm_metadata import AdmmMetadata
-
-
-class InitialValues:
-    """
-    Holds the initial values for several variables and parameters.
-    Intended use: Each member holds a scalar value that is used for all values in a
-    `pd.Series` or `pd.DataFrame`.
-
-    ### Members:
-    * `flow`
-    * `flow_global`
-    * `lamda`
-    """
-
-    def __init__(self, flow, flow_global, lamda):
-        self.flow = flow
-        self.flow_global = flow_global
-        self.lamda = lamda
 
 
 def prepare_result_directory(result_name):
@@ -56,29 +44,6 @@ def prepare_result_directory(result_name):
         os.makedirs(result_dir)
 
     return result_dir
-
-
-def setup_solver(solver, logfile='solver.log'):
-    """ """
-    if solver.name == 'gurobi':
-        # reference with list of option names
-        # http://www.gurobi.com/documentation/5.6/reference-manual/parameters
-        solver.set_options("logfile={}".format(logfile))
-        solver.set_options("method=2")
-        # solver.set_options("timelimit=7200")  # seconds
-        # solver.set_options("mipgap=5e-4")  # default = 1e-4
-    elif solver.name == 'glpk':
-        # reference with list of options
-        # execute 'glpsol --help'
-        solver.set_options("log={}".format(logfile))
-        # solver.set_options("tmlim=7200")  # seconds
-        # solver.set_options("mipgap=.0005")
-    elif solver.name == 'cplex':
-        solver.set_options("log={}".format(logfile))
-    else:
-        print("Warning from setup_solver: no options set for solver "
-              "'{}'!".format(solver.name))
-    return solver
 
 
 def prepare_admm(
@@ -157,11 +122,11 @@ def prepare_admm(
 
     n_clusters = len(clusters)
 
-    # map site -> cluster_idx
+    # map site -> cluster ID
     site_cluster_map = {}
-    for cluster, cluster_idx in zip(clusters, range(n_clusters)):
+    for cluster, ID in zip(clusters, range(n_clusters)):
         for site in cluster:
-            site_cluster_map[site] = cluster_idx
+            site_cluster_map[site] = ID
 
     # Note:
     # data_all['transmission'].index:
@@ -181,7 +146,7 @@ def prepare_admm(
     # Set of neighbors for each cluster
     neighbors = [set() for _ in range(n_clusters)]
 
-    for row, (_, site_in, site_out, tra, com) in zip(range(0, data_all['transmission'].shape[0]), data_all['transmission'].index):
+    for row, (_, site_in, site_out, tra, com) in enumerate(data_all['transmission'].index):
         from_cluster_idx = site_cluster_map[site_in]
         to_cluster_idx = site_cluster_map[site_out]
 
@@ -200,39 +165,56 @@ def prepare_admm(
             internal_lines_logic[from_cluster_idx, row] = True
             internal_lines_logic[to_cluster_idx, row] = True
 
-    # map cluster_idx -> slice of data_all['transmission'] (copies)
-    shared_lines = [
-        data_all['transmission'].loc[shared_lines_logic[cluster_idx, :]].copy(deep=True)
-        for cluster_idx in range(0, n_clusters)
-    ]
-    # map cluster_idx -> slice of data_all['transmission'] (copies)
+    # map ID -> slice of data_all['transmission'] (copies)
     internal_lines = [
-        data_all['transmission'].loc[internal_lines_logic[cluster_idx, :]].copy(deep=True)
-        for cluster_idx in range(0, n_clusters)
-    ]
-    # neighbouring cluster of each shared line for each cluster
-    neighbor_cluster = [
-        np.array(cluster_from[cluster_idx]) + np.array(cluster_to[cluster_idx]) - cluster_idx
-        for cluster_idx in range(0, n_clusters)
+        data_all['transmission'].loc[internal_lines_logic[ID, :]].copy(deep=True)
+        for ID in range(n_clusters)
     ]
 
-    initial_values = InitialValues(
-        flow=0,
-        flow_global=0,
-        lamda=0,
-    )
+    # neighbouring cluster of each shared line for each cluster
+    neighbor_cluster = [
+        np.array(cluster_from[ID]) + np.array(cluster_to[ID]) - ID
+        for ID in range(n_clusters)
+    ]
+
+    # map ID -> slice of data_all['transmission'] (copies)
+    shared_lines = [
+        data_all['transmission'].loc[shared_lines_logic[ID, :]].copy(deep=True)
+        for ID in range(n_clusters)
+    ]
+    # enlarge shared_lines (copies of slices of data_all['transmission'])
+    for ID in range(n_clusters):
+        shared_lines[ID]['cluster_from'] = cluster_from[ID]
+        shared_lines[ID]['cluster_to'] = cluster_to[ID]
+        shared_lines[ID]['neighbor_cluster'] = neighbor_cluster[ID]
+
+    shared_lines_index = [
+        shared_lines[ID].index.to_frame()
+        for ID in range(n_clusters)
+    ]
+
+    initial_flow_global = 0
+    initial_lamda = 0
+
+    flow_global = [
+        fill_flow_global(year, timesteps, shared_lines_index[ID], initial_flow_global)
+        for ID in range(n_clusters)
+    ]
+
+    lamda = [
+        fill_lamda(year, timesteps, shared_lines_index[ID], initial_lamda)
+        for ID in range(n_clusters)
+    ]
 
     return (
         timesteps,
-        year,
-        initial_values,
         clusters,
         neighbors,
-        shared_lines,
         internal_lines,
-        cluster_from,
-        cluster_to,
-        neighbor_cluster,
+        shared_lines,
+        shared_lines_index,
+        flow_global,
+        lamda,
         weighting_order,
     )
 
@@ -257,6 +239,30 @@ def print_status(results, status):
     print('\n' + df.to_string())
 
 
+def fill_flow_global(year, timesteps, shared_lines_index, value):
+    flow_global = pd.Series({
+        (t, year, source, target): value
+        for t in timesteps[1:]
+        for source, target in zip(
+            shared_lines_index['Site In'], shared_lines_index['Site Out']
+        )
+    })
+    flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+    return flow_global
+
+
+def fill_lamda(year, timesteps, shared_lines_index, value):
+    lamda = pd.Series({
+        (t, year, source, target): value
+        for t in timesteps[1:]
+        for source, target in zip(
+            shared_lines_index['Site In'], shared_lines_index['Site Out']
+        )
+    })
+    lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
+    return lamda
+
+
 def run_parallel(
     data_all,
     timesteps,
@@ -275,15 +281,13 @@ def run_parallel(
 
     (
         timesteps,
-        year,
-        initial_values,
         clusters,
         neighbors,
-        shared_lines,
         internal_lines,
-        cluster_from,
-        cluster_to,
-        neighbor_cluster,
+        shared_lines,
+        shared_lines_index,
+        flow_global,
+        lamda,
         weighting_order,
     ) = prepare_admm(
         data_all,
@@ -325,17 +329,15 @@ def run_parallel(
                 timesteps,
                 dt,
                 objective,
-                year,
-                initial_values,
                 admmopt,
                 n_clusters,
                 clusters[ID],
                 neighbors[ID],
-                shared_lines[ID],
                 internal_lines[ID],
-                cluster_from[ID],
-                cluster_to[ID],
-                neighbor_cluster[ID],
+                shared_lines[ID],
+                shared_lines_index[ID],
+                flow_global[ID],
+                lamda[ID],
                 queues,
                 hoursPerPeriod,
                 weighting_order,
@@ -346,6 +348,7 @@ def run_parallel(
 
     print('Spawning worker processes')
 
+    solver_start = time()
     for proc in procs:
         proc.start()
 
@@ -394,7 +397,7 @@ def run_parallel(
     for proc in procs:
         proc.join()
 
-    ttime = time.time()
+    ttime = time()
     solver_time = ttime - solver_start
 
     admm_objective = sum(result.objective for result in results)
@@ -402,6 +405,202 @@ def run_parallel(
     # print results
     print(f'ADMM solver time: {solver_time:4.0f} s')
     print(f'ADMM objective  : {admm_objective:.4e}')
+
+    result = {
+        'objective': admm_objective,
+        'time': solver_time,
+    }
+
+    with open(join(result_dir, 'result.json'), 'w', encoding='utf8') as f:
+        json.dump(result, f, indent=4)
+
+    return admm_objective
+
+
+def run_sequential(
+    solver_name,
+    data_all,
+    timesteps,
+    result_dir,
+    dt,
+    objective,
+    clusters,
+    admmopt,
+    microgrid_files=None,
+    microgrid_cluster_mode='microgrid',
+    cross_scenario_data=None,
+    noTypicalPeriods=None,
+    hoursPerPeriod=None,
+    threads=1,
+    ):
+
+    # admm preprocessing
+    (
+        timesteps,
+        clusters,
+        neighbors,
+        internal_lines,
+        shared_lines,
+        shared_lines_index,
+        flow_global,
+        lamda,
+        weighting_order,
+    ) = prepare_admm(
+        data_all,
+        timesteps,
+        clusters,
+        microgrid_files,
+        microgrid_cluster_mode,
+        cross_scenario_data,
+        noTypicalPeriods,
+        hoursPerPeriod,
+    )
+
+    n_clusters = len(clusters)
+
+    # store metadata (now that all clusters are created)
+    metadata = AdmmMetadata(clusters, admmopt)
+    with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
+        json.dump(metadata.to_dict(), f, indent=4)
+
+    models = [
+        AdmmModel(
+            ID,
+            result_dir,
+            admmopt,
+            neighbors[ID],
+            shared_lines[ID],
+            shared_lines_index[ID],
+            flow_global[ID],
+            lamda[ID],
+        )
+        for ID in range(n_clusters)
+    ]
+
+    # place to store models on disk
+    model_dir = join(result_dir, 'models')
+    os.mkdir(model_dir)
+
+    # Create base models, without objective function, and pickle them.
+    model_files = []
+    for ID in range(n_clusters):
+        urbs_model = urbs.model.create_model(
+            data_all,
+            timesteps,
+            dt,
+            objective,
+            sites=clusters[ID],
+            shared_lines=shared_lines[ID],
+            internal_lines=internal_lines[ID],
+            hoursPerPeriod=hoursPerPeriod,
+            weighting_order=weighting_order,
+        )
+
+        with open(join(result_dir, f'e_tra_in-{ID}.log'), 'w', encoding='utf8') as f:
+            urbs_model.e_tra_in.display(ostream=f)
+
+        # pickle
+        model_file = join(model_dir, f'{ID}.pickle')
+        model_files.append(model_file)
+        with open(model_file, 'wb') as f:
+            pickle.dump(urbs_model, f)
+        del urbs_model
+
+    # solver prep
+    rho = admmopt.rho
+    objectives = []
+    global_convergence = False
+    primalgap_old = None
+    flow_globals = pd.concat(model.flow_global for model in models)
+
+    solver = pyomo.SolverFactory(solver_name)
+    solver.set_options(f"LogToConsole=0")
+    setup_solver(solver, threads=threads)
+    unpickle_time = 0
+    solver_start = time()
+
+    # start iterations
+    print(f"iter {'primalgap'.ljust(12)} time")
+    for nu in range(admmopt.max_iter):
+        objectives = []
+        for model, model_file in zip(models, model_files):
+            unpickle_start = time()
+            with open(model_file, 'rb') as f:
+                urbs_model = pickle.load(f)
+            unpickle_time += time() - unpickle_start
+
+            objective, _, _ = \
+                model.solve_iteration(solver, urbs_model)
+
+            objectives.append(objective)
+
+            del urbs_model
+
+        raw_primalgap = sum(
+            norm(model.flows_all - model.flow_global)
+            for model in models
+        )
+        normalizer = max(
+            norm(pd.concat(model.flows_all for model in models)),
+            norm(flow_globals),
+        )
+        if normalizer == 0:
+            normalizer = 1
+        primalgap = raw_primalgap / normalizer
+
+        for ID, model in enumerate(models):
+            model.update_flow_global({
+                k: AdmmVariableMessage(
+                    sender = k,
+                    flow = models[k].flows_with_neighbor[ID],
+                    lamda = None,
+                    rho = None,
+                    flow_global = None,
+                )
+                for k in model.neighbors
+            })
+
+            model.update_lamda()
+
+        flow_globals_new = pd.concat(model.flow_global for model in models)
+        raw_dualgap = rho * norm(flow_globals_new - flow_globals)
+        flow_globals = flow_globals_new
+        normalizer = norm(pd.concat(model.lamda for model in models))
+        if normalizer == 0:
+            normalizer = 1
+        dualgap = raw_dualgap / normalizer
+
+        rho = AdmmModel.calc_rho(
+            nu,
+            admmopt,
+            rho,
+            primalgap,
+            primalgap_old,
+            dualgap,
+        )
+        for model in models:
+            model.rho = rho
+
+        primalgap_old = primalgap
+
+        iter_time = time() - solver_start
+        print(f"{str(nu).rjust(4)} {primalgap:.6e} {int(iter_time)}s")
+
+        if primalgap < admmopt.primal_tolerance:
+            global_convergence = True
+            break
+
+    if global_convergence:
+        print('Global convergence!')
+    else:
+        print('Timeout')
+
+    solver_time = time() - solver_start
+    admm_objective = sum(objectives)
+
+    print(f'ADMM solver time: {solver_time:4.0f} s')
+    print(f'ADMM objective  : {admm_objective:.4e}')
+    print(f'time spent unpickling models: {unpickle_time:4.0f} s ({unpickle_time / solver_time:.2%}%)')
 
     result = {
         'objective': admm_objective,

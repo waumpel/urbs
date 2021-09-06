@@ -5,6 +5,7 @@ from .features.transmission import *
 from .input import *
 import pyomo.environ as pyomo
 
+
 def create_model(
     data_all,
     timesteps=None,
@@ -14,9 +15,6 @@ def create_model(
     sites = None,
     shared_lines=None,
     internal_lines=None,
-    flow_global=None,
-    lamda=None,
-    rho=None,
     hoursPerPeriod=None,
     weighting_order=None,
     ):
@@ -57,7 +55,7 @@ def create_model(
     if sites is None:
         m, data = pyomo_model_prep(data_all, timesteps)
     else:
-        m, data = pyomo_model_prep(data_all, timesteps, sites, pd.concat([shared_lines,internal_lines])) # prepare pyomo model
+        m, data = pyomo_model_prep(data_all, timesteps, sites, pd.concat([shared_lines, internal_lines])) # prepare pyomo model
 
     m.name = 'urbs'
     m.created = datetime.now().strftime('%Y%m%dT%H%M')
@@ -510,14 +508,6 @@ def create_model(
 
             m.objective_function = pyomo.Objective(
                 rule=cost_rule,
-                sense=pyomo.minimize,
-                doc='minimize(cost = sum of all cost types)')
-
-        else:
-            m.objective_function = pyomo.Objective(
-                rule=cost_rule_sub(flow_global=flow_global,
-                                   lamda=lamda,
-                                   rho=rho),
                 sense=pyomo.minimize,
                 doc='minimize(cost = sum of all cost types)')
 

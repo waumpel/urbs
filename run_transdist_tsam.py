@@ -18,6 +18,7 @@ if __name__ == '__main__':
 
     options = argparse.ArgumentParser()
     options.add_argument('-a', '--admm', action='store_true')
+    options.add_argument('-s', '--sequential', action='store_true')
     args = options.parse_args()
 
     input_files = 'Transmission_Level.xlsx'
@@ -34,6 +35,8 @@ if __name__ == '__main__':
     result_name = 'transdist-tsam'
     if args.admm:
         result_name += '-admm'
+    if args.sequential:
+        result_name += '-seq'
     result_dir = prepare_result_directory(result_name)  # name + time stamp
 
     # #copy input file to result directory
@@ -54,7 +57,7 @@ if __name__ == '__main__':
     dt = 1  # length of each time step (unit: hours)
 
     # input data for tsam method
-    noTypicalPeriods = 1
+    noTypicalPeriods = 4
     hoursPerPeriod = 168
 
     # select scenarios to be run
@@ -102,7 +105,24 @@ if __name__ == '__main__':
             validate_input(data_all)
             validate_dc_objective(data_all, objective)
 
-            admm_objective = admm_async.run_parallel(
+            if args.sequential:
+                admm_async.run_sequential(
+                    'gurobi',
+                    data_all,
+                    timesteps,
+                    scenario_dir,
+                    dt,
+                    objective,
+                    clusters,
+                    admmopt,
+                    microgrid_files=microgrid_paths,
+                    microgrid_cluster_mode='microgrid',
+                    cross_scenario_data=cross_scenario_data,
+                    noTypicalPeriods=noTypicalPeriods,
+                    hoursPerPeriod=hoursPerPeriod,
+                )
+            else:
+                admm_objective = admm_async.run_parallel(
                 data_all,
                 timesteps,
                 scenario_dir,
