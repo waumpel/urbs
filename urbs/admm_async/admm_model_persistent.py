@@ -14,40 +14,24 @@ import pandas as pd
 import pyomo.environ as pyomo
 from pyomo.environ import SolverFactory
 
+from .admm_messages import AdmmVariableMessage
 from .admm_model import AdmmModel
 from .admm_option import AdmmOption
 
 
-# TODO: docstrings
 class AdmmModelPersistent(AdmmModel):
     """
     Encapsulates an urbs subproblem and implements ADMM steps.
 
     Attributes
-        - `admmopt`: `AdmmOption` object
         - `dualgap`: Current dual gap
-        - `flow_global`: `pd.Series` containing the global flow values. Index is
-          `['t', 'stf', 'sit', 'sit_']`.
-        - `flows_all`: `pd.Series` containing the current values of the local flow variables.
-          Index is `['t', 'stf', 'sit', 'sit_']`.
-        - `flows_with_neighbor`: Dict containing containing the current values of the local
-          flow variables with each neighbor. Each entry is a `pd.Series` with index
-          ['t', 'stf', 'sit', 'sit_']`.
-        - `lamda`: `pd.Series` containing the Lagrange multipliers. Index is
-          `['t', 'stf', 'sit', 'sit_']`.
         - `model`: `pyomo.ConcreteModel`
-        - `neighbors`: List of neighbor IDs
         - `nu`: Current iteration
         - `primalgap`: Current primal gap
         - `primalgap_old`: Last primal gap
-        - `rho`: Quadratic penalty coefficient
-        - `shared_lines`: `pd.DataFrame` of inter-cluster transmission lines. A copy of a
-            slice of the 'Transmision' DataFrame, enlarged with the columns `cluster_from`,
-            `cluster_to` and `neighbor_cluster`.
-        - `shared_lines_index`: Index of `shared_lines` as a `DataFrame`
         - `solver`: `GurobiPersistent` solver interface to `model`
 
-    See also: `AdmmWorker`
+    See also: `AdmmModel`, `AdmmWorker`
     """
 
     def __init__(
@@ -78,6 +62,7 @@ class AdmmModelPersistent(AdmmModel):
         self.model = model
 
         self.dualgap = np.nan
+        self.nu = -1
         self.primalgap = None
         self.primalgap_old = None
 
@@ -92,7 +77,7 @@ class AdmmModelPersistent(AdmmModel):
 
 
     # override
-    def solve_iteration(self) -> Tuple:
+    def solve_iteration(self) -> Tuple[float, float, float, float, float, float]:
         """
         Start a new iteration and solve the optimization problem.
 
@@ -115,7 +100,7 @@ class AdmmModelPersistent(AdmmModel):
 
 
     # override
-    def update_flow_global(self, updates: Dict) -> None:
+    def update_flow_global(self, updates: Dict[int, AdmmVariableMessage]) -> None:
         """
         Update `self.flow_global` for all neighbor => msg pairs in `updates`, then
         update the dual gap.
@@ -139,6 +124,9 @@ class AdmmModelPersistent(AdmmModel):
     def update_rho(self, neighbor_rhos: List[float]) -> None:
         """
         Update the penalty parameter according to the strategy stored in `self.admmopt`.
+
+        After the update, if the penalty mode is `increasing`, the maximum is picked from
+        the newly computed value and `neighbor_rhos`.
         """
         self.rho = AdmmModel.calc_rho(
             self.nu, self.admmopt, self.rho, self.primalgap, self.primalgap_old, self.dualgap
@@ -187,10 +175,8 @@ class AdmmModelPersistent(AdmmModel):
     # override
     def _update_cost_rule(self) -> None:
         """
-        Update those components of `self.model` that use `cost_rule_sub` to reflect
-        changes to `self.flow_global`, `self.lamda` and `self.rho`.
-        Currently only supports models with `cost` objective, i.e. only the objective
-        function is updated.
+        Update the objective function of `model` to reflect changes to the global flow
+        values, Lagrange multipliers, and penalty parameter.
         """
         super()._update_cost_rule(self.model)
         self.solver.set_objective(self.model.objective_function)
@@ -198,5 +184,9 @@ class AdmmModelPersistent(AdmmModel):
 
     # override
     def _retrieve_boundary_flows(self) -> None:
+        """
+        Retrieve optimized flow values from the solver and store them in
+        `self.flows_all` and `self.flows_with_neighbor`.
+        """
         self.solver.load_vars(self.model.e_tra_in[:, :, :, :, :, :])
         super()._retrieve_boundary_flows(self.model.e_tra_in)

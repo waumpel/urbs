@@ -5,8 +5,6 @@ import os
 from os.path import join
 import pickle
 from time import time
-from urbs.model import cost_rule_sub
-from urbs.runfunctions import setup_solver
 
 import numpy as np
 from numpy.linalg import norm
@@ -15,6 +13,7 @@ import psutil as ps
 import pyomo.environ as pyomo
 
 import urbs
+from.admm_metadata import AdmmMetadata
 from urbs.admm_async.admm_model import AdmmModel
 from urbs.admm_async.admm_worker import AdmmWorker
 from urbs.admm_async.admm_messages import AdmmStatus, AdmmStatusMessage, AdmmIterationResult, AdmmVariableMessage
@@ -22,8 +21,8 @@ from urbs.features.typeperiod import run_tsam
 from urbs.features.transdisthelper import *
 from urbs.identify import identify_mode
 from urbs.input import read_input, add_carbon_supplier
+from urbs.runfunctions import setup_solver
 from urbs.validation import validate_input
-from.admm_metadata import AdmmMetadata
 
 
 def prepare_result_directory(result_name):
@@ -473,16 +472,9 @@ def run_sequential(
     model_dir = join(result_dir, 'models')
     os.mkdir(model_dir)
 
-    # measurements
-    model_times = []
-    pickle_times = []
-    unpickle_times = []
-
     # Create base models, without objective function, and pickle them.
     model_files = []
     for ID in range(n_clusters):
-        model_start = time()
-
         urbs_model = urbs.model.create_model(
             data_all,
             timesteps,
@@ -498,42 +490,14 @@ def run_sequential(
         with open(join(result_dir, f'e_tra_in-{ID}.log'), 'w', encoding='utf8') as f:
             urbs_model.e_tra_in.display(ostream=f)
 
-        model_time = time() - model_start
-        model_times.append(model_time)
-        print(f'model_time: {model_time:.2f}')
-
         # pickle
         model_file = join(model_dir, f'{ID}.pickle')
         model_files.append(model_file)
         with open(model_file, 'wb') as f:
-            pickle_start = time()
             pickle.dump(urbs_model, f)
-            pickle_time = time() - pickle_start
-            pickle_times.append(pickle_time)
-            print(f'pickle_time: {pickle_time}')
         del urbs_model
 
-    # unpickle test (TODO: remove)
-    for model_file in model_files:
-        with open(model_file, 'rb') as f:
-            unpickle_start = time()
-            urbs_model = pickle.load(f)
-            unpickle_time = time() - unpickle_start
-            unpickle_times.append(unpickle_time)
-            print(f'unpickle_time: {unpickle_time}')
-            del urbs_model
-
-    avg_model_time = sum(model_times) / len(model_times)
-    print(f'avg_model_time: {avg_model_time:.2f}')
-
-    avg_pickle_time = sum(pickle_times) / len(pickle_times)
-    print(f'avg_pickle_time: {avg_pickle_time:.2f}')
-
-    avg_unpickle_time = sum(unpickle_times) / len(unpickle_times)
-    print(f'avg_unpickle_time: {avg_unpickle_time:.2f}')
-
-
-
+    # solver prep
     rho = admmopt.rho
     objectives = []
     global_convergence = False
@@ -543,14 +507,18 @@ def run_sequential(
     solver = pyomo.SolverFactory(solver_name)
     solver.set_options(f"LogToConsole=0")
     setup_solver(solver, threads=threads)
+    unpickle_time = 0
     solver_start = time()
 
+    # start iterations
     print(f"iter {'primalgap'.ljust(12)} time")
     for nu in range(admmopt.max_iter):
         objectives = []
         for model, model_file in zip(models, model_files):
+            unpickle_start = time()
             with open(model_file, 'rb') as f:
                 urbs_model = pickle.load(f)
+            unpickle_time += time() - unpickle_start
 
             objective, _, _ = \
                 model.solve_iteration(solver, urbs_model)
@@ -573,19 +541,12 @@ def run_sequential(
 
         for ID, model in enumerate(models):
             model.update_flow_global({
-                # TODO: not all fields are needed here
                 k: AdmmVariableMessage(
-                    k,
+                    sender = k,
                     flow = models[k].flows_with_neighbor[ID],
-                    lamda = models[k].lamda[
-                        models[k].lamda.index.isin(models[k].flows_with_neighbor[ID].index)
-                    ],
-                    rho = models[k].rho,
-                    flow_global = models[k].flow_global.loc[
-                        models[k].flow_global.index.isin(
-                            models[k].flows_with_neighbor[ID].index
-                        )
-                    ],
+                    lamda = None,
+                    rho = None,
+                    flow_global = None,
                 )
                 for k in model.neighbors
             })
@@ -630,6 +591,7 @@ def run_sequential(
 
     print(f'ADMM solver time: {solver_time:4.0f} s')
     print(f'ADMM objective  : {admm_objective:.4e}')
+    print(f'time spent unpickling models: {unpickle_time:4.0f} s ({unpickle_time / solver_time:.2%}%)')
 
     result = {
         'objective': admm_objective,
