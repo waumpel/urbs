@@ -53,7 +53,7 @@ if __name__ == '__main__':
 
     # simulation timesteps
     (offset, length) = (0, 1)  # time step selection
-    timesteps = range(offset, offset+length+1)
+    timesteps = range(offset, offset + length + 1)
     dt = 1  # length of each time step (unit: hours)
 
     # input data for tsam method
@@ -139,7 +139,7 @@ if __name__ == '__main__':
 
     else:
         solver = 'gurobi'
-        threads = 3
+        threads = 1
 
         report_tuples = []
         report_sites_name = {}
