@@ -1,8 +1,8 @@
 ﻿import argparse
 from datetime import date
 from multiprocessing import freeze_support, set_start_method
-from os import makedirs, mkdir
-from os.path import join, isdir
+from os import makedirs
+from os.path import join
 import shutil
 
 import urbs
@@ -98,7 +98,7 @@ if __name__ == '__main__':
                 year = date.today().year
                 data_all = read_input(input_path, year)
 
-                data_all, cross_scenario_data = scenario(data_all, cross_scenario_data)
+                data_all, _ = scenario(data_all)
                 validate_input(data_all)
                 validate_dc_objective(data_all, objective)
 
@@ -113,7 +113,6 @@ if __name__ == '__main__':
                         clusters,
                         admmopt,
                         microgrid_cluster_mode='microgrid',
-                        cross_scenario_data=cross_scenario_data,
                     )
                 else:
                     admm_objective = admm_async.run_parallel(
@@ -125,7 +124,6 @@ if __name__ == '__main__':
                     clusters,
                     admmopt,
                     microgrid_cluster_mode='microgrid',
-                    cross_scenario_data=cross_scenario_data,
                 )
 
     else:
@@ -141,7 +139,7 @@ if __name__ == '__main__':
         }
 
         for scenario in scenarios:
-            prob, cross_scenario_data = urbs.run_scenario(
+            prob, _ = urbs.run_scenario(
                 input_path,
                 solver,
                 timesteps,
@@ -149,7 +147,6 @@ if __name__ == '__main__':
                 result_dir,
                 dt,
                 objective,
-                cross_scenario_data=cross_scenario_data,
                 threads=threads,
                 report_tuples=report_tuples,
                 report_sites_name=report_sites_name,
