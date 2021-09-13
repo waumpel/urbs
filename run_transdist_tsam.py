@@ -65,9 +65,6 @@ if __name__ == '__main__':
                 urbs.transdist100, # transdist100 scenarios must be simulated first to store distribution demand
                 #urbs.transdist66,
                 #urbs.transdist33,
-                #urbs.transdist75,
-                #urbs.transdist50,
-                #urbs.transdist25,
                 #urbs.transmission
                 ]
 

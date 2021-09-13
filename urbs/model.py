@@ -173,7 +173,7 @@ def create_model(
         initialize=[(stf, site)
                     for (stf, site) in m.sit_tuples
                     if m.site_dict['ref-node'][(stf, site)] == 1],
-        doc='Set of all reference nodes in defined subsystems')
+        doc='Set of all reference nodes in defined microgrids')
 
     m.com_tuples = pyomo.Set(
         within=m.stf * m.sit * m.com * m.com_type,
@@ -263,7 +263,7 @@ def create_model(
         initialize=[(stf, site, process)
                     for (stf, site, process) in m.pro_tuples
                     if m.process_dict['pf-min'][(stf, site, process)] > 0],
-        doc='Commodities produced by process by site, e.g. (2020,Mid,PV,Elec-Reactive)')
+        doc='Elec-Reactive produced by process by site, e.g. (2020, node1, PV_private, Elec-Reactive)')
 
     # process tuples for maximum gradient feature
     m.pro_rampupgrad_tuples = pyomo.Set(
@@ -317,7 +317,7 @@ def create_model(
         doc='Power flow of commodity into process (MW) per timestep')
     m.e_pro_out = pyomo.Var(
         m.tm, m.pro_output_tuples,
-        within=pyomo.Reals, #zuvor NonNegativeReals
+        within=pyomo.Reals,
         doc='Power flow out of process (MW) per timestep')
 
     # process new capacity expansion unit
@@ -436,13 +436,13 @@ def create_model(
         rule=def_process_output_rule,
         doc='process output = process throughput * output ratio')
 
-    # constraint für die Erzeugung von Blindleistung
+    # upper reactive power generation limit
     m.def_process_output_reactive1 = pyomo.Constraint(
         m.tm, m.pro_output_tuples_reactive,
         rule=def_process_output_reactive_rule1,
         doc='Q <= P * tan(phi_min)')
 
-    # constraint für die Erzeugung von Blindleistung
+    # upper reactive power generation limit
     m.def_process_output_reactive2 = pyomo.Constraint(
         m.tm, m.pro_output_tuples_reactive,
         rule=def_process_output_reactive_rule2,
@@ -688,12 +688,12 @@ def def_process_input_rule(m, tm, stf, sit, pro, com):
 # process output power = process throughput * output ratio
 def def_process_output_rule(m, tm, stf, sit, pro, com):
     if com == 'electricity-reactive':
-        return pyomo.Constraint.Skip #todo: geht das schöner?
+        return pyomo.Constraint.Skip
     else:
         return (m.e_pro_out[tm, stf, sit, pro, com] ==
             m.tau_pro[tm, stf, sit, pro] * m.r_out_dict[(stf, pro, com)])
 
-
+# rules relating reactive to active power generation with predefined power factors
 def def_process_output_reactive_rule1(m, tm, stf, sit, pro):
     return (m.e_pro_out[tm, stf, sit, pro, 'electricity-reactive'] <=
              m.e_pro_out[tm, stf, sit, pro, 'electricity'] * math.tan(math.acos(m.process_dict['pf-min'][(stf, sit, pro)])))

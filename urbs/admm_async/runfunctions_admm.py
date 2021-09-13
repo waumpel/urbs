@@ -366,7 +366,7 @@ def run_parallel(
 
 
     print('All workers have created their models. Starting ADMM')
-    solver_start = time.time()
+    solver_start = time()
 
     for q in queues:
         q.put('start solving')
@@ -515,7 +515,11 @@ def run_sequential(
 
     solver = pyomo.SolverFactory(solver_name)
     solver.set_options(f"LogToConsole=0")
-    setup_solver(solver, threads=threads)
+    solver.set_options("NumericFocus=3")
+    solver.set_options("Crossover=0")
+    solver.set_options("Method=2")
+    solver.set_options(f"Threads={threads}")
+
     unpickle_time = 0
     solver_start = time()
 

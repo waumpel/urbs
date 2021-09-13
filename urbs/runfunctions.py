@@ -38,14 +38,15 @@ def setup_solver(optim, logfile=None, threads=None):
     if optim.name == 'gurobi':
         # reference with list of option names
         # http://www.gurobi.com/documentation/5.6/reference-manual/parameters
+        optim.set_options('LogToConsole=1')
         if logfile is not None:
-            optim.set_options("logfile={logfile}")
+            optim.set_options(f"logfile={logfile}")
         optim.set_options("NumericFocus=3")
         optim.set_options("Crossover=0")
         optim.set_options("Method=2") # ohne method concurrent optimization
         #optim.set_options("QCPDual=0")
         #optim.set_options("BarConvTol=1e-7")
-        if threads is None:
+        if threads is not None:
             optim.set_options(f"Threads={threads}")
         # optim.set_options("timelimit=7200")  # seconds
         # optim.set_options("mipgap=5e-4")  # default = 1e-4
@@ -130,16 +131,18 @@ def run_scenario(
         for i, microgrid_file in enumerate(microgrid_files):
             microgrid_data_initial.append(read_input(microgrid_file, year))
             validate_input(microgrid_data_initial[i])
-        # join microgrid data to model data
+        # modify and join microgrid data to model data
         create_transdist_data(data, microgrid_data_initial, cross_scenario_data)
+    # if distribution network has to be modeled without interface to transmission network
     elif mode['acpf']:
         add_reactive_transmission_lines(data)
         add_reactive_output_ratios(data)
 
     if mode['tsam']:
+        # run timeseries aggregation method before creating model
         timesteps, weighting_order = run_tsam(
             data, noTypicalPeriods, hoursPerPeriod, cross_scenario_data)
-        # create model
+        # create model and clock process
         tt = time.time()
         prob = create_model(
             data,
@@ -150,7 +153,7 @@ def run_scenario(
             weighting_order=weighting_order)
         print('Elapsed time to build pyomo model: %s s' % round(time.time() - tt, 4))
     else:
-        # create model
+        # create model and clock process
         tt = time.time()
         prob = create_model(data, timesteps, dt, objective)
         print('Elapsed time to build pyomo model: %s s' % round(time.time() - tt,4))
@@ -166,7 +169,6 @@ def run_scenario(
 
     # save problem solution (and input data) to HDF5 file
     # save(prob, os.path.join(result_dir, '{}.h5'.format(sce)))
-    #save(prob, os.path.join('C:/Users/beneh/Documents/Dokumente/Beneharos_Dokumente/01_Uni/00_Master/4_Semester/Masterarbeit/3_Postprocessing/model_h5/transdist', '{}.h5'.format(sce)))
     ## write report to spreadsheet
     report(prob,os.path.join(result_dir, '{}.xlsx').format(sce),
         report_tuples=report_tuples,

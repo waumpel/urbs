@@ -69,7 +69,6 @@ def identify_mode(data):
     if 'reactance' in data['transmission'].keys():
         if any(data['transmission']['reactance'] > 0):
             mode['dcpf'] = True
-    # TODO: check input files
     if any(data['type period']['weight_typeperiod'] > 0):
         mode['tdy'] = True
     if data['global_prop'].loc[pd.IndexSlice[:,'tsam'],'value'].iloc[0]:

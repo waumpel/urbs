@@ -68,9 +68,6 @@ if __name__ == '__main__':
                 urbs.transdist100, # transdist100 scenarios must be simulated first to store distribution demand
                 #urbs.transdist66,
                 #urbs.transdist33,
-                #urbs.transdist75,
-                #urbs.transdist50,
-                #urbs.transdist25,
                 #urbs.transmission
                 ]
 
@@ -140,7 +137,6 @@ if __name__ == '__main__':
 
     else:
         solver = 'gurobi'
-        threads = 3
 
         report_tuples = []
         report_sites_name = {}
@@ -163,7 +159,6 @@ if __name__ == '__main__':
                 cross_scenario_data=cross_scenario_data,
                 noTypicalPeriods=noTypicalPeriods,
                 hoursPerPeriod=hoursPerPeriod,
-                threads=threads,
                 report_tuples=report_tuples,
                 report_sites_name=report_sites_name,
                 plot_tuples=plot_tuples,
