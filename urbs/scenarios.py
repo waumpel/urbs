@@ -64,9 +64,9 @@ def transmission(data, cross_scenario_data):
     data, cross_scenario_data = variable_distribution_share(data, cross_scenario_data, 0)
     return data, cross_scenario_data
 
-def scenario_base(data):
+def scenario_base(data, cross_scenario_data=None):
     # do nothing
-    return data
+    return data, cross_scenario_data
 
 def scenario_stock_prices(data):
     # change stock commodity prices

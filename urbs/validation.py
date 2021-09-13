@@ -163,7 +163,7 @@ def validate_input(data):
                                "worksheet 'DSM' must be from the list of site "
                                "names specified in the worksheet 'Site'.")
 
-    if any(data['type period']['weight_typeperiod'] > 0):
+    if 'type period' in data and any(data['type period']['weight_typeperiod'] > 0):
         if not data['dsm'].empty:
             print('Warning: TypePeriod and DSM active!')
 

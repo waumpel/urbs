@@ -69,7 +69,7 @@ def identify_mode(data):
     if 'reactance' in data['transmission'].keys():
         if any(data['transmission']['reactance'] > 0):
             mode['dcpf'] = True
-    if any(data['type period']['weight_typeperiod'] > 0):
+    if 'type period' in data and any(data['type period']['weight_typeperiod'] > 0):
         mode['tdy'] = True
     if data['global_prop'].loc[pd.IndexSlice[:,'tsam'],'value'].iloc[0]:
         mode['tsam'] = True
