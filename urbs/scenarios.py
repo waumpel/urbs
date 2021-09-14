@@ -75,9 +75,9 @@ def transmission(data, cross_scenario_data):
 
 
 
-def scenario_base(data):
+def scenario_base(data, cross_scenario_data=None):
     # do nothing
-    return data
+    return data, cross_scenario_data
 
 def scenario_stock_prices(data):
     # change stock commodity prices

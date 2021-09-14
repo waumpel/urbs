@@ -90,7 +90,7 @@ def read_input(input_files, year):
                 typeperiod = demand.loc[:, ['weight_typeperiod']]
                 demand = demand.drop(columns=['weight_typeperiod'])
             except KeyError:
-                pass
+                typeperiod = None
 
             # split columns by dots '.', so that 'DE.Elec' becomes
             # the two-level column index ('DE', 'Elec')
@@ -173,7 +173,6 @@ def read_input(input_files, year):
         'commodity': commodity,
         'process': process,
         'process_commodity': process_commodity,
-        'type period': typeperiod,
         'demand': demand,
         'supim': supim,
         'transmission': transmission,
@@ -182,6 +181,10 @@ def read_input(input_files, year):
         'buy_sell_price': buy_sell_price.dropna(axis=1, how='all'),
         'eff_factor': eff_factor.dropna(axis=1, how='all')
     }
+
+    if typeperiod is not None:
+        data['type period'] = typeperiod
+
 
     # sort nested indexes to make direct assignments work
     for key in data:

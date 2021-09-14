@@ -140,7 +140,7 @@ if __name__ == '__main__':
 
     else:
         solver = 'gurobi'
-        threads = 3
+        threads = 1
 
         report_tuples = []
         report_sites_name = {}
