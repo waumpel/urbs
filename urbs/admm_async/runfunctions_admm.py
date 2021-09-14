@@ -57,8 +57,7 @@ def prepare_admm(
     hoursPerPeriod=None,
     ):
     """
-    Run an urbs model for given input, time steps and scenario with regional decomposition
-    using ADMM.
+    ADMM preprocessing.
 
     Args:
         - `data_all`: Input data dict, after applying scenario and validation.
@@ -71,7 +70,20 @@ def prepare_admm(
         - `noTypicalPeriods`: Number of typical periods (TSAM parameter)
         - `hoursPerPeriod`: Length of each typical period (TSAM parameter)
 
-    Return the value of the objective function.
+    Return
+        - `timesteps`: New list of timesteps if TSAM is enabled, else the original list
+        - `clusters`: List of clusters, potentially modified
+        - `neighbors`: Set of neighbors for each cluster
+        - `internal_lines`: List of slices of data_all['transmission'], one per cluster,
+            containing the internal transmission lines
+        - `shared_lines`: List of slices of data_all['transmission'], one per cluster,
+            containing the transmission lines shared with another cluster
+        - `shared_lines_index`: List of DataFrames, one per cluster, containing the index
+            of the corresponding `shared_lines`
+        - `flow_global`: List of Series, one per cluster, containing the initial global
+            flow values
+        - `lamda`: List of Series, one per cluster, containing the initial lamda values.
+        - `weighting_order`: TSAM parameter
     """
     # hard-coded year. ADMM doesn't work with intertemporal models (yet)
     year = date.today().year
@@ -165,7 +177,7 @@ def prepare_admm(
             internal_lines_logic[from_cluster_idx, row] = True
             internal_lines_logic[to_cluster_idx, row] = True
 
-    # map ID -> slice of data_all['transmission'] (copies)
+    # Slices of data_all['transmission'] (copies), one per cluster
     internal_lines = [
         data_all['transmission'].loc[internal_lines_logic[ID, :]].copy(deep=True)
         for ID in range(n_clusters)
@@ -177,7 +189,7 @@ def prepare_admm(
         for ID in range(n_clusters)
     ]
 
-    # map ID -> slice of data_all['transmission'] (copies)
+    # Slices of data_all['transmission'] (copies), one per cluster
     shared_lines = [
         data_all['transmission'].loc[shared_lines_logic[ID, :]].copy(deep=True)
         for ID in range(n_clusters)
@@ -278,7 +290,7 @@ def run_parallel(
     hoursPerPeriod=None,
     threads=1,
     ):
-
+    # TODO: docstring
     (
         timesteps,
         clusters,
@@ -433,6 +445,7 @@ def run_sequential(
     hoursPerPeriod=None,
     threads=1,
     ):
+    # TODO: docstring
 
     # admm preprocessing
     (
