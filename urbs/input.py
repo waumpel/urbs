@@ -45,6 +45,7 @@ def read_input(input_files, year):
     ef = []
 
     for filename in input_files:
+        print(f'Reading {filename}')
         with pd.ExcelFile(filename) as xls:
 
             global_prop = xls.parse('Global').set_index(['Property'])
