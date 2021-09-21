@@ -57,9 +57,40 @@ if __name__ == '__main__':
 
     if args.admm:
         clusters = [
-            ['North'],
-            ['Mid'],
-            ['South'],
+            ['ALB'],
+            ['AUT'],
+            ['BEL'],
+            ['BGR'],
+            ['BIH'],
+            ['CHE'],
+            ['CZE'],
+            ['DEU'],
+            ['DNK'],
+            ['ESP'],
+            ['EST'],
+            ['FIN'],
+            ['FRA'],
+            ['GBR'],
+            ['GRC'],
+            ['HRV'],
+            ['HUN'],
+            ['IRL'],
+            ['ITA'],
+            ['KOS'],
+            ['LTU'],
+            ['LUX'],
+            ['LVA'],
+            ['MKD'],
+            ['MNE'],
+            ['NLD'],
+            ['NOR'],
+            ['POL'],
+            ['PRT'],
+            ['ROU'],
+            ['SRB'],
+            ['SVK'],
+            ['SVN'],
+            ['SWE'],
         ]
 
         admmopt = admm_async.AdmmOption(
@@ -69,7 +100,7 @@ if __name__ == '__main__':
             rho = 100,
             max_penalty = 10**8,
             penalty_mult = 1.15,
-            primal_decrease = 0.5,
+            primal_decrease = 0.95,
             # residual_distance = 10,
             # mult_adapt = 1,
             # max_mult = 10**8,
@@ -102,7 +133,7 @@ if __name__ == '__main__':
                     microgrid_cluster_mode='microgrid',
                 )
             else:
-                admm_objective = admm_async.run_parallel(
+                result = admm_async.run_parallel(
                 data_all,
                 timesteps,
                 scenario_dir,
