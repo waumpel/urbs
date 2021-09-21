@@ -409,9 +409,9 @@ def run_parallel(
     for proc in procs:
         proc.join()
 
-    ttime = time()
-    solver_time = ttime - solver_start
-
+    solver_time = time() - solver_start
+    converged = all(s == AdmmStatus.GLOBAL_CONVERGENCE for s in status)
+    avg_iter = sum(result.local_iteration for result in results) / len(results)
     admm_objective = sum(result.objective for result in results)
 
     # print results
@@ -419,14 +419,16 @@ def run_parallel(
     print(f'ADMM objective  : {admm_objective:.4e}')
 
     result = {
-        'objective': admm_objective,
+        'converged': converged,
+        'avg iterations': avg_iter,
         'time': solver_time,
+        'objective': admm_objective,
     }
 
     with open(join(result_dir, 'result.json'), 'w', encoding='utf8') as f:
         json.dump(result, f, indent=4)
 
-    return admm_objective
+    return result
 
 
 def run_sequential(

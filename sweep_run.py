@@ -24,7 +24,7 @@ if __name__ == '__main__':
     input_dir = 'Input'
     input_path = join(input_dir, input_files)
 
-    result_name = 'germany-t8760-admm'
+    result_name = 'germany-t1-admm'
     if args.sequential:
         result_name += '-seq'
     result_name += '-inc'
@@ -43,7 +43,7 @@ if __name__ == '__main__':
     objective = 'cost'  # set either 'cost' or 'CO2' as objective
 
     # simulation timesteps
-    (offset, length) = (0, 8760)  # time step selection
+    (offset, length) = (0, 1)  # time step selection
     timesteps = range(offset, offset + length + 1)
     dt = 1  # length of each time step (unit: hours)
 
@@ -85,12 +85,13 @@ if __name__ == '__main__':
             primal_decrease=dec,
             max_iter = 200,
         )
-        for rho in [0.01]
+        for rho in [100]
         for mult in [1.15]
         for dec in [0.95]
     }
 
     for scenario in scenarios:
+        results = {}
         for opt_name, admmopt in admmopts.items():
             scenario_dir = join(result_dir, scenario.__name__, opt_name)
             makedirs(scenario_dir)
@@ -115,7 +116,7 @@ if __name__ == '__main__':
                     microgrid_cluster_mode='microgrid',
                 )
             else:
-                admm_objective = admm_async.run_parallel(
+                result = admm_objective = admm_async.run_parallel(
                 data_all,
                 timesteps,
                 scenario_dir,
@@ -124,4 +125,18 @@ if __name__ == '__main__':
                 clusters,
                 admmopt,
                 microgrid_cluster_mode='microgrid',
-            )
+                )
+                results[opt_name] = result
+
+        summaries = []
+        for opt_name, result in results.items():
+            if result['converged']:
+                summaries.append(f"{opt_name}: {result['avg iterations']} {result['time']} {result['objective']}")
+            else:
+                summaries.append(f'{opt_name}: - - -')
+
+        print(f'Results for scenario {scenario.__name__}:')
+        with open(join(scenario_dir, 'summary.txt'), 'w', encoding='utf8') as f:
+            for s in summaries:
+                print(s)
+                f.write(s + '\n')
