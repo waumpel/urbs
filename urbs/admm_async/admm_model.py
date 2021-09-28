@@ -179,14 +179,10 @@ class AdmmModel:
         ]
         raw_mismatch_gap = norm(flow_global_with_k - flow_global)
 
-        if self.admmopt.tolerance_mode == 'absolute':
-            mismatch_gap = raw_mismatch_gap / min(1, len(self.model.flow_global))
-
-        elif self.admmopt.tolerance_mode == 'relative':
-            normalizer = max(norm(flow_global_with_k), norm(flow_global))
-            if normalizer == 0:
-                normalizer = 1
-            mismatch_gap = norm(flow_global_with_k - flow_global) / normalizer
+        normalizer = max(norm(flow_global_with_k), norm(flow_global))
+        if normalizer == 0:
+            normalizer = 1
+        mismatch_gap = norm(flow_global_with_k - flow_global) / normalizer
 
         return mismatch_gap
 

@@ -81,6 +81,8 @@ def beginning_of_the_end(series, threshold):
     """
     Return the index of the first value in `series` such that the value and all subsequent
     values are below `threshold`.
+
+    Return -1 if there is no such index.
     """
     if series[-1] >= threshold:
         return -1
@@ -151,23 +153,26 @@ def plot_results(
         ax_combined.set_xlabel('avg local iterations')
         ax_combined.set_title('Results per Iteration')
 
-        primal_convergence = series['avg_iter'][
-            beginning_of_the_end(series['max_primal'], admmopt['primal_tolerance'])
-        ]
+        primal_convergence = beginning_of_the_end(
+            series['max_primal'], admmopt['primal_tolerance']
+        )
         if primal_convergence >= 0:
-            ax_combined.axvline(primal_convergence, color=colors['primal'])
+            primal_convergence_iter = series['avg_iter'][primal_convergence]
+            ax_combined.axvline(primal_convergence_iter, color=colors['primal'])
 
-        dual_convergence = series['avg_iter'][
-            beginning_of_the_end(series['max_dual'], admmopt['dual_tolerance'])
-        ]
+        dual_convergence = beginning_of_the_end(
+            series['max_dual'], admmopt['dual_tolerance']
+        )
         if dual_convergence >= 0:
-            ax_combined.axvline(dual_convergence, color=colors['dual'])
+            dual_convergence_iter = series['avg_iter'][dual_convergence]
+            ax_combined.axvline(dual_convergence_iter, color=colors['dual'])
 
-        mismatch_convergence = series['avg_iter'][
-            beginning_of_the_end(series['max_mismatch'], admmopt['mismatch_tolerance'])
-        ]
+        mismatch_convergence = beginning_of_the_end(
+            series['max_mismatch'], admmopt['mismatch_tolerance']
+        )
         if mismatch_convergence >= 0:
-            ax_combined.axvline(mismatch_convergence, color=colors['mismatch'])
+            mismatch_convergence_iter = series['avg_iter'][mismatch_convergence]
+            ax_combined.axvline(mismatch_convergence_iter, color=colors['mismatch'])
 
     if 'max_primal' in series:
         if separate:

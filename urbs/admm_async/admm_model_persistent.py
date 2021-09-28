@@ -142,16 +142,13 @@ class AdmmModelPersistent(AdmmModel):
         self.primalgap_old = self.primalgap
 
         raw_primalgap = norm(self.flows_all - self.flow_global)
-        if self.admmopt.tolerance_mode == 'absolute':
-            primalgap = raw_primalgap / min(1, len(self.flow_global))
-        elif self.admmopt.tolerance_mode == 'relative':
-            normalizer = max(
-                norm(self.flows_all),
-                norm(self.flow_global)
-            )
-            if normalizer == 0:
-                normalizer = 1
-            primalgap = raw_primalgap / normalizer
+        normalizer = max(
+            norm(self.flows_all),
+            norm(self.flow_global)
+        )
+        if normalizer == 0:
+            normalizer = 1
+        primalgap = raw_primalgap / normalizer
 
         self.primalgap = primalgap
 
@@ -162,13 +159,11 @@ class AdmmModelPersistent(AdmmModel):
         """
         raw_dualgap = self.rho * norm(self.flow_global - flow_global_old)
 
-        if self.admmopt.tolerance_mode == 'absolute':
-            dualgap = raw_dualgap / min(1, len(self.flow_global))
-        elif self.admmopt.tolerance_mode == 'relative':
-            normalizer = norm(self.lamda)
-            if normalizer == 0:
-                normalizer = 1
-            dualgap = raw_dualgap / normalizer
+        normalizer = norm(self.lamda)
+        if normalizer == 0:
+            normalizer = 1
+        dualgap = raw_dualgap / normalizer
+
         self.dualgap = dualgap
 
 

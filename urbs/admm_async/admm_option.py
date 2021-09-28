@@ -2,10 +2,8 @@ from warnings import warn
 
 class AdmmOption(object):
     def __init__(self,
-        primal_tolerance,
-        dual_tolerance,
-        mismatch_tolerance,
         rho,
+        penalty_mode = None,
         max_penalty = None,
         penalty_mult = None,
         primal_decrease = None,
@@ -16,11 +14,21 @@ class AdmmOption(object):
         wait_percent = 0.01,
         wait_time = 0.1,
         max_iter = 1000,
-        tolerance_mode = 'absolute',
-        penalty_mode = None,
+        tolerance_mode = None,
+        primal_tolerance = 0,
+        dual_tolerance = 0,
+        mismatch_tolerance = 0,
     ):
-        if tolerance_mode not in ['absolute', 'relative']:
-            raise ValueError("tolerance_mode must be 'absolute' or 'relative'")
+        if tolerance_mode not in [None, 'relative']:
+            raise ValueError("tolerance_mode must be None or 'relative'")
+
+        if tolerance_mode == 'relative':
+            if primal_tolerance < 0:
+                raise ValueError("primal_tolerance must be non-negative")
+            if dual_tolerance < 0:
+                raise ValueError("dual_tolerance must be non-negative")
+            if mismatch_tolerance < 0:
+                raise ValueError("mismatch_tolerance must be non-negative")
 
         if penalty_mode is None:
             if (max_penalty is None and
@@ -111,13 +119,6 @@ class AdmmOption(object):
             elif max_mult <= 1:
                 raise ValueError("max_mult must be larger than 1")
 
-
-        if primal_tolerance <= 0:
-            raise ValueError("primal_tolerance must be larger than 0")
-        if dual_tolerance <= 0:
-            raise ValueError("dual_tolerance must be larger than 0")
-        if mismatch_tolerance <= 0:
-            raise ValueError("mismatch_tolerance must be larger than 0")
         if rho <= 0:
             raise ValueError("rho must be larger than 0")
         if async_correction < 0:
