@@ -37,6 +37,7 @@ def data_series(results: pd.DataFrame, n_clusters: int, centralized_objective=No
     max_dualgap = []
     max_mismatch = []
     max_rho = []
+    max_time = []
     if centralized_objective is not None:
         objective_gap = []
 
@@ -49,6 +50,7 @@ def data_series(results: pd.DataFrame, n_clusters: int, centralized_objective=No
             np.nan if np.nan in data_slice['mismatch'] else max(data_slice['mismatch'])
         )
         max_rho.append(max(data_slice['penalty']))
+        max_time.append(max(data_slice['stop_time']))
         if centralized_objective is not None:
             objective_gap.append(
                 abs(centralized_objective - sum(data_slice['objective'])) / centralized_objective
@@ -60,6 +62,7 @@ def data_series(results: pd.DataFrame, n_clusters: int, centralized_objective=No
         'max_dual': max_dualgap,
         'max_mismatch': max_mismatch,
         'max_rho': max_rho,
+        'max_time': max_time,
     }
 
     if centralized_objective is not None:
@@ -230,11 +233,10 @@ def plot_results(
         if combined:
             ax_combined.plot(series['avg_iter'], series['obj_gap'], label='objective gap', color=colors['obj'])
 
-            objective_convergence = series['avg_iter'][
-                beginning_of_the_end(series['obj_gap'], objective_tolerance)
-            ]
+            objective_convergence = beginning_of_the_end(series['obj_gap'], objective_tolerance)
             if objective_convergence >= 0:
-                ax_combined.axvline(objective_convergence, color=colors['obj'])
+                objective_convergence_iter = series['avg_iter'][objective_convergence]
+                ax_combined.axvline(objective_convergence_iter, color=colors['obj'])
 
     if combined:
         if plot_rho:
@@ -251,6 +253,59 @@ def plot_results(
     ax.bar(range(len(avg_times)), avg_times.values(), tick_label=list(avg_times.keys()))
     fig.savefig(join(result_dir, 'avg_times.svg'))
     plt.close(fig)
+
+
+def plot_gaps(
+    ax,
+    color,
+    label,
+    results: pd.DataFrame,
+    metadata: Dict,
+    primal_tolerance: float,
+    mismatch_tolerance: float,
+    ):
+
+    n_clusters = len(metadata['clusters'])
+    series = data_series(results, n_clusters, None)
+    series = series_cutoff(series, 10**(-4), 10**8)
+    max_gap = [
+        max(x, y) for x, y in zip(series['max_primal'], series['max_mismatch'])
+    ]
+
+    primal_convergence = beginning_of_the_end(
+        series['max_primal'], primal_tolerance
+    )
+    mismatch_convergence = beginning_of_the_end(
+        series['max_mismatch'], mismatch_tolerance
+    )
+    if primal_convergence >= 0 and mismatch_convergence >= 0:
+        convergence = max(primal_convergence, mismatch_convergence)
+        convergence_time = series['max_time'][convergence]
+        ax.axvline(convergence_time, color=color)
+
+    ax.plot(series['max_time'], max_gap, label=label, color=color)
+
+
+def plot_objective(
+    ax,
+    color,
+    label,
+    results: pd.DataFrame,
+    metadata: Dict,
+    centralized_objective: float,
+    objective_tolerance=0.01,
+    ):
+
+    n_clusters = len(metadata['clusters'])
+    series = data_series(results, n_clusters, centralized_objective)
+    series = series_cutoff(series, 10**(-4), 10**8)
+
+    objective_convergence = beginning_of_the_end(series['obj_gap'], objective_tolerance)
+    if objective_convergence >= 0:
+        objective_convergence_iter = series['max_time'][objective_convergence]
+        ax.axvline(objective_convergence_iter, color=color)
+
+    ax.plot(series['max_time'], series['obj_gap'], label=label, color=color)
 
 
 def fig_primal():

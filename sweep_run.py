@@ -74,16 +74,12 @@ if __name__ == '__main__':
 
     admmopts = {
         f'rho={rho}-mult={mult}-dec={dec}': admm_async.AdmmOption(
-            tolerance_mode = 'relative',
-            primal_tolerance = 0.01,
-            dual_tolerance = 0.01,
-            mismatch_tolerance = 0.01,
             penalty_mode='increasing',
-            rho = rho,
+            rho=rho,
             max_penalty=10**8,
             penalty_mult=mult,
             primal_decrease=dec,
-            max_iter = 200,
+            max_iter=200,
         )
         for rho in [100]
         for mult in [1.15]
@@ -130,10 +126,10 @@ if __name__ == '__main__':
 
         summaries = []
         for opt_name, result in results.items():
-            if result['converged']:
-                summaries.append(f"{opt_name}: {result['avg iterations']} {result['time']} {result['objective']}")
-            else:
-                summaries.append(f'{opt_name}: - - -')
+            summary = f"{opt_name}: {result['avg iterations']} {result['time']} {result['objective']}"
+            if admmopt.tolerance_mode is not None and result['converged']:
+                summary += f" {result['converged']}"
+            summaries.append(summary)
 
         print(f'Results for scenario {scenario.__name__}:')
         with open(join(scenario_dir, 'summary.txt'), 'w', encoding='utf8') as f:
