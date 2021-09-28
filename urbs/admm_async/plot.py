@@ -110,6 +110,9 @@ def plot_results(
     metadata: Dict,
     centralized_objective=None,
     objective_tolerance=0.01,
+    primal_tolerance=None,
+    dual_tolerance=None,
+    mismatch_tolerance=None,
     mode='combined',
     plot_rho=True,
     colors=None,
@@ -143,6 +146,11 @@ def plot_results(
         }
 
     admmopt = metadata['admmopt']
+
+    primal_tolerance = primal_tolerance or admmopt['primal_tolerance']
+    dual_tolerance = dual_tolerance or admmopt['dual_tolerance']
+    mismatch_tolerance = mismatch_tolerance or admmopt['mismatch_tolerance']
+
     n_clusters = len(metadata['clusters'])
     series = data_series(results, n_clusters, centralized_objective)
     series = series_cutoff(series, 10**(-4), 10**8)
@@ -154,21 +162,21 @@ def plot_results(
         ax_combined.set_title('Results per Iteration')
 
         primal_convergence = beginning_of_the_end(
-            series['max_primal'], admmopt['primal_tolerance']
+            series['max_primal'], primal_tolerance
         )
         if primal_convergence >= 0:
             primal_convergence_iter = series['avg_iter'][primal_convergence]
             ax_combined.axvline(primal_convergence_iter, color=colors['primal'])
 
         dual_convergence = beginning_of_the_end(
-            series['max_dual'], admmopt['dual_tolerance']
+            series['max_dual'], dual_tolerance
         )
         if dual_convergence >= 0:
             dual_convergence_iter = series['avg_iter'][dual_convergence]
             ax_combined.axvline(dual_convergence_iter, color=colors['dual'])
 
         mismatch_convergence = beginning_of_the_end(
-            series['max_mismatch'], admmopt['mismatch_tolerance']
+            series['max_mismatch'], mismatch_tolerance
         )
         if mismatch_convergence >= 0:
             mismatch_convergence_iter = series['avg_iter'][mismatch_convergence]
@@ -177,7 +185,7 @@ def plot_results(
     if 'max_primal' in series:
         if separate:
             fig, ax = fig_primal()
-            ax.axhline(admmopt['primal_tolerance'], color='black', linestyle='dashed')
+            ax.axhline(primal_tolerance, color='black', linestyle='dashed')
             ax.plot(series['avg_iter'], series['max_primal'])
             if plot_rho:
                 ax.plot(series['avg_iter'], series['max_rho'], color=colors['rho'], label='rho')
@@ -189,7 +197,7 @@ def plot_results(
     if 'max_dual' in series:
         if separate:
             fig, ax = fig_dual()
-            ax.axhline(admmopt['dual_tolerance'], color='black', linestyle='dashed')
+            ax.axhline(dual_tolerance, color='black', linestyle='dashed')
             ax.plot(series['avg_iter'], series['max_dual'])
             if plot_rho:
                 ax.plot(series['avg_iter'], series['max_rho'], color=colors['rho'], label='rho')
@@ -201,7 +209,7 @@ def plot_results(
     if 'max_mismatch' in series:
         if separate:
             fig, ax = fig_mismatch()
-            ax.axhline(admmopt['mismatch_tolerance'], color='black', linestyle='dashed')
+            ax.axhline(mismatch_tolerance, color='black', linestyle='dashed')
             ax.plot(series['avg_iter'], series['max_mismatch'])
             if plot_rho:
                 ax.plot(series['avg_iter'], series['max_rho'], color=colors['rho'], label='rho')

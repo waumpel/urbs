@@ -11,6 +11,8 @@ options.add_argument('-d', '--dir', required=True,
                      help='Result directory for which plots should be generated')
 options.add_argument('-c', '--centralized', type=float, default=None,
                      help='Objective value of the centralized solution')
+options.add_argument('-t', '--tolerance', type=float, default=None,
+                     help='Tolerance threshold for primal gap, dual gap, and constraint mismatch')
 
 args = options.parse_args()
 
@@ -41,5 +43,8 @@ for subdir in contents:
             iter_results,
             metadata,
             centralized_objective=args.centralized,
+            primal_tolerance=args.tolerance,
+            dual_tolerance=args.tolerance,
+            mismatch_tolerance=args.tolerance,
             plot_rho=True,
         )
