@@ -315,7 +315,7 @@ def run_parallel(
     n_clusters = len(clusters)
 
     # store metadata
-    metadata = AdmmMetadata(clusters, admmopt)
+    metadata = AdmmMetadata(clusters, admmopt, [fg.size for fg in flow_global])
     with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
         json.dump(metadata.to_dict(), f, indent=4)
 
@@ -474,7 +474,7 @@ def run_sequential(
     n_clusters = len(clusters)
 
     # store metadata (now that all clusters are created)
-    metadata = AdmmMetadata(clusters, admmopt)
+    metadata = AdmmMetadata(clusters, admmopt, [fg.size for fg in flow_global])
     with open(join(result_dir, 'metadata.json'), 'w', encoding='utf8') as f:
         json.dump(metadata.to_dict(), f, indent=4)
 
