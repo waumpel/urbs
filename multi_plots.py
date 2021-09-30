@@ -69,10 +69,10 @@ if __name__ == '__main__':
     # Or specify subdirs manually
     # plot_dirs = [
     #     (subdir, join(result_dir, subdir)) for subdir in [
-    #         # '10',
-    #         # '100',
-    #         # '1000',
-    #         # '10000',
+    #         '100',
+    #         '1000',
+    #         '10000',
+    #         '100000',
     #     ]
     # ]
 
@@ -115,7 +115,6 @@ if __name__ == '__main__':
             metadata,
             args.tolerance,
             args.tolerance,
-            # plot_vlines=False,
         )
 
         if args.centralized:
@@ -127,7 +126,6 @@ if __name__ == '__main__':
                 metadata,
                 args.centralized,
                 args.obj_tol,
-                # plot_vlines=False,
             )
 
 
@@ -135,6 +133,7 @@ if __name__ == '__main__':
     fig_gaps.savefig(join(result_dir, 'gap.svg'))
     plt.close(fig_gaps)
 
-    ax_obj.legend()
-    fig_obj.savefig(join(result_dir, 'obj.svg'))
-    plt.close(fig_obj)
+    if args.centralized:
+        ax_obj.legend()
+        fig_obj.savefig(join(result_dir, 'obj.svg'))
+        plt.close(fig_obj)

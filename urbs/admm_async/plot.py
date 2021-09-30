@@ -263,7 +263,7 @@ def plot_gaps(
     metadata: Dict,
     primal_tolerance: float,
     mismatch_tolerance: float,
-    plot_vlines = True,
+    plot_vlines=False,
     ):
 
     n_clusters = len(metadata['clusters'])
@@ -296,7 +296,7 @@ def plot_objective(
     metadata: Dict,
     centralized_objective: float,
     objective_tolerance=0.01,
-    plot_vlines = True,
+    plot_vlines=False,
     ):
 
     n_clusters = len(metadata['clusters'])
