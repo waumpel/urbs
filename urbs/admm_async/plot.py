@@ -267,6 +267,7 @@ def plot_gaps(
     primal_tolerance: float,
     mismatch_tolerance: float,
     plot_vlines=False,
+    x_fraction=1,
     ):
 
     n_clusters = len(metadata['clusters'])
@@ -275,6 +276,8 @@ def plot_gaps(
     max_gap = [
         max(x, y) for x, y in zip(series['max_primal'], series['max_mismatch'])
     ]
+
+    x_end = round(len(series['max_time']) / x_fraction)
 
     if plot_vlines:
         primal_convergence = beginning_of_the_end(
@@ -288,7 +291,7 @@ def plot_gaps(
             convergence_time = series['max_time'][convergence]
             ax.axvline(convergence_time, color=color)
 
-    ax.plot(series['max_time'], max_gap, label=label, color=color)
+    ax.plot(series['max_time'][:x_end], max_gap[:x_end], label=label, color=color)
 
 
 def plot_objective(
@@ -300,11 +303,14 @@ def plot_objective(
     centralized_objective: float,
     objective_tolerance=0.01,
     plot_vlines=False,
+    x_fraction=1,
     ):
 
     n_clusters = len(metadata['clusters'])
     series = data_series(results, n_clusters, centralized_objective)
     series = series_cutoff(series, 10**(-4), 10**8)
+
+    x_end = round(len(series['max_time']) / x_fraction)
 
     if plot_vlines:
         objective_convergence = beginning_of_the_end(series['obj_gap'], objective_tolerance)
@@ -312,7 +318,7 @@ def plot_objective(
             objective_convergence_iter = series['max_time'][objective_convergence]
             ax.axvline(objective_convergence_iter, color=color)
 
-    ax.plot(series['max_time'], series['obj_gap'], label=label, color=color)
+    ax.plot(series['max_time'][:x_end], series['obj_gap'][:x_end], label=label, color=color)
 
 
 def fig_primal():
