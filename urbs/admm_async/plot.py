@@ -119,6 +119,7 @@ def plot_results(
     mode='combined',
     plot_rho=True,
     colors=None,
+    plot_vlines=False,
     ):
     """
     Plot the results and save them to `result_dir`.
@@ -164,26 +165,27 @@ def plot_results(
         ax_combined.set_xlabel('avg local iterations')
         ax_combined.set_title('Results per Iteration')
 
-        primal_convergence = beginning_of_the_end(
-            series['max_primal'], primal_tolerance
-        )
-        if primal_convergence >= 0:
-            primal_convergence_iter = series['avg_iter'][primal_convergence]
-            ax_combined.axvline(primal_convergence_iter, color=colors['primal'])
+        if plot_vlines:
+            primal_convergence = beginning_of_the_end(
+                series['max_primal'], primal_tolerance
+            )
+            if primal_convergence >= 0:
+                primal_convergence_iter = series['avg_iter'][primal_convergence]
+                ax_combined.axvline(primal_convergence_iter, color=colors['primal'])
 
-        dual_convergence = beginning_of_the_end(
-            series['max_dual'], dual_tolerance
-        )
-        if dual_convergence >= 0:
-            dual_convergence_iter = series['avg_iter'][dual_convergence]
-            ax_combined.axvline(dual_convergence_iter, color=colors['dual'])
+            dual_convergence = beginning_of_the_end(
+                series['max_dual'], dual_tolerance
+            )
+            if dual_convergence >= 0:
+                dual_convergence_iter = series['avg_iter'][dual_convergence]
+                ax_combined.axvline(dual_convergence_iter, color=colors['dual'])
 
-        mismatch_convergence = beginning_of_the_end(
-            series['max_mismatch'], mismatch_tolerance
-        )
-        if mismatch_convergence >= 0:
-            mismatch_convergence_iter = series['avg_iter'][mismatch_convergence]
-            ax_combined.axvline(mismatch_convergence_iter, color=colors['mismatch'])
+            mismatch_convergence = beginning_of_the_end(
+                series['max_mismatch'], mismatch_tolerance
+            )
+            if mismatch_convergence >= 0:
+                mismatch_convergence_iter = series['avg_iter'][mismatch_convergence]
+                ax_combined.axvline(mismatch_convergence_iter, color=colors['mismatch'])
 
     if 'max_primal' in series:
         if separate:
@@ -233,10 +235,11 @@ def plot_results(
         if combined:
             ax_combined.plot(series['avg_iter'], series['obj_gap'], label='objective gap', color=colors['obj'])
 
-            objective_convergence = beginning_of_the_end(series['obj_gap'], objective_tolerance)
-            if objective_convergence >= 0:
-                objective_convergence_iter = series['avg_iter'][objective_convergence]
-                ax_combined.axvline(objective_convergence_iter, color=colors['obj'])
+            if plot_vlines:
+                objective_convergence = beginning_of_the_end(series['obj_gap'], objective_tolerance)
+                if objective_convergence >= 0:
+                    objective_convergence_iter = series['avg_iter'][objective_convergence]
+                    ax_combined.axvline(objective_convergence_iter, color=colors['obj'])
 
     if combined:
         if plot_rho:
