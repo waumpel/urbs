@@ -16,7 +16,6 @@ options.add_argument('-t', '--tolerance', type=float, default=None,
 
 args = options.parse_args()
 
-RESULT_FILE = 'result.json'
 ITER_RESULTS_FILE = 'iteration_results.txt'
 METADATA_FILE = 'metadata.json'
 
@@ -34,9 +33,6 @@ for subdir in contents:
 
         with open(join(subdir_path, ITER_RESULTS_FILE), 'r', encoding='utf8') as f:
             iter_results = read_results(f)
-
-        with open(join(subdir_path, RESULT_FILE), 'r', encoding='utf8') as f:
-            result = json.load(f)
 
         plot.plot_results(
             subdir_path,

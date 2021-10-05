@@ -10,7 +10,6 @@ from urbs.admm_async import read_results
 import urbs.admm_async.plot as plot
 
 
-RESULT_FILE = 'result.json'
 ITER_RESULTS_FILE = 'iteration_results.txt'
 METADATA_FILE = 'metadata.json'
 
@@ -38,8 +37,7 @@ def find_plotdirs(root: str) -> List[Tuple[str, str]]:
         subdir_path = join(root, subdir)
         if isdir(subdir_path):
             subdir_contents = os.listdir(subdir_path)
-            if (RESULT_FILE in subdir_contents
-                and ITER_RESULTS_FILE in subdir_contents
+            if (ITER_RESULTS_FILE in subdir_contents
                 and METADATA_FILE in subdir_contents):
                 plot_dirs.append((subdir, subdir_path))
 
@@ -103,9 +101,6 @@ if __name__ == '__main__':
 
         with open(join(subdir_path, ITER_RESULTS_FILE), 'r', encoding='utf8') as f:
             iter_results = read_results(f)
-
-        with open(join(subdir_path, RESULT_FILE), 'r', encoding='utf8') as f:
-            result = json.load(f)
 
         plot.plot_gaps(
             ax_gaps,
