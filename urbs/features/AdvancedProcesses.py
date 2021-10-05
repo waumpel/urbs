@@ -102,7 +102,7 @@ def add_advanced_processes(m):
             doc='Output commodities of processes with ramp-up-grad smaller than'
                 'timestep length and smaller equal than min-fraction and is a '
                 'divisor of min-fraction')
-    
+
         m.pro_rampup_not_divides_minfraction_output_tuples = pyomo.Set(
             within=m.stf * m.sit * m.pro * m.com,
             initialize=[(stf, sit, pro, com)
@@ -116,7 +116,7 @@ def add_advanced_processes(m):
             doc='Output commodities of processes with ramp-up-grad smaller than'
                 'timestep length and smaller than min-fraction and is NOT a '
                 'divisor of min-fraction')
-    
+
         m.pro_rampup_bigger_minfraction_output_tuples = pyomo.Set(
             within=m.stf * m.sit * m.pro * m.com,
             initialize=[(stf, sit, pro, com)
@@ -127,7 +127,7 @@ def add_advanced_processes(m):
                            com not in m.com_env],
             doc='Output commodities of processes with ramp up gradient smaller'
                 'than timestep length and greater than min-fraction')
-    
+
         # processes with fix start-up costs
         m.pro_start_up_tuples = pyomo.Set(
                 within=m.stf * m.sit * m.pro,
@@ -136,15 +136,15 @@ def add_advanced_processes(m):
                 for (s, si, pro) in tuple(m.start_price_dict.keys())
                 if process == pro and si == site and s == stf],
                 doc='Processes with fixed start up costs')
-    
+
         # Variables
-    
+
         # process on/off
         m.on_off = pyomo.Var(
             m.t, m.pro_on_off_tuples,
             within=pyomo.Boolean,
             doc='Turn on/off a process with minimum working load')
-    
+
         # number of start-ups
         m.start_up = pyomo.Var(
             m.tm, m.pro_start_up_tuples,
@@ -213,7 +213,7 @@ def add_advanced_processes(m):
                         if stf == st and process == pro],
             doc='Commodities with minimum working load and NO partial output ratio,'
                 'e.g. (2020,Mid,Coal PP,Electricity)')
-    
+
         # process tuples for partial feature
         m.pro_partial_tuples = pyomo.Set(
             within=m.stf * m.sit * m.pro,
@@ -234,7 +234,7 @@ def add_advanced_processes(m):
                         if process == pro and s == stf],
             doc='Commodities with partial input ratio,'
                 'e.g. (2020,Mid,Coal PP,Coal)')
-    
+
         m.pro_partial_output_tuples = pyomo.Set(
             within=m.stf * m.sit * m.pro * m.com,
             initialize=[(stf, site, process, commodity)
@@ -263,7 +263,7 @@ def add_advanced_processes(m):
             within=m.stf * m.sit * m.pro * m.com,
             doc='empty commodities with partial input ratio')
 
-    
+
     # time variable efficiency rules
     m.def_process_timevar_output = pyomo.Constraint(
         m.tm, m.pro_timevar_output_tuples - m.pro_partial_output_tuples -
