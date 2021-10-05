@@ -232,8 +232,6 @@ def pyomo_model_prep(
 
     # for standard problems
     if sites is None:
-        # TODO: remove (caused KeyError: "['description'] not found in axis")
-        # m.global_prop = data_all['global_prop'].drop('description', axis=1)
         data['site'] = data_all['site']
         data['commodity'] = data_all['commodity']
         data['process'] = data_all['process']
@@ -244,7 +242,6 @@ def pyomo_model_prep(
 
     # for ADMM subproblems
     else:
-        m.global_prop = data_all['global_prop'].drop('description', axis=1)
         data['site'] = data_all['site'].loc(axis=0)[:,sites]
         data['commodity'] = data_all['commodity'].loc(axis=0)[:,sites]
         data['process'] = data_all['process'].loc(axis=0)[:,sites]
