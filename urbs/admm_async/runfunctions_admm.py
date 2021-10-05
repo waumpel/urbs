@@ -507,10 +507,6 @@ def run_sequential(
             hoursPerPeriod=hoursPerPeriod,
             weighting_order=weighting_order,
         )
-
-        with open(join(result_dir, f'e_tra_in-{ID}.log'), 'w', encoding='utf8') as f:
-            urbs_model.e_tra_in.display(ostream=f)
-
         # pickle
         model_file = join(model_dir, f'{ID}.pickle')
         model_files.append(model_file)
