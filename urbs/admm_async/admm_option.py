@@ -128,11 +128,11 @@ class AdmmOption(object):
         else:
             raise TypeError("tolerance must be float or Tuple[float]")
 
-        if self.primal_tolerance < 0:
+        if self.primal_tolerance is not None and self.primal_tolerance < 0:
             raise ValueError("primal_tolerance must be non-negative")
-        if self.dual_tolerance < 0:
+        if self.dual_tolerance is not None and self.dual_tolerance < 0:
             raise ValueError("dual_tolerance must be non-negative")
-        if self.mismatch_tolerance < 0:
+        if self.mismatch_tolerance is not None and self.mismatch_tolerance < 0:
             raise ValueError("mismatch_tolerance must be non-negative")
 
         self.rho = rho
