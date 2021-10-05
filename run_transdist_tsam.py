@@ -79,9 +79,6 @@ if __name__ == '__main__':
         ]
 
         admmopt = admm_async.AdmmOption(
-            primal_tolerance = 0.01,
-            dual_tolerance = 0.01,
-            mismatch_tolerance = 0.01,
             rho = 1,
             max_penalty = 10**8,
             penalty_mult = 1.1,
@@ -90,7 +87,7 @@ if __name__ == '__main__':
             # mult_adapt = 1,
             # max_mult = 10**8,
             max_iter = 200,
-            tolerance_mode = 'relative',
+            tolerance = (0.01, None, 0.01),
         )
 
         for scenario in scenarios:

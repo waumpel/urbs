@@ -1,11 +1,11 @@
+from typing import Tuple, Union
 from warnings import warn
 
 class AdmmOption(object):
     def __init__(self,
-        primal_tolerance,
-        dual_tolerance,
-        mismatch_tolerance,
         rho,
+        scale_rho = False,
+        penalty_mode = None,
         max_penalty = None,
         penalty_mult = None,
         primal_decrease = None,
@@ -16,11 +16,8 @@ class AdmmOption(object):
         wait_percent = 0.01,
         wait_time = 0.1,
         max_iter = 1000,
-        tolerance_mode = 'absolute',
-        penalty_mode = None,
-    ):
-        if tolerance_mode not in ['absolute', 'relative']:
-            raise ValueError("tolerance_mode must be 'absolute' or 'relative'")
+        tolerance: Union[float, Tuple[float, float, float]] = 0.01,
+        ):
 
         if penalty_mode is None:
             if (max_penalty is None and
@@ -55,7 +52,7 @@ class AdmmOption(object):
                 raise ValueError("Cannot infer penalty_mode")
 
         if penalty_mode not in ['fixed', 'increasing', 'residual_balancing', 'adaptive_multiplier']:
-            raise ValueError("tolerance_mode must be 'fixed', 'increasing', 'residual_balancing' or 'adaptive_multiplier'")
+            raise ValueError("penalty_mode must be 'fixed', 'increasing', 'residual_balancing' or 'adaptive_multiplier'")
 
         if penalty_mode == 'fixed':
             if max_penalty is not None:
@@ -111,13 +108,6 @@ class AdmmOption(object):
             elif max_mult <= 1:
                 raise ValueError("max_mult must be larger than 1")
 
-
-        if primal_tolerance <= 0:
-            raise ValueError("primal_tolerance must be larger than 0")
-        if dual_tolerance <= 0:
-            raise ValueError("dual_tolerance must be larger than 0")
-        if mismatch_tolerance <= 0:
-            raise ValueError("mismatch_tolerance must be larger than 0")
         if rho <= 0:
             raise ValueError("rho must be larger than 0")
         if async_correction < 0:
@@ -129,10 +119,24 @@ class AdmmOption(object):
         if max_iter <= 0:
             raise ValueError("max_iter must be larger than 0")
 
-        self.primal_tolerance = primal_tolerance
-        self.dual_tolerance = dual_tolerance
-        self.mismatch_tolerance = mismatch_tolerance
+        if isinstance(tolerance, float):
+            self.primal_tolerance = tolerance
+            self.dual_tolerance = tolerance
+            self.mismatch_tolerance = tolerance
+        elif isinstance(tolerance, Tuple):
+            self.primal_tolerance, self.dual_tolerance, self.mismatch_tolerance = tolerance
+        else:
+            raise TypeError("tolerance must be float or Tuple[float]")
+
+        if self.primal_tolerance is not None and self.primal_tolerance < 0:
+            raise ValueError("primal_tolerance must be non-negative")
+        if self.dual_tolerance is not None and self.dual_tolerance < 0:
+            raise ValueError("dual_tolerance must be non-negative")
+        if self.mismatch_tolerance is not None and self.mismatch_tolerance < 0:
+            raise ValueError("mismatch_tolerance must be non-negative")
+
         self.rho = rho
+        self.scale_rho = scale_rho
         self.max_penalty = max_penalty
         self.penalty_mult = penalty_mult
         self.primal_decrease = primal_decrease
@@ -143,6 +147,4 @@ class AdmmOption(object):
         self.wait_percent = wait_percent
         self.wait_time = wait_time
         self.max_iter = max_iter
-        self.tolerance_mode = tolerance_mode
         self.penalty_mode = penalty_mode
-

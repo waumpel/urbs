@@ -11,35 +11,40 @@ options.add_argument('-d', '--dir', required=True,
                      help='Result directory for which plots should be generated')
 options.add_argument('-c', '--centralized', type=float, default=None,
                      help='Objective value of the centralized solution')
+options.add_argument('-t', '--tolerance', type=float, default=None,
+                     help='Tolerance threshold for primal gap, dual gap, and constraint mismatch')
 
 args = options.parse_args()
 
-RESULTS_FILE = 'iteration_results.txt'
+RESULT_FILE = 'result.json'
+ITER_RESULTS_FILE = 'iteration_results.txt'
 METADATA_FILE = 'metadata.json'
 
 result_dir = join('result', args.dir)
 contents = os.listdir(result_dir)
-plot_dirs = []
-if RESULTS_FILE in contents:
-    plot_dirs.append(result_dir)
 
-for d in contents:
-    path = join(result_dir, d)
-    if (isdir(path)
-        and RESULTS_FILE in os.listdir(path)
-        and METADATA_FILE in os.listdir(path)):
-        plot_dirs.append(path)
+for subdir in contents:
+    subdir_path = join(result_dir, subdir)
+    if (isdir(subdir_path)
+        and ITER_RESULTS_FILE in os.listdir(subdir_path)
+        and METADATA_FILE in os.listdir(subdir_path)):
 
-for d in plot_dirs:
-    with open(join(d, METADATA_FILE), 'r', encoding='utf8') as f:
-        metadata = json.load(f)
-    with open(join(d, RESULTS_FILE), 'r', encoding='utf8') as f:
-        results = read_results(f)
+        with open(join(subdir_path, METADATA_FILE), 'r', encoding='utf8') as f:
+            metadata = json.load(f)
 
-    plot.plot_results(
-        d,
-        results,
-        metadata,
-        centralized_objective=args.centralized,
-        plot_rho=True,
-    )
+        with open(join(subdir_path, ITER_RESULTS_FILE), 'r', encoding='utf8') as f:
+            iter_results = read_results(f)
+
+        with open(join(subdir_path, RESULT_FILE), 'r', encoding='utf8') as f:
+            result = json.load(f)
+
+        plot.plot_results(
+            subdir_path,
+            iter_results,
+            metadata,
+            centralized_objective=args.centralized,
+            primal_tolerance=args.tolerance,
+            dual_tolerance=args.tolerance,
+            mismatch_tolerance=args.tolerance,
+            plot_rho=True,
+        )
