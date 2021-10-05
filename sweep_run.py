@@ -80,6 +80,7 @@ if __name__ == '__main__':
             penalty_mult=mult,
             primal_decrease=dec,
             max_iter=200,
+            tolerance=0,
         )
         for rho in [100]
         for mult in [1.15]
@@ -126,9 +127,7 @@ if __name__ == '__main__':
 
         summaries = []
         for opt_name, result in results.items():
-            summary = f"{opt_name}: {result['avg iterations']} {result['time']} {result['objective']}"
-            if admmopt.tolerance_mode is not None and result['converged']:
-                summary += f" {result['converged']}"
+            summary = f"{opt_name}: {result['avg iterations']} {result['time']} {result['objective']} {result['converged']}"
             summaries.append(summary)
 
         print(f'Results for scenario {scenario.__name__}:')

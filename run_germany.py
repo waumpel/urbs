@@ -86,6 +86,7 @@ if __name__ == '__main__':
             # mult_adapt = 1,
             # max_mult = 10**8,
             max_iter = 200,
+            tolerance = 0.01,
         )
 
         for scenario in scenarios:
