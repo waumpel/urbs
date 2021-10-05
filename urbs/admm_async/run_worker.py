@@ -1,4 +1,3 @@
-from os.path import join
 from time import sleep, time
 
 import pandas as pd
@@ -8,7 +7,7 @@ import urbs.model
 from .urbs_admm_model import AdmmStatus, UrbsAdmmModel
 from . import input_output
 
-def log_generator(ID, logqueue=None):
+def log_generator(ID, logqueue):
     """
     Return a log function that prefixes messages with the process `ID`, prints them to
     stdout, and sends them to the `logqueue`.
@@ -17,8 +16,7 @@ def log_generator(ID, logqueue=None):
     def fun(*args):
         msg = prefix + f'{" ".join(str(arg) for arg in args)}'
         print(msg)
-        if logqueue is not None:
-            logqueue.put(msg)
+        logqueue.put(msg)
     return fun
 
 
@@ -65,10 +63,12 @@ def create_model(
                         lamda=lamda,
                         rho=admmopt.rho)
 
-    # log number of constraints TODO: remove
-    # with open(join(result_dir, f'constraints-{ID}.txt'), 'w', encoding='utf8') as f:
-    #     for con in model.component_objects(Constraint):
-    #         f.write(f'{con.name}: {len(list(con.items()))}\n')
+    log = log_generator(ID)
+    log('Counting constraints')
+    counter = 0
+    for _ in model.component_objects(Constraint):
+        counter += 1
+    log(f'Number of constraints: {counter}')
 
     # enlarge shared_lines (copies of slices of data_all['transmission'])
     shared_lines['cluster_from'] = cluster_from
