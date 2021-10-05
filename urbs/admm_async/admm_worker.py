@@ -475,12 +475,15 @@ class AdmmWorker:
         Return the new value.
         """
         old_value = self.local_convergence()
-        primal = self.model.primalgap < self.admmopt.primal_tolerance
-        mismatch = all(
+        primal = (self.admmopt.primal_tolerance is None or
+                  self.model.primalgap < self.admmopt.primal_tolerance)
+        dual = (self.admmopt.dual_tolerance is None or
+                self.model.dualgap < self.admmopt.dual_tolerance)
+        mismatch = self.admmopt.mismatch_tolerance is None or all(
             mismatch < self.admmopt.mismatch_tolerance
             for mismatch in self.mismatches.values()
         )
-        new_value = primal and mismatch
+        new_value = primal and dual and mismatch
 
         if new_value != old_value:
             if new_value:

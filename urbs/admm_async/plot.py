@@ -37,6 +37,7 @@ def data_series(results: pd.DataFrame, n_clusters: int, centralized_objective=No
     max_dualgap = []
     max_mismatch = []
     max_rho = []
+    max_time = []
     if centralized_objective is not None:
         objective_gap = []
 
@@ -49,6 +50,7 @@ def data_series(results: pd.DataFrame, n_clusters: int, centralized_objective=No
             np.nan if np.nan in data_slice['mismatch'] else max(data_slice['mismatch'])
         )
         max_rho.append(max(data_slice['penalty']))
+        max_time.append(max(data_slice['stop_time']))
         if centralized_objective is not None:
             objective_gap.append(
                 abs(centralized_objective - sum(data_slice['objective'])) / centralized_objective
@@ -60,6 +62,7 @@ def data_series(results: pd.DataFrame, n_clusters: int, centralized_objective=No
         'max_dual': max_dualgap,
         'max_mismatch': max_mismatch,
         'max_rho': max_rho,
+        'max_time': max_time,
     }
 
     if centralized_objective is not None:
@@ -81,6 +84,8 @@ def beginning_of_the_end(series, threshold):
     """
     Return the index of the first value in `series` such that the value and all subsequent
     values are below `threshold`.
+
+    Return -1 if there is no such index.
     """
     if series[-1] >= threshold:
         return -1
@@ -108,9 +113,13 @@ def plot_results(
     metadata: Dict,
     centralized_objective=None,
     objective_tolerance=0.01,
+    primal_tolerance=None,
+    dual_tolerance=None,
+    mismatch_tolerance=None,
     mode='combined',
     plot_rho=True,
     colors=None,
+    plot_vlines=False,
     ):
     """
     Plot the results and save them to `result_dir`.
@@ -141,6 +150,11 @@ def plot_results(
         }
 
     admmopt = metadata['admmopt']
+
+    primal_tolerance = primal_tolerance or admmopt['primal_tolerance']
+    dual_tolerance = dual_tolerance or admmopt['dual_tolerance']
+    mismatch_tolerance = mismatch_tolerance or admmopt['mismatch_tolerance']
+
     n_clusters = len(metadata['clusters'])
     series = data_series(results, n_clusters, centralized_objective)
     series = series_cutoff(series, 10**(-4), 10**8)
@@ -151,28 +165,32 @@ def plot_results(
         ax_combined.set_xlabel('avg local iterations')
         ax_combined.set_title('Results per Iteration')
 
-        primal_convergence = series['avg_iter'][
-            beginning_of_the_end(series['max_primal'], admmopt['primal_tolerance'])
-        ]
-        if primal_convergence >= 0:
-            ax_combined.axvline(primal_convergence, color=colors['primal'])
+        if plot_vlines:
+            primal_convergence = beginning_of_the_end(
+                series['max_primal'], primal_tolerance
+            )
+            if primal_convergence >= 0:
+                primal_convergence_iter = series['avg_iter'][primal_convergence]
+                ax_combined.axvline(primal_convergence_iter, color=colors['primal'])
 
-        dual_convergence = series['avg_iter'][
-            beginning_of_the_end(series['max_dual'], admmopt['dual_tolerance'])
-        ]
-        if dual_convergence >= 0:
-            ax_combined.axvline(dual_convergence, color=colors['dual'])
+            dual_convergence = beginning_of_the_end(
+                series['max_dual'], dual_tolerance
+            )
+            if dual_convergence >= 0:
+                dual_convergence_iter = series['avg_iter'][dual_convergence]
+                ax_combined.axvline(dual_convergence_iter, color=colors['dual'])
 
-        mismatch_convergence = series['avg_iter'][
-            beginning_of_the_end(series['max_mismatch'], admmopt['mismatch_tolerance'])
-        ]
-        if mismatch_convergence >= 0:
-            ax_combined.axvline(mismatch_convergence, color=colors['mismatch'])
+            mismatch_convergence = beginning_of_the_end(
+                series['max_mismatch'], mismatch_tolerance
+            )
+            if mismatch_convergence >= 0:
+                mismatch_convergence_iter = series['avg_iter'][mismatch_convergence]
+                ax_combined.axvline(mismatch_convergence_iter, color=colors['mismatch'])
 
     if 'max_primal' in series:
         if separate:
             fig, ax = fig_primal()
-            ax.axhline(admmopt['primal_tolerance'], color='black', linestyle='dashed')
+            ax.axhline(primal_tolerance, color='black', linestyle='dashed')
             ax.plot(series['avg_iter'], series['max_primal'])
             if plot_rho:
                 ax.plot(series['avg_iter'], series['max_rho'], color=colors['rho'], label='rho')
@@ -184,7 +202,7 @@ def plot_results(
     if 'max_dual' in series:
         if separate:
             fig, ax = fig_dual()
-            ax.axhline(admmopt['dual_tolerance'], color='black', linestyle='dashed')
+            ax.axhline(dual_tolerance, color='black', linestyle='dashed')
             ax.plot(series['avg_iter'], series['max_dual'])
             if plot_rho:
                 ax.plot(series['avg_iter'], series['max_rho'], color=colors['rho'], label='rho')
@@ -196,7 +214,7 @@ def plot_results(
     if 'max_mismatch' in series:
         if separate:
             fig, ax = fig_mismatch()
-            ax.axhline(admmopt['mismatch_tolerance'], color='black', linestyle='dashed')
+            ax.axhline(mismatch_tolerance, color='black', linestyle='dashed')
             ax.plot(series['avg_iter'], series['max_mismatch'])
             if plot_rho:
                 ax.plot(series['avg_iter'], series['max_rho'], color=colors['rho'], label='rho')
@@ -217,11 +235,11 @@ def plot_results(
         if combined:
             ax_combined.plot(series['avg_iter'], series['obj_gap'], label='objective gap', color=colors['obj'])
 
-            objective_convergence = series['avg_iter'][
-                beginning_of_the_end(series['obj_gap'], objective_tolerance)
-            ]
-            if objective_convergence >= 0:
-                ax_combined.axvline(objective_convergence, color=colors['obj'])
+            if plot_vlines:
+                objective_convergence = beginning_of_the_end(series['obj_gap'], objective_tolerance)
+                if objective_convergence >= 0:
+                    objective_convergence_iter = series['avg_iter'][objective_convergence]
+                    ax_combined.axvline(objective_convergence_iter, color=colors['obj'])
 
     if combined:
         if plot_rho:
@@ -238,6 +256,69 @@ def plot_results(
     ax.bar(range(len(avg_times)), avg_times.values(), tick_label=list(avg_times.keys()))
     fig.savefig(join(result_dir, 'avg_times.svg'))
     plt.close(fig)
+
+
+def plot_gaps(
+    ax,
+    color,
+    label,
+    results: pd.DataFrame,
+    metadata: Dict,
+    primal_tolerance: float,
+    mismatch_tolerance: float,
+    plot_vlines=False,
+    x_fraction=1,
+    ):
+
+    n_clusters = len(metadata['clusters'])
+    series = data_series(results, n_clusters, None)
+    series = series_cutoff(series, 10**(-4), 10**8)
+    max_gap = [
+        max(x, y) for x, y in zip(series['max_primal'], series['max_mismatch'])
+    ]
+
+    x_end = round(len(series['max_time']) / x_fraction)
+
+    if plot_vlines:
+        primal_convergence = beginning_of_the_end(
+            series['max_primal'], primal_tolerance
+        )
+        mismatch_convergence = beginning_of_the_end(
+            series['max_mismatch'], mismatch_tolerance
+        )
+        if primal_convergence >= 0 and mismatch_convergence >= 0:
+            convergence = max(primal_convergence, mismatch_convergence)
+            convergence_time = series['max_time'][convergence]
+            ax.axvline(convergence_time, color=color)
+
+    ax.plot(series['max_time'][:x_end], max_gap[:x_end], label=label, color=color)
+
+
+def plot_objective(
+    ax,
+    color,
+    label,
+    results: pd.DataFrame,
+    metadata: Dict,
+    centralized_objective: float,
+    objective_tolerance=0.01,
+    plot_vlines=False,
+    x_fraction=1,
+    ):
+
+    n_clusters = len(metadata['clusters'])
+    series = data_series(results, n_clusters, centralized_objective)
+    series = series_cutoff(series, 10**(-4), 10**8)
+
+    x_end = round(len(series['max_time']) / x_fraction)
+
+    if plot_vlines:
+        objective_convergence = beginning_of_the_end(series['obj_gap'], objective_tolerance)
+        if objective_convergence >= 0:
+            objective_convergence_iter = series['max_time'][objective_convergence]
+            ax.axvline(objective_convergence_iter, color=color)
+
+    ax.plot(series['max_time'][:x_end], series['obj_gap'][:x_end], label=label, color=color)
 
 
 def fig_primal():

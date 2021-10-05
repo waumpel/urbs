@@ -62,6 +62,8 @@ class AdmmModel:
         self.logfile = join(result_dir, f'solver-{ID}.log')
         self.neighbors = neighbors
         self.rho = admmopt.rho
+        if self.admmopt.scale_rho:
+            self.rho = self.rho / self.flow_global.size
         self.shared_lines = shared_lines
         self.shared_lines_index = shared_lines_index
 
@@ -179,14 +181,10 @@ class AdmmModel:
         ]
         raw_mismatch_gap = norm(flow_global_with_k - flow_global)
 
-        if self.admmopt.tolerance_mode == 'absolute':
-            mismatch_gap = raw_mismatch_gap / min(1, len(self.model.flow_global))
-
-        elif self.admmopt.tolerance_mode == 'relative':
-            normalizer = max(norm(flow_global_with_k), norm(flow_global))
-            if normalizer == 0:
-                normalizer = 1
-            mismatch_gap = norm(flow_global_with_k - flow_global) / normalizer
+        normalizer = max(norm(flow_global_with_k), norm(flow_global))
+        if normalizer == 0:
+            normalizer = 1
+        mismatch_gap = norm(flow_global_with_k - flow_global) / normalizer
 
         return mismatch_gap
 
