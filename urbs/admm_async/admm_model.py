@@ -61,7 +61,10 @@ class AdmmModel:
         self.lamda = lamda
         self.logfile = join(result_dir, f'solver-{ID}.log')
         self.neighbors = neighbors
-        self.rho = admmopt.rho / self.flow_global.size
+        self.rho = admmopt.rho
+        if self.admmopt.scale_rho:
+            self.rho = self.rho / self.flow_global.size
+        print(self.rho)
         self.shared_lines = shared_lines
         self.shared_lines_index = shared_lines_index
 

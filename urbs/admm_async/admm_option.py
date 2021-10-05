@@ -3,6 +3,7 @@ from warnings import warn
 class AdmmOption(object):
     def __init__(self,
         rho,
+        scale_rho = False,
         penalty_mode = None,
         max_penalty = None,
         penalty_mult = None,
@@ -130,10 +131,8 @@ class AdmmOption(object):
         if max_iter <= 0:
             raise ValueError("max_iter must be larger than 0")
 
-        self.primal_tolerance = primal_tolerance
-        self.dual_tolerance = dual_tolerance
-        self.mismatch_tolerance = mismatch_tolerance
         self.rho = rho
+        self.scale_rho = scale_rho
         self.max_penalty = max_penalty
         self.penalty_mult = penalty_mult
         self.primal_decrease = primal_decrease
@@ -146,4 +145,6 @@ class AdmmOption(object):
         self.max_iter = max_iter
         self.tolerance_mode = tolerance_mode
         self.penalty_mode = penalty_mode
-
+        self.primal_tolerance = primal_tolerance
+        self.dual_tolerance = dual_tolerance
+        self.mismatch_tolerance = mismatch_tolerance
