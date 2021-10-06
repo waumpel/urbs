@@ -131,7 +131,7 @@ if __name__ == '__main__':
             summaries.append(summary)
 
         print(f'Results for scenario {scenario.__name__}:')
-        with open(join(scenario_dir, 'summary.txt'), 'w', encoding='utf8') as f:
+        with open(join(result_dir, 'summary.txt'), 'w', encoding='utf8') as f:
             for s in summaries:
                 print(s)
                 f.write(s + '\n')
