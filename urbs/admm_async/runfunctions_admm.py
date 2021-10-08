@@ -23,7 +23,7 @@ from urbs.identify import identify_mode
 from urbs.input import read_input, add_carbon_supplier
 from urbs.runfunctions import setup_solver
 from urbs.validation import validate_input
-
+from urbs.debug import timestamp
 
 def prepare_result_directory(result_name):
     """ create a time stamped directory within the result folder.
@@ -309,6 +309,8 @@ def run_parallel(
         hoursPerPeriod,
     )
 
+    timestamp('Finished preparing admm')
+
     n_clusters = len(clusters)
 
     # store metadata
@@ -373,7 +375,7 @@ def run_parallel(
     )
     print(f'Currently using {(memory / 10**9):.2f} GiB of memory (rss)')
 
-
+    timestamp('Finished creating models')
     print('All workers have created their models. Starting ADMM')
     solver_start = time()
 
