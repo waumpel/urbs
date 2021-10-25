@@ -213,9 +213,6 @@ class AdmmWorker:
             weighting_order=weighting_order,
         )
 
-        with open(join(self.result_dir, f'e_tra_in-{self.ID}.log'), 'w', encoding='utf8') as f:
-            urbs_model.e_tra_in.display(ostream=f)
-
         self.model = AdmmModelPersistent(
             self.ID,
             self.result_dir,

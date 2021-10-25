@@ -85,11 +85,18 @@ def prepare_admm(
         - `lamda`: List of Series, one per cluster, containing the initial lamda values.
         - `weighting_order`: TSAM parameter
     """
-    # hard-coded year. ADMM doesn't work with intertemporal models (yet)
-    year = date.today().year
 
     # read and modify microgrid data
     mode = identify_mode(data_all)
+    if mode['int']:
+        if mode['transdist']:
+            raise NotImplementedError('Intertemporal and TransDist mode in combination are not yet supported.')
+        if mode['acpf']:
+            raise NotImplementedError('Intertemporal and ACPF mode in combination are not yet supported.')
+        if mode['tsam']:
+            raise NotImplementedError('Intertemporal and TSAM mode in combination are not yet supported.')
+
+    year = data_all['global_prop'].index.get_level_values(0)[0]
     if mode['transdist']:
         microgrid_data_initial =[]
         for i, microgrid_file in enumerate(microgrid_files):
@@ -120,14 +127,14 @@ def prepare_admm(
 
     if mode['tsam']:
         timesteps, weighting_order = run_tsam(data_all, noTypicalPeriods, hoursPerPeriod,
-                                              cross_scenario_data)
+                                            cross_scenario_data)
     else:
         weighting_order = None
 
     print('ADMM preprocessing')
 
     # add carbon supplier if necessary
-    if not np.isinf(data_all['global_prop'].loc[year].loc['CO2 limit', 'value']):
+    if not np.isinf(data_all['global_prop'].loc[(year, 'CO2 limit'), 'value']):
         add_carbon_supplier(data_all, clusters)
         clusters.append(['Carbon_site'])
         print("Added carbon supplier cluster.")
@@ -209,12 +216,12 @@ def prepare_admm(
     initial_lamda = 0
 
     flow_global = [
-        fill_flow_global(year, timesteps, shared_lines_index[ID], initial_flow_global)
+        fill_flow_global(timesteps, shared_lines_index[ID], initial_flow_global)
         for ID in range(n_clusters)
     ]
 
     lamda = [
-        fill_lamda(year, timesteps, shared_lines_index[ID], initial_lamda)
+        fill_lamda(timesteps, shared_lines_index[ID], initial_lamda)
         for ID in range(n_clusters)
     ]
 
@@ -251,28 +258,18 @@ def print_status(results, status):
     print('\n' + df.to_string())
 
 
-def fill_flow_global(year, timesteps, shared_lines_index, value):
+def fill_flow_global(timesteps, shared_lines_index, value):
     flow_global = pd.Series({
-        (t, year, source, target): value
+        (t, series['support_timeframe'], series['Site In'], series['Site Out']): value
         for t in timesteps[1:]
-        for source, target in zip(
-            shared_lines_index['Site In'], shared_lines_index['Site Out']
-        )
+        for index, series in shared_lines_index.iterrows()
     })
     flow_global.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
     return flow_global
 
 
-def fill_lamda(year, timesteps, shared_lines_index, value):
-    lamda = pd.Series({
-        (t, year, source, target): value
-        for t in timesteps[1:]
-        for source, target in zip(
-            shared_lines_index['Site In'], shared_lines_index['Site Out']
-        )
-    })
-    lamda.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
-    return lamda
+# alias
+fill_lamda = fill_flow_global
 
 
 def run_parallel(
@@ -510,10 +507,6 @@ def run_sequential(
             hoursPerPeriod=hoursPerPeriod,
             weighting_order=weighting_order,
         )
-
-        with open(join(result_dir, f'e_tra_in-{ID}.log'), 'w', encoding='utf8') as f:
-            urbs_model.e_tra_in.display(ostream=f)
-
         # pickle
         model_file = join(model_dir, f'{ID}.pickle')
         model_files.append(model_file)

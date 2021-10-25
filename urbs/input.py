@@ -25,7 +25,6 @@ def read_input(input_files, year):
     Returns:
         a dict of up to 12 DataFrames
     """
-
     if os.path.isdir(input_files):
         glob_input = os.path.join(input_files, '*.xlsx')
         input_files = sorted(glob.glob(glob_input))
@@ -46,6 +45,7 @@ def read_input(input_files, year):
     ef = []
 
     for filename in input_files:
+        print(f'Reading {filename}')
         with pd.ExcelFile(filename) as xls:
 
             global_prop = xls.parse('Global').set_index(['Property'])
@@ -190,6 +190,7 @@ def read_input(input_files, year):
     for key in data:
         if isinstance(data[key].index, pd.core.indexes.multi.MultiIndex):
             data[key].sort_index(inplace=True)
+
     return data
 
 
@@ -231,7 +232,6 @@ def pyomo_model_prep(
 
     # for standard problems
     if sites is None:
-        m.global_prop = data_all['global_prop'].drop('description', axis=1)
         data['site'] = data_all['site']
         data['commodity'] = data_all['commodity']
         data['process'] = data_all['process']
@@ -242,7 +242,6 @@ def pyomo_model_prep(
 
     # for ADMM subproblems
     else:
-        m.global_prop = data_all['global_prop'].drop('description', axis=1)
         data['site'] = data_all['site'].loc(axis=0)[:,sites]
         data['commodity'] = data_all['commodity'].loc(axis=0)[:,sites]
         data['process'] = data_all['process'].loc(axis=0)[:,sites]
@@ -726,21 +725,10 @@ def get_input(prob, name):
 
 def add_carbon_supplier(data_all, clusters):
     """
-    TODO
+    Add a Carbon site to the model that supplies all clusters with Carbon, a commodity
+    that can be used to implement CO2 limits and budgets in ADMM models.
     """
-    year = date.today().year
-    # add site Carbon_site
-    data_all['site'].loc[(year,'Carbon_site'),:]=np.nan
-
-
-    #add dummy process X to Carbon_site (to avoid errors)
-    # data_all['process'].loc[year,'Carbon_site','X']=(0,0,np.inf,0,0,0,0,0,0,0,0,1,np.nan,np.nan,np.nan,np.nan)
-
-    #add dummy storage X to Carbon_site (to avoid errors)
-    #data_all['storage'].loc[year,'Carbon_site','X','Carbon']=(0,0,np.inf,0,0,np.inf,0,1,0,0,0,0,0,0,1,0,0,0,np.nan,np.nan,np.nan)
-
-    # TODO: create one dataframe with all transmissions, then append it
-
+    # Define the parameters for Carbon transmissions (no cost, unlimited capacity).
     names = ['support_timeframe', 'Site In', 'Site Out', 'Transmission', 'Commodity']
     data_to = {
         'eff': 1,
@@ -775,48 +763,53 @@ def add_carbon_supplier(data_all, clusters):
         'tra-block': np.nan,
     }
 
-    # add carbon-connection from Carbon_site to the first site in each cluster
-    for cluster in clusters:
-        levels = (year, 'Carbon_site', cluster[0], 'CO2_line', 'Carbon')
-        index = pd.MultiIndex.from_tuples([levels], names=names)
-        df =pd.DataFrame(data_to, index)
-        data_all['transmission'] = data_all['transmission'].append(df)
+    for stf in data_all['global_prop'].index.get_level_values(0):
+        # Add the Carbon site
+        data_all['site'].loc[(stf, 'Carbon_site'), :] = np.nan
 
-        levels = (year, cluster[0], 'Carbon_site', 'CO2_line', 'Carbon')
-        index = pd.MultiIndex.from_tuples([levels], names=names)
-        df =pd.DataFrame(data_from, index)
-        data_all['transmission'] = data_all['transmission'].append(df)
+        # Add the Carbon commodity to the Carbon_site and set the max stock source term
+        # to the yearly CO2 limit.
+        data_all['commodity'].loc[stf, 'Carbon_site', 'Carbon', 'Stock'] = {
+            'price': 0,
+            'max': data_all['global_prop'].loc[stf].loc['CO2 limit', 'value'],
+            'maxperhour': np.inf,
+        }
 
-        # add Carbon commodity to each site
-        for site in cluster:
-            data_all['commodity'].loc[year,site,'Carbon','Stock']=(0,0,0)
+        for cluster in clusters:
+            # Add the Carbon commodity to each site in the cluster.
+            # It cannot be generated there, but it must be defined.
+            for site in cluster:
+                data_all['commodity'].loc[stf, site, 'Carbon', 'Stock'] = (0, 0, 0)
 
+            # Connect the Carbon site to the first site of each cluster.
 
-    # add commodity Carbon to Carbon_site
-    data_all['commodity'].loc[year,'Carbon_site','Carbon','Stock']={
-        'price': 0,
-        'max': data_all['global_prop'].loc[2021].loc['CO2 limit','value'],
-        'maxperhour': np.inf,
-    }
+            # Create a DataFrame for each transmission, then append it.
+            # TODO: Create a single DataFrame for all transmissions instead.
+            levels = (stf, 'Carbon_site', cluster[0], 'CO2_line', 'Carbon')
+            index = pd.MultiIndex.from_tuples([levels], names=names)
+            df = pd.DataFrame(data_to, index)
+            data_all['transmission'] = data_all['transmission'].append(df)
 
-    # add free-movement carbon-connections within each cluster
-    for cluster in clusters:
-        if len(cluster) > 1:
-            for site in cluster[1:]:
-                levels = (year, cluster[0], site, 'CO2_line', 'Carbon')
-                index = pd.MultiIndex.from_tuples([levels], names=names)
-                df =pd.DataFrame(data_to, index)
-                data_all['transmission'] = data_all['transmission'].append(df)
+            levels = (stf, cluster[0], 'Carbon_site', 'CO2_line', 'Carbon')
+            index = pd.MultiIndex.from_tuples([levels], names=names)
+            df = pd.DataFrame(data_from, index)
+            data_all['transmission'] = data_all['transmission'].append(df)
 
-                levels = (year, site, cluster[0], 'CO2_line', 'Carbon')
-                index = pd.MultiIndex.from_tuples([levels], names=names)
-                df =pd.DataFrame(data_from, index)
-                data_all['transmission'] = data_all['transmission'].append(df)
+            # Connect the first site of each cluster to all other sites within that cluster.
+            if len(cluster) > 1:
+                for site in cluster[1:]:
+                    levels = (stf, cluster[0], site, 'CO2_line', 'Carbon')
+                    index = pd.MultiIndex.from_tuples([levels], names=names)
+                    df = pd.DataFrame(data_to, index)
+                    data_all['transmission'] = data_all['transmission'].append(df)
 
-    #import pdb;pdb.set_trace()
-    for (y,a,b,c) in data_all['process_commodity'].index.values:
-        if b == 'CO2' and c == 'Out':
-            data_all['process_commodity'].loc[y,a,'Carbon','In'] = data_all['process_commodity'].loc[y,a,'CO2','Out'].values
-    #with pd.ExcelWriter('master.xlsx') as writer:
-    #    for key, val in data_all.items():
-    #       val.to_excel(writer, sheet_name=key)
+                    levels = (stf, site, cluster[0], 'CO2_line', 'Carbon')
+                    index = pd.MultiIndex.from_tuples([levels], names=names)
+                    df = pd.DataFrame(data_from, index)
+                    data_all['transmission'] = data_all['transmission'].append(df)
+
+    # Add Carbon as an input commodity to all CO2-producing processes.
+    for (stf, process, commodity, direction) in data_all['process_commodity'].index.values:
+        if commodity == 'CO2' and  direction == 'Out':
+            data_all['process_commodity'].loc[stf, process, 'Carbon', 'In'] = \
+                data_all['process_commodity'].loc[stf, process, 'CO2', 'Out'].values

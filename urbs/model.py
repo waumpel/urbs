@@ -116,12 +116,12 @@ def create_model(
 
     # site (e.g. north, middle, south...)
     m.sit = pyomo.Set(
-        initialize = [s for (y,s) in data['site_all'].index.values],
+        initialize = data['site_all'].index.get_level_values(1).unique(),
         doc='Set of all sites')
 
     m.sit_inside = pyomo.Set(
-        initialize = [s for (y,s) in data['site'].index.values],
-        doc='Set of all sites')
+        initialize = data['site'].index.get_level_values(1).unique(),
+        doc='Set of all sites in this ADMM-cluster')
 
     # commodity (e.g. solar, wind, coal...)
     indexlist = set()
@@ -511,6 +511,13 @@ def create_model(
                 sense=pyomo.minimize,
                 doc='minimize(cost = sum of all cost types)')
 
+        elif 'Carbon' in m.com_stock:
+            # TODO: comment
+            m.res_global_carbon_budget = pyomo.Constraint(
+                rule=res_global_carbon_budget_rule,
+                doc='total carbon stock source <= global.prop CO2 budget'
+            )
+
     elif m.obj.value == 'CO2':
         if sites is None:
             m.res_global_cost_limit = pyomo.Constraint(
@@ -796,6 +803,24 @@ def res_global_co2_budget_rule(m):
 
         return (co2_output_sum <=
                 m.global_prop_dict['value'][min(m.stf), 'CO2 budget'])
+    else:
+        return pyomo.Constraint.Skip
+
+
+# Global use of Carbon in the entire period <= global CO2 budget (for ADMM)
+# TODO: Only add this constraint if max stock value is > 0.
+def res_global_carbon_budget_rule(m):
+    if math.isinf(m.global_prop_dict['value'][min(m.stf_list), 'CO2 budget']):
+        return pyomo.Constraint.Skip
+    elif (m.global_prop_dict['value'][min(m.stf_list), 'CO2 budget']) >= 0:
+        return sum(
+            m.e_co_stock[tm, stf, sit, 'Carbon', 'Stock'] *
+            m.typeperiod['weight_typeperiod'][(stf,tm)] *
+            m.weight * stf_dist(stf, m)
+            for stf in m.stf
+            for tm in m.tm
+            for sit in m.sit
+        ) <= m.global_prop_dict['value'][min(m.stf), 'CO2 budget']
     else:
         return pyomo.Constraint.Skip
 
