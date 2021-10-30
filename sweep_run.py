@@ -2,7 +2,7 @@
 from datetime import date
 from multiprocessing import freeze_support, set_start_method
 from os import makedirs
-from os.path import join
+from os.path import join, realpath, dirname
 import shutil
 
 from urbs import admm_async
@@ -57,20 +57,20 @@ if __name__ == '__main__':
     #                ['Baden-Württemberg','Hesse','Bavaria','Rhineland-Palatinate','Saarland','Saxony','Thuringia']]
 
     # four clusters
-    # clusters = [
-    #     ['Schleswig-Holstein', 'Hamburg', 'Mecklenburg-Vorpommern', 'Offshore'],
-    #     ['Lower Saxony', 'Bremen', 'Saxony-Anhalt', 'Brandenburg'],
-    #     ['Berlin', 'North Rhine-Westphalia', 'Baden-Württemberg', 'Hesse'],
-    #     ['Bavaria', 'Rhineland-Palatinate', 'Saarland', 'Saxony', 'Thuringia']
-    # ]
+    clusters = [
+        ['Schleswig-Holstein', 'Hamburg', 'Mecklenburg-Vorpommern', 'Offshore'],
+        ['Lower Saxony', 'Bremen', 'Saxony-Anhalt', 'Brandenburg'],
+        ['Berlin', 'North Rhine-Westphalia', 'Baden-Württemberg', 'Hesse'],
+        ['Bavaria', 'Rhineland-Palatinate', 'Saarland', 'Saxony', 'Thuringia']
+    ]
 
     # one cluster per state
-    clusters = [
-        ['Schleswig-Holstein'], ['Hamburg'], ['Mecklenburg-Vorpommern'], ['Offshore'],
-        ['Lower Saxony'], ['Bremen'], ['Saxony-Anhalt'], ['Brandenburg'],
-        ['Berlin'], ['North Rhine-Westphalia'], ['Baden-Württemberg'], ['Hesse'],
-        ['Bavaria'], ['Rhineland-Palatinate'], ['Saarland'], ['Saxony'], ['Thuringia']
-    ]
+    # clusters = [
+    #     ['Schleswig-Holstein'], ['Hamburg'], ['Mecklenburg-Vorpommern'], ['Offshore'],
+    #     ['Lower Saxony'], ['Bremen'], ['Saxony-Anhalt'], ['Brandenburg'],
+    #     ['Berlin'], ['North Rhine-Westphalia'], ['Baden-Württemberg'], ['Hesse'],
+    #     ['Bavaria'], ['Rhineland-Palatinate'], ['Saarland'], ['Saxony'], ['Thuringia']
+    # ]
 
     admmopts = {
         f'rho={rho}-mult={mult}-dec={dec}': admm_async.AdmmOption(
@@ -79,19 +79,23 @@ if __name__ == '__main__':
             max_penalty=10**8,
             penalty_mult=mult,
             primal_decrease=dec,
-            max_iter=200,
-            tolerance=0,
+            max_iter=10,
+            tolerance=0.0,
         )
-        for rho in [100]
+        for rho in [10, 100]
         for mult in [1.15]
         for dec in [0.95]
     }
 
     for scenario in scenarios:
+        scenario_dir = join(result_dir, scenario.__name__)
+        makedirs(scenario_dir)
+        shutil.copy(join(dirname(realpath(__file__)), 'plot.py'), scenario_dir)
         results = {}
+
         for opt_name, admmopt in admmopts.items():
-            scenario_dir = join(result_dir, scenario.__name__, opt_name)
-            makedirs(scenario_dir)
+            opt_dir = join(scenario_dir, opt_name)
+            makedirs(opt_dir)
 
             year = date.today().year
             data_all = read_input(input_path, year)
@@ -105,7 +109,7 @@ if __name__ == '__main__':
                     'gurobi',
                     data_all,
                     timesteps,
-                    scenario_dir,
+                    opt_dir,
                     dt,
                     objective,
                     clusters,
@@ -116,7 +120,7 @@ if __name__ == '__main__':
                 result = admm_objective = admm_async.run_parallel(
                 data_all,
                 timesteps,
-                scenario_dir,
+                opt_dir,
                 dt,
                 objective,
                 clusters,
