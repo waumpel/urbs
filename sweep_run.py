@@ -57,20 +57,20 @@ if __name__ == '__main__':
     #                ['Baden-Württemberg','Hesse','Bavaria','Rhineland-Palatinate','Saarland','Saxony','Thuringia']]
 
     # four clusters
-    clusters = [
-        ['Schleswig-Holstein', 'Hamburg', 'Mecklenburg-Vorpommern', 'Offshore'],
-        ['Lower Saxony', 'Bremen', 'Saxony-Anhalt', 'Brandenburg'],
-        ['Berlin', 'North Rhine-Westphalia', 'Baden-Württemberg', 'Hesse'],
-        ['Bavaria', 'Rhineland-Palatinate', 'Saarland', 'Saxony', 'Thuringia']
-    ]
+    # clusters = [
+    #     ['Schleswig-Holstein', 'Hamburg', 'Mecklenburg-Vorpommern', 'Offshore'],
+    #     ['Lower Saxony', 'Bremen', 'Saxony-Anhalt', 'Brandenburg'],
+    #     ['Berlin', 'North Rhine-Westphalia', 'Baden-Württemberg', 'Hesse'],
+    #     ['Bavaria', 'Rhineland-Palatinate', 'Saarland', 'Saxony', 'Thuringia']
+    # ]
 
     # one cluster per state
-    # clusters = [
-    #     ['Schleswig-Holstein'], ['Hamburg'], ['Mecklenburg-Vorpommern'], ['Offshore'],
-    #     ['Lower Saxony'], ['Bremen'], ['Saxony-Anhalt'], ['Brandenburg'],
-    #     ['Berlin'], ['North Rhine-Westphalia'], ['Baden-Württemberg'], ['Hesse'],
-    #     ['Bavaria'], ['Rhineland-Palatinate'], ['Saarland'], ['Saxony'], ['Thuringia']
-    # ]
+    clusters = [
+        ['Schleswig-Holstein'], ['Hamburg'], ['Mecklenburg-Vorpommern'], ['Offshore'],
+        ['Lower Saxony'], ['Bremen'], ['Saxony-Anhalt'], ['Brandenburg'],
+        ['Berlin'], ['North Rhine-Westphalia'], ['Baden-Württemberg'], ['Hesse'],
+        ['Bavaria'], ['Rhineland-Palatinate'], ['Saarland'], ['Saxony'], ['Thuringia']
+    ]
 
     admmopts = {
         f'rho={rho}-mult={mult}-dec={dec}': admm_async.AdmmOption(
@@ -79,7 +79,7 @@ if __name__ == '__main__':
             max_penalty=10**8,
             penalty_mult=mult,
             primal_decrease=dec,
-            max_iter=10,
+            max_iter=200,
             tolerance=0.0,
         )
         for rho in [10, 100]
@@ -87,7 +87,14 @@ if __name__ == '__main__':
         for dec in [0.95]
     }
 
+    year = date.today().year
+    data_all = read_input(input_path, year)
+
     for scenario in scenarios:
+        data_all, _ = scenario(data_all)
+        validate_input(data_all)
+        validate_dc_objective(data_all, objective)
+
         scenario_dir = join(result_dir, scenario.__name__)
         makedirs(scenario_dir)
         shutil.copy(join(dirname(realpath(__file__)), 'plot.py'), scenario_dir)
@@ -96,13 +103,6 @@ if __name__ == '__main__':
         for opt_name, admmopt in admmopts.items():
             opt_dir = join(scenario_dir, opt_name)
             makedirs(opt_dir)
-
-            year = date.today().year
-            data_all = read_input(input_path, year)
-
-            data_all, _ = scenario(data_all)
-            validate_input(data_all)
-            validate_dc_objective(data_all, objective)
 
             if args.sequential:
                 admm_async.run_sequential(
@@ -117,7 +117,7 @@ if __name__ == '__main__':
                     microgrid_cluster_mode='microgrid',
                 )
             else:
-                result = admm_objective = admm_async.run_parallel(
+                result = admm_async.run_parallel(
                 data_all,
                 timesteps,
                 opt_dir,
@@ -135,7 +135,7 @@ if __name__ == '__main__':
             summaries.append(summary)
 
         print(f'Results for scenario {scenario.__name__}:')
-        with open(join(result_dir, 'summary.txt'), 'w', encoding='utf8') as f:
+        with open(join(scenario_dir, 'summary.txt'), 'w', encoding='utf8') as f:
             for s in summaries:
                 print(s)
                 f.write(s + '\n')
