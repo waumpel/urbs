@@ -22,11 +22,16 @@ if __name__ == '__main__':
     options.add_argument('-s', '--sequential', action='store_true')
     args = options.parse_args()
 
-    input_files = 'europe-intertemporal-reduced'  # for single year file name, for intertemporal folder name
+    input_files = 'europe-intertemporal'  # for single year file name, for intertemporal folder name
     input_dir = 'Input'
     input_path = join(input_dir, input_files)
 
-    result_name = 'europe-intertemporal-reduced'
+    # simulation timesteps
+    (offset, length) = (0, 1)  # time step selection
+    timesteps = range(offset, offset + length + 1)
+    dt = 1  # length of each time step (unit: hours)
+
+    result_name = f'europe-intertemporal-t{length}'
     if args.admm:
         result_name += '-admm'
     if args.sequential:
@@ -44,11 +49,6 @@ if __name__ == '__main__':
 
     # objective function
     objective = 'cost'  # set either 'cost' or 'CO2' as objective
-
-    # simulation timesteps
-    (offset, length) = (0, 1)  # time step selection
-    timesteps = range(offset, offset + length + 1)
-    dt = 1  # length of each time step (unit: hours)
 
     # select scenarios to be run
     scenarios = [

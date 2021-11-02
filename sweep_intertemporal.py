@@ -109,9 +109,11 @@ if __name__ == '__main__':
     data_all = read_input(input_path, year)
 
     for scenario in scenarios:
+        print(f'\nStarting scenario {scenario.__name__}')
         data_all, _ = scenario(data_all)
-        validate_input(data_all)
-        validate_dc_objective(data_all, objective)
+        # print('Validating...')
+        # validate_input(data_all)
+        # validate_dc_objective(data_all, objective)
 
         scenario_dir = join(result_dir, scenario.__name__)
         makedirs(scenario_dir)
@@ -119,6 +121,7 @@ if __name__ == '__main__':
         results = {}
 
         for opt_name, admmopt in admmopts.items():
+            print(f'\nStarting admmopt {opt_name}')
             opt_dir = join(scenario_dir, opt_name)
             makedirs(opt_dir)
 

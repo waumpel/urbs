@@ -148,6 +148,7 @@ if __name__ == '__main__':
     combined = args.combined
 
     out_dir = '.'
+    format = 'png'
 
     # Automatically find subdirs for plotting
     plot_dirs = [
@@ -161,7 +162,7 @@ if __name__ == '__main__':
     #     '',
     # ]
 
-    if len(plot_dirs) > len(COLORS):
+    if combined and len(plot_dirs) > len(COLORS):
         raise RuntimeError('Not enough colors')
 
     # Use directory names as labels
@@ -213,7 +214,7 @@ if __name__ == '__main__':
         ax_obj.set_ylabel(r'$\Theta$')
         ax_obj.set_title('Objective gap over time' + title_suffix)
 
-    for subdir, label, color in zip(plot_dirs, labels, COLORS):
+    for i, (subdir, label) in enumerate(zip(plot_dirs, labels)):
         print(f"{subdir} ...")
 
         with open(join(subdir, METADATA_FILE), 'r', encoding='utf8') as f:
@@ -252,27 +253,28 @@ if __name__ == '__main__':
                     label=r'$\Theta$')
 
             ax.legend()
-            fig.savefig(join(out_dir, f'details-{subdir}.pdf'))
+            fig.savefig(join(out_dir, f'details-{subdir}.{format}'))
             plt.close(fig)
 
         if combined:
             ax_gaps.plot(series['max_time'],
                          cutoff_filter(convergence, *convergence_cutoff),
-                         label=label, color=color)
+                         label=label, color=COLORS[i])
             ax_obj.plot(series['max_time'],
                         cutoff_filter(series['obj_gap'], *objective_cutoff),
-                        label=label, color=color)
+                        label=label, color=COLORS[i])
 
     print(f'Saving to "{out_dir}" ...')
 
     if combined:
-        ax_gaps.legend()
-        fig_gaps.savefig(join(out_dir, 'convergence.pdf'))
+        ax_gaps.legend(bbox_to_anchor=(1.1, 0))
+        fig_gaps.savefig(join(out_dir, f'convergence.{format}'))
         plt.close(fig_gaps)
 
-        ax_obj.legend()
-        fig_obj.savefig(join(out_dir, 'objective.pdf'))
+        ax_obj.legend(bbox_to_anchor=(1.1, 0))
+        fig_obj.savefig(join(out_dir, f'objective.{format}'))
         plt.close(fig_obj)
 
     with open(join(out_dir, 'comparison.txt'), 'w', encoding='utf8') as f:
+        f.write('subdir time obj_gap, iter\n')
         f.write('\n'.join(' '.join(str(x) for x in l) for l in convergence_list))
