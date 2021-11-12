@@ -26,7 +26,12 @@ if __name__ == '__main__':
     input_dir = 'Input'
     input_path = join(input_dir, input_files)
 
-    result_name = 'germany'
+    # simulation timesteps
+    (offset, length) = (0, 1)  # time step selection
+    timesteps = range(offset, offset + length + 1)
+    dt = 1  # length of each time step (unit: hours)
+
+    result_name = f'germany-t{length}'
     if args.admm:
         result_name += '-admm'
     if args.sequential:
@@ -45,48 +50,43 @@ if __name__ == '__main__':
     # objective function
     objective = 'cost'  # set either 'cost' or 'CO2' as objective
 
-    # simulation timesteps
-    (offset, length) = (0, 1)  # time step selection
-    timesteps = range(offset, offset + length + 1)
-    dt = 1  # length of each time step (unit: hours)
-
     # select scenarios to be run
     scenarios = [
         scenario_base
     ]
 
     if args.admm:
-
         # one cluster
-        # clusters = [['Schleswig-Holstein','Hamburg','Mecklenburg-Vorpommern','Offshore','Lower Saxony','Bremen','Saxony-Anhalt','Brandenburg','Berlin','North Rhine-Westphalia'],
-        #                ['Baden-Württemberg','Hesse','Bavaria','Rhineland-Palatinate','Saarland','Saxony','Thuringia']]
-
-        # four clusters
-        clusters = [
-            ['Schleswig-Holstein', 'Hamburg', 'Mecklenburg-Vorpommern', 'Offshore'],
-            ['Lower Saxony', 'Bremen', 'Saxony-Anhalt', 'Brandenburg'],
-            ['Berlin', 'North Rhine-Westphalia', 'Baden-Württemberg', 'Hesse'],
-            ['Bavaria', 'Rhineland-Palatinate', 'Saarland', 'Saxony', 'Thuringia']
-        ]
-
-        # one cluster per state
         # clusters = [
-        #     ['Schleswig-Holstein'], ['Hamburg'], ['Mecklenburg-Vorpommern'], ['Offshore'],
-        #     ['Lower Saxony'], ['Bremen'], ['Saxony-Anhalt'], ['Brandenburg'],
-        #     ['Berlin'], ['North Rhine-Westphalia'], ['Baden-Württemberg'], ['Hesse'],
-        #     ['Bavaria'], ['Rhineland-Palatinate'], ['Saarland'], ['Saxony'], ['Thuringia']
+        #     ['Schleswig-Holstein', 'Hamburg', 'Mecklenburg-Vorpommern', 'Offshore',
+        #      'Lower Saxony', 'Bremen', 'Saxony-Anhalt', 'Brandenburg', 'Berlin',
+        #      'North Rhine-Westphalia', 'Baden-Württemberg', 'Hesse', 'Bavaria',
+        #      'Rhineland-Palatinate', 'Saarland', 'Saxony', 'Thuringia']
         # ]
 
+        # four clusters
+        # clusters = [
+        #     ['Schleswig-Holstein', 'Hamburg', 'Mecklenburg-Vorpommern', 'Offshore'],
+        #     ['Lower Saxony', 'Bremen', 'Saxony-Anhalt', 'Brandenburg'],
+        #     ['Berlin', 'North Rhine-Westphalia', 'Baden-Württemberg', 'Hesse'],
+        #     ['Bavaria', 'Rhineland-Palatinate', 'Saarland', 'Saxony', 'Thuringia']
+        # ]
+
+        # one cluster per state
+        clusters = [
+            ['Schleswig-Holstein'], ['Hamburg'], ['Mecklenburg-Vorpommern'], ['Offshore'],
+            ['Lower Saxony'], ['Bremen'], ['Saxony-Anhalt'], ['Brandenburg'],
+            ['Berlin'], ['North Rhine-Westphalia'], ['Baden-Württemberg'], ['Hesse'],
+            ['Bavaria'], ['Rhineland-Palatinate'], ['Saarland'], ['Saxony'], ['Thuringia']
+        ]
+
         admmopt = admm_async.AdmmOption(
-            rho = 100,
+            rho = 1000,
             max_penalty = 10**8,
-            penalty_mult = 1.15,
+            penalty_mult = 2,
             primal_decrease = 0.95,
-            # residual_distance = 10,
-            # mult_adapt = 1,
-            # max_mult = 10**8,
             max_iter = 200,
-            tolerance = (0.01, None, 0.01),
+            tolerance = 0.0,
         )
 
         for scenario in scenarios:
@@ -114,7 +114,7 @@ if __name__ == '__main__':
                     microgrid_cluster_mode='microgrid',
                 )
             else:
-                admm_objective = admm_async.run_parallel(
+                result = admm_async.run_parallel(
                 data_all,
                 timesteps,
                 scenario_dir,

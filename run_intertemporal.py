@@ -94,14 +94,10 @@ if __name__ == '__main__':
         ]
 
         admmopt = admm_async.AdmmOption(
-            rho = 10000,
-            scale_rho = True,
+            rho = 1000,
             max_penalty = 10**8,
             penalty_mult = 2,
             primal_decrease = 0.95,
-            # residual_distance = 10,
-            # mult_adapt = 1,
-            # max_mult = 10**8,
             max_iter = 500,
             tolerance = (0.01, None, 0.01),
         )

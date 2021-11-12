@@ -9,7 +9,6 @@ from urbs import admm_async
 from urbs.input import read_input
 from urbs.runfunctions import prepare_result_directory
 from urbs.scenarios import scenario_base
-from urbs.validation import validate_dc_objective, validate_input
 
 
 if __name__ == '__main__':
@@ -24,10 +23,14 @@ if __name__ == '__main__':
     input_dir = 'Input'
     input_path = join(input_dir, input_files)
 
-    result_name = 'europe-intertemporal'
+    # simulation timesteps
+    (offset, length) = (0, 1)  # time step selection
+    timesteps = range(offset, offset + length + 1)
+    dt = 1  # length of each time step (unit: hours)
+
+    result_name = f'europe-intertemporal-t{length}'
     if args.sequential:
         result_name += '-seq'
-    result_name += '-inc'
     result_dir = prepare_result_directory(result_name)  # name + time stamp
 
     # copy input file to result directory
@@ -42,15 +45,12 @@ if __name__ == '__main__':
     # objective function
     objective = 'cost'  # set either 'cost' or 'CO2' as objective
 
-    # simulation timesteps
-    (offset, length) = (0, 1)  # time step selection
-    timesteps = range(offset, offset + length + 1)
-    dt = 1  # length of each time step (unit: hours)
-
     # select scenarios to be run
     scenarios = [
         scenario_base
     ]
+
+    # ADMM clusters
     clusters = [
         ['ALB'],
         ['AUT'],
@@ -96,13 +96,13 @@ if __name__ == '__main__':
             penalty_mult=mult,
             primal_decrease=dec,
             max_iter=500,
-            tolerance=0.0,
+            tolerance=(0.01, None, 0.01),
             async_correction=alpha,
         )
-        for rho in [10**i for i in range(3, 5)]
-        for mult in [1.1, 1.5, 2, 5, 10]
+        for rho in reversed([10**i for i in range(-1, 4)])
+        for mult in [1.5]
         for dec in [0.95]
-        for alpha in [0, 10000]
+        for alpha in [0]
     }
 
     year = date.today().year
@@ -111,9 +111,6 @@ if __name__ == '__main__':
     for scenario in scenarios:
         print(f'\nStarting scenario {scenario.__name__}')
         data_all, _ = scenario(data_all)
-        # print('Validating...')
-        # validate_input(data_all)
-        # validate_dc_objective(data_all, objective)
 
         scenario_dir = join(result_dir, scenario.__name__)
         makedirs(scenario_dir)
@@ -149,14 +146,3 @@ if __name__ == '__main__':
                 microgrid_cluster_mode='microgrid',
                 )
                 results[opt_name] = result
-
-        summaries = []
-        for opt_name, result in results.items():
-            summary = f"{opt_name}: {result['avg iterations']} {result['time']} {result['objective']} {result['converged']}"
-            summaries.append(summary)
-
-        print(f'Results for scenario {scenario.__name__}:')
-        with open(join(scenario_dir, 'summary.txt'), 'w', encoding='utf8') as f:
-            for s in summaries:
-                print(s)
-                f.write(s + '\n')
