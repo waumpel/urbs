@@ -22,7 +22,7 @@ if __name__ == '__main__':
     options.add_argument('-s', '--sequential', action='store_true')
     args = options.parse_args()
 
-    input_files = 'europe-intertemporal'  # for single year file name, for intertemporal folder name
+    input_files = 'europe'  # for single year file name, for intertemporal folder name
     input_dir = 'Input'
     input_path = join(input_dir, input_files)
 
@@ -31,7 +31,7 @@ if __name__ == '__main__':
     timesteps = range(offset, offset + length + 1)
     dt = 1  # length of each time step (unit: hours)
 
-    result_name = f'europe-intertemporal-t{length}'
+    result_name = f'europe-t{length}'
     if args.admm:
         result_name += '-admm'
     if args.sequential:
