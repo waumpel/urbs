@@ -501,10 +501,11 @@ def create_model(
                     rule=res_global_co2_budget_rule,
                     doc='total co2 commodity output <= global.prop CO2 budget')
 
-                m.res_global_cost_limit = pyomo.Constraint(
-                    m.stf,
-                    rule=res_global_cost_limit_rule,
-                    doc='total costs <= Global cost limit')
+                # TODO: should cost limit be active when objective is cost?
+                # m.res_global_cost_limit = pyomo.Constraint(
+                #     m.stf,
+                #     rule=res_global_cost_limit_rule,
+                #     doc='total costs <= Global cost limit')
 
             m.objective_function = pyomo.Objective(
                 rule=cost_rule,
