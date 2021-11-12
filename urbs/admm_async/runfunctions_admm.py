@@ -248,7 +248,7 @@ def print_status(results, status):
         data=[
             [
                 result.local_iteration if result else '-',
-                result.stop_time - result.start_time if result else '-',
+                result.stop_time if result else '-',
                 status_map[value]
             ]
             for result, value in zip(results, status)
