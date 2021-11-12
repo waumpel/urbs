@@ -416,7 +416,6 @@ def pyomo_model_prep(
             m.sto_ep_ratio_dict = {}
 
     # derive invcost factor from WACC and depreciation duration
-    # TODO: ADMM support for intertemporal models
     if m.mode['int']:
         # modify pro_const_cap for intertemporal mode
         for index in tuple(pro_const_cap.index):

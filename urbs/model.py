@@ -512,7 +512,9 @@ def create_model(
                 doc='minimize(cost = sum of all cost types)')
 
         elif 'Carbon' in m.com_stock:
-            # TODO: comment
+            # In ADMM, the global CO2 budget is handled with the use of the auxiliary
+            # 'Carbon' commodity, which is supplied by the "Carbon supplier site".
+            # Yearly CO2 limits for intertemporal models are not yet implemented.
             m.res_global_carbon_budget = pyomo.Constraint(
                 rule=res_global_carbon_budget_rule,
                 doc='total carbon stock source <= global.prop CO2 budget'

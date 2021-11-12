@@ -1,15 +1,12 @@
 from math import ceil
 from multiprocessing import Queue
-from os.path import join
 from time import sleep
 from typing import Dict, Iterable, List, Set, Union
 import urbs
 from urbs.admm_async.admm_option import AdmmOption
 
 import numpy as np
-from numpy.linalg import norm
 
-from . import runfunctions_admm
 from urbs.admm_async.admm_messages import (
     AdmmIterationResult, AdmmVariableMessage, AdmmStatusMessage, AdmmStatus
 )
@@ -22,8 +19,8 @@ class AdmmWorker:
 
     Attributes:
         - `ID`: ID of this worker. Same as `self.model.ID`.
-        - `result_dir`: Output directory
         - `log_prefix`: A string that is prefixed to all log messages.
+        - `result_dir`: Output directory
         - `output`: `mp.Queue` for sending objects to the parent process.
         - `admmopt`: `AdmmOption` object
         - `n_clusters`: Number of clusters in the ADMM algorithm.
@@ -33,6 +30,7 @@ class AdmmWorker:
         - `receiving_queue`: `mp.Queue` for receiving objects from other workers and the
           parent process.
         - `sending_queues`: Dict of queues for sending objects to other workers.
+        - `neighbor_queues`: Dict of queues for sending objects to neighboring workers.
         - `messages`: Dict of the most recent messages received from other workers.
         - `updated`: Set of neighboring clusters that have sent variable updates since the
           start of the current local iteration.
@@ -347,7 +345,7 @@ class AdmmWorker:
         variable_senders = set()
         status_msgs = {}
 
-        # read accumulated messages from active neighbors
+        # read accumulated messages from neighbors
         while not self.receiving_queue.empty():
             msg = self.receiving_queue.get(block=False)
             if isinstance(msg, AdmmVariableMessage):

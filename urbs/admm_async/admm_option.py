@@ -2,9 +2,17 @@ from typing import Tuple, Union
 from warnings import warn
 
 class AdmmOption(object):
+    """
+    Encapsulates several options for the ADMM algorithm.
+
+    A note on `tolerance`:
+    Pass a tuple of floats to specify separate thresholds for primal gap, dual gap and
+    constraint mismatch. Pass a single float to specify the same thresholds for all three.
+    When all three values fall below their thresholds, the algorithm terminates.
+    `None` is treated like "infinity".
+    """
     def __init__(self,
         rho,
-        scale_rho = False,
         penalty_mode = None,
         max_penalty = None,
         penalty_mult = None,
@@ -136,7 +144,6 @@ class AdmmOption(object):
             raise ValueError("mismatch_tolerance must be non-negative")
 
         self.rho = rho
-        self.scale_rho = scale_rho
         self.max_penalty = max_penalty
         self.penalty_mult = penalty_mult
         self.primal_decrease = primal_decrease

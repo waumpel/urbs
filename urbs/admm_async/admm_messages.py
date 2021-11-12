@@ -8,7 +8,7 @@ class AdmmStatus(Enum):
     TERMINATED = 3
 
 
-class AdmmVariableMessage(object):
+class AdmmVariableMessage:
     def __init__(
         self,
         sender,

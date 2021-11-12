@@ -1,9 +1,3 @@
-############################################################################
-# This file builds the opf_admm_model class that represents a subproblem
-# ADMM algorithm parameters should be defined in AdmmOption
-# Package Pypower 5.1.3 is used in this application
-############################################################################
-
 from math import sqrt
 from os.path import join
 from time import time
@@ -62,8 +56,6 @@ class AdmmModel:
         self.logfile = join(result_dir, f'solver-{ID}.log')
         self.neighbors = neighbors
         self.rho = admmopt.rho
-        if self.admmopt.scale_rho:
-            self.rho = self.rho / self.flow_global.size
         self.shared_lines = shared_lines
         self.shared_lines_index = shared_lines_index
 
@@ -179,7 +171,6 @@ class AdmmModel:
                 self.flows_with_neighbor[k].index
             )
         ]
-        raw_mismatch_gap = norm(flow_global_with_k - flow_global)
 
         normalizer = max(norm(flow_global_with_k), norm(flow_global))
         if normalizer == 0:
@@ -217,10 +208,8 @@ class AdmmModel:
         flows_with_neighbor = {k: {} for k in self.neighbors}
 
         for (tm, stf, sit_in, sit_out, tra, com), v in e_tra_in.items():
-            # print(f'{sit_in}-{sit_out}')
             if (sit_in, sit_out) in zip(index['Site In'], index['Site Out']):
                 k = self.shared_lines.loc[(stf, sit_in, sit_out, tra, com), 'neighbor_cluster']
-                # print(f'shared with {k}')
                 flows_all[(tm, stf, sit_in, sit_out)] = v.value
                 flows_with_neighbor[k][(tm, stf, sit_in, sit_out)] = v.value
 
@@ -228,8 +217,6 @@ class AdmmModel:
         flows_all.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
 
         for k in flows_with_neighbor:
-            # print(f'flows_with_neighbor[{k}]')
-            # print(flows_with_neighbor[k])
             flows = pd.Series(flows_with_neighbor[k])
             flows.rename_axis(['t', 'stf', 'sit', 'sit_'], inplace=True)
             flows_with_neighbor[k] = flows

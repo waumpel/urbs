@@ -30,7 +30,6 @@ def run_tsam(data, noTypicalPeriods, hoursPerPeriod, cross_scenario_data):
     time_series_data = time_series_data.T.drop_duplicates().T
 
     ###prepare datetime vector which is required by tsam method
-    # TODO: hardcoded. what if intertemporal?
     date_hour = np.arange(datetime(2021, 1, 1), datetime(2022, 1, 1), timedelta(hours=1)).astype(datetime).T
     ###prepare df for tsam
     time_series_data = time_series_data.iloc[1:, :] #drop initialization timestep

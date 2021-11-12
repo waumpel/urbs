@@ -1,9 +1,3 @@
-############################################################################
-# This file builds the opf_admm_model class that represents a subproblem
-# ADMM algorithm parameters should be defined in AdmmOption
-# Package Pypower 5.1.3 is used in this application
-############################################################################
-
 from copy import deepcopy
 from time import time
 from typing import Dict, List, Tuple

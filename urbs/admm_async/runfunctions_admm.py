@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 import json
 import multiprocessing as mp
 import os
@@ -21,7 +21,6 @@ from urbs.features.typeperiod import run_tsam
 from urbs.features.transdisthelper import *
 from urbs.identify import identify_mode
 from urbs.input import read_input, add_carbon_supplier
-from urbs.runfunctions import setup_solver
 from urbs.validation import validate_input
 
 
@@ -287,7 +286,9 @@ def run_parallel(
     hoursPerPeriod=None,
     threads=1,
     ):
-    # TODO: docstring
+    """
+    Main function for parallel ADMM
+    """
     (
         timesteps,
         clusters,
@@ -444,8 +445,9 @@ def run_sequential(
     hoursPerPeriod=None,
     threads=1,
     ):
-    # TODO: docstring
-
+    """
+    Main function for sequential ADMM
+    """
     # admm preprocessing
     (
         timesteps,
