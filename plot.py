@@ -147,6 +147,8 @@ if __name__ == '__main__':
     detailed = args.detailed
     combined = args.combined
 
+    centralized_objective = None # REQUIRED
+
     out_dir = '.'
     format = 'png'
 
@@ -174,8 +176,6 @@ if __name__ == '__main__':
 
     title_suffix = ''
 
-    centralized_objective = None
-
     # Options
     dualgap = False
     convergence_cutoff = (-Inf, Inf)
@@ -184,7 +184,7 @@ if __name__ == '__main__':
 
 
 
-    # === LET THE PLOTTING BEGIN ===
+    # === BEGIN PLOTTING ===
 
     if detailed:
         print('Creating detailed plots')
