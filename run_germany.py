@@ -20,6 +20,7 @@ if __name__ == '__main__':
     options = argparse.ArgumentParser()
     options.add_argument('-a', '--admm', action='store_true')
     options.add_argument('-s', '--sequential', action='store_true')
+    options.add_argument('-t', '--timesteps', type=int, default=1)
     args = options.parse_args()
 
     input_files = 'germany.xlsx'  # for single year file name, for intertemporal folder name
@@ -27,7 +28,7 @@ if __name__ == '__main__':
     input_path = join(input_dir, input_files)
 
     # simulation timesteps
-    (offset, length) = (0, 1)  # time step selection
+    (offset, length) = (0, args.timesteps)  # time step selection
     timesteps = range(offset, offset + length + 1)
     dt = 1  # length of each time step (unit: hours)
 
