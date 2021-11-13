@@ -95,9 +95,20 @@ if __name__ == '__main__':
             max_iter=500,
             tolerance=(0.01, None, 0.01),
         )
-        for rho in [10**i for i in range(1, 5)]
+        for rho in [10**i for i in range(5)]
         for tau in [1.1, 1.5, 2, 5, 10]
         for alpha in [0, 10**4]
+        if (rho, tau, alpha) not in [
+            (1, 1.1, 0),
+            (1, 1.5, 0),
+            (1, 5, 0),
+            (10, 1.1, 0),
+            (10, 1.5, 0),
+            (10, 2, 0),
+            (100, 1.1, 0),
+            (100, 10, 0),
+            (1000, 1.1, 0),
+        ]
     }
 
     year = date.today().year

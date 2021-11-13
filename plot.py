@@ -3,7 +3,7 @@ import io
 import json
 import os
 from os.path import join, isdir
-from typing import List, Tuple
+from typing import List
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -276,5 +276,5 @@ if __name__ == '__main__':
         plt.close(fig_obj)
 
     with open(join(out_dir, 'comparison.txt'), 'w', encoding='utf8') as f:
-        f.write('subdir time obj_gap iter\n')
+        f.write('subdir time obj_gap avg_iter\n')
         f.write('\n'.join(' '.join(str(x) for x in l) for l in convergence_list))

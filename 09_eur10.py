@@ -95,7 +95,7 @@ if __name__ == '__main__':
             max_iter=500,
             tolerance=(0.01, None, 0.01),
         )
-        for rho in [10**i for i in range(-2, 4)]
+        for rho in [10**i for i in range(1, 4)]
     }
 
     year = date.today().year
