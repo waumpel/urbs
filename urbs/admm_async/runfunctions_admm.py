@@ -9,7 +9,6 @@ from time import time
 import numpy as np
 from numpy.linalg import norm
 import pandas as pd
-import psutil as ps
 import pyomo.environ as pyomo
 
 import urbs
@@ -369,11 +368,6 @@ def run_parallel(
             model_creation_status[msg['sender']] = True
         else:
             RuntimeWarning(f'Received unexpected msg')
-    memory = ps.Process().memory_info().rss + sum(
-        ps.Process(proc.pid).memory_info().rss for proc in procs
-    )
-    print(f'Currently using {(memory / 10**9):.2f} GiB of memory (rss)')
-
 
     print('All workers have created their models. Starting ADMM')
     solver_start = time()
