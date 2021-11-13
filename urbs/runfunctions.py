@@ -120,8 +120,9 @@ def run_scenario(
     sce = scenario.__name__
     data = read_input(input_files, year)
     data, cross_scenario_data = scenario(data, cross_scenario_data)
-    validate_input(data)
-    validate_dc_objective(data, objective)
+    # Validation is disabled because it takes very long
+    # validate_input(data)
+    # validate_dc_objective(data, objective)
 
 
     # read and modify microgrid data

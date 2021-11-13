@@ -86,7 +86,7 @@ if __name__ == '__main__':
             penalty_mult = 2,
             primal_decrease = 0.95,
             max_iter = 200,
-            tolerance = 0.0,
+            tolerance = (0.01, None, 0.01),
         )
 
         for scenario in scenarios:

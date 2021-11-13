@@ -96,7 +96,7 @@ if __name__ == '__main__':
         admmopt = admm_async.AdmmOption(
             rho = 1000,
             max_penalty = 10**8,
-            penalty_mult = 2,
+            penalty_mult = 1.5,
             primal_decrease = 0.95,
             max_iter = 500,
             tolerance = (0.01, None, 0.01),
